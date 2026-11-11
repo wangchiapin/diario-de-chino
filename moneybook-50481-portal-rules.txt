@@ -1,0 +1,28 @@
+// ===== Firebase 專案 moneybook-50481：學生頁（diario-de-chino）要加的 Firestore 規則 =====
+// 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
+// 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
+// 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
+// 最後更新：2026-11-11（新增 portal 兩段）
+// 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-11 新增 portal/{tid}/students 與 portal/{tid}/roster
+//
+// 誰能做什麼：
+//   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
+//   - 學生只能讀「自己那一份」：電子郵件已經驗證過，而且跟老師填在對照表（roster）裡的一樣。
+//   - 學生不能寫任何東西，也讀不到收入、匯款、備註、別的學生（那些在別的路徑，規則本來就只給本人）。
+
+    // 學生頁：日誌複製過來的「每位學生自己那一份」（姓名、付費、剩幾堂、已上幾堂、時區、上課日期時間）
+    match /portal/{tid}/students/{sid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
+      allow write: if request.auth != null && request.auth.uid == tid;
+    }
+    // 對照表：學生電子郵件 ↔ 日誌學生。學生只能查到「電子郵件是自己的」那一筆（用來找出自己是哪位學生）
+    match /portal/{tid}/roster/{sid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true && resource.data.email == request.auth.token.email));
+      allow write: if request.auth != null && request.auth.uid == tid;
+    }

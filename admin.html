@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>老師後台 · Diario de chino</title>
+<style>
+:root{--bg:#ece8df;--card:#f8f6f0;--line:#d9d3c5;--text:#3b372f;--sub:#7b7467;--accent:#7a6a50;--accent-soft:#e6dfd0;--ok:#5f7f63;--warn:#a04b3f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.55;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:900px;margin:0 auto;padding:14px 16px 50px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+h1{font-size:18px;margin:0}
+h2{font-size:14px;margin:0 0 8px;color:var(--sub)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+input{font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);width:100%}
+button{font:inherit;font-size:14px;padding:8px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:18px;cursor:pointer}
+button.quiet{background:transparent;color:var(--accent)}
+button:disabled{opacity:.5}
+.muted{color:var(--sub);font-size:13px}
+.err{color:var(--warn)} .ok{color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--sub);font-weight:600}
+td.em{min-width:210px}
+.small{font-size:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hidden{display:none !important}
+ol{margin:6px 0 0 18px;padding:0}
+@media (max-width:640px){
+  table,thead,tbody,tr,td{display:block}
+  thead{display:none}
+  tr{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;padding:8px;background:#fff}
+  td{border:0;padding:3px 2px}
+  td.em{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>老師後台</h1><button class="quiet hidden" id="btnLogout">登出</button></header>
+  <div id="app"><div class="card muted">載入中…</div></div>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0",
+  authDomain: "moneybook-50481.firebaseapp.com",
+  projectId: "moneybook-50481",
+  storageBucket: "moneybook-50481.firebasestorage.app",
+  messagingSenderId: "549256761796",
+  appId: "1:549256761796:web:254332f109e7b8ad871491"
+});
+const auth = getAuth(app), db = getFirestore(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
+let unsubs = [];
+let rowMsg = {};          // 學生代號 → {text, ok}
+let drafts = {};          // 學生代號 → 還沒儲存的電子郵件
+let authReady = false, loginErr = '';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function payText(s){
+  if(s.pay === 'package') return s.remaining != null ? `包堂・剩 ${s.remaining} 堂` : '包堂';
+  if(s.pay === 'single') return '單堂付費';
+  return '—';
+}
+function fmtTime(ms){
+  if(!ms) return '—';
+  const d = new Date(ms), p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function studentUrl(){ return location.href.replace(/admin\.html.*$/, '') + '?t=' + uid; }
+
+function render(){
+  const root = $('app');
+  $('btnLogout').classList.toggle('hidden', !uid);
+  if(!authReady){ root.innerHTML = '<div class="card muted">載入中…</div>'; return; }
+  if(!uid){
+    root.innerHTML = `<div class="card" style="max-width:380px;margin:30px auto">
+      <h2>登入（跟華語教學日誌同一組帳號）</h2>
+      <form id="f" novalidate><div style="margin:8px 0"><input id="em" type="email" placeholder="電子郵件" autocomplete="email" autocapitalize="off"></div>
+      <div style="margin:8px 0"><input id="pw" type="password" placeholder="密碼" autocomplete="current-password"></div>
+      <button type="submit" id="go" style="width:100%">登入</button></form>
+      <div class="err" style="margin-top:8px">${esc(loginErr)}</div></div>`;
+    $('f').onsubmit = async e => {
+      e.preventDefault(); loginErr = ''; $('go').disabled = true;
+      try{ await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); }
+      catch(err){ loginErr = '電子郵件或密碼不正確'; render(); }
+    };
+    return;
+  }
+  if(loadErr){ root.innerHTML = `<div class="card err">${esc(loadErr)}</div>`; return; }
+  if(!studentsLoaded || !rosterLoaded){ root.innerHTML = '<div class="card muted">載入中…</div>'; return; }
+
+  const ids = Object.keys(students);
+  const active = ids.filter(id => !students[id].archived).sort((a, b) => String(students[a].name).localeCompare(String(students[b].name), 'zh-Hant'));
+  const archived = ids.filter(id => students[id].archived);
+  const missingTz = active.filter(id => !students[id].tz).length;
+
+  let html = `<div class="card">
+    <h2>學生網址</h2>
+    <div class="row"><input id="link" readonly value="${esc(studentUrl())}" style="flex:1;min-width:200px"><button id="copy">複製</button></div>
+    <div class="muted small" style="margin-top:8px">把這個網址傳給學生。學生第一次要用自己的電子郵件「建立帳號」並驗證信箱，之後用密碼登入。</div>
+    <ol class="muted small">
+      <li>在下面的表格，幫每位學生填上他登入用的電子郵件，按「儲存」。</li>
+      <li>填了電子郵件的學生，才看得到自己的課表和付費狀況；看不到別人的。</li>
+      <li>學生資料來自日誌；日誌開著時，有變動約 1 分鐘內會自動更新。</li>
+    </ol></div>`;
+
+  if(!ids.length){
+    html += `<div class="card">還沒有學生資料。請先打開「華語教學日誌」，到 ⚙️ 設定 → 🎓 學生頁，按「立即更新學生頁」。</div>`;
+  }else{
+    html += `<div class="card"><h2>對照表：學生 ↔ 電子郵件（${active.length} 位在學）</h2>
+      ${missingTz ? `<div class="muted small" style="margin-bottom:6px">有 ${missingTz} 位學生還沒設定所在地，學生頁會先用他們裝置的時區；到日誌「課表及學生設定」選好所在地就會自動帶入。</div>` : ''}
+      <table><thead><tr><th>學生</th><th>付費</th><th>已上</th><th>時區</th><th>日誌更新</th><th>登入用電子郵件</th><th></th></tr></thead><tbody>`;
+    active.forEach(id => {
+      const s = students[id], r = roster[id], m = rowMsg[id];
+      html += `<tr data-id="${esc(id)}">
+        <td><b>${esc(s.name)}</b></td><td>${esc(payText(s))}</td><td>${s.taught || 0} 堂</td>
+        <td class="small">${esc(s.tz || '（沒設定）')}</td><td class="small">${esc(fmtTime(s.updatedAt))}</td>
+        <td class="em"><input type="email" class="emIn" value="${esc(drafts[id] != null ? drafts[id] : (r ? r.email : ''))}" placeholder="student@example.com" autocapitalize="off"></td>
+        <td><button class="save">儲存</button><div class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : (r ? '已設定' : ''))}</div></td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+    if(archived.length) html += `<div class="card"><details><summary class="muted">已停課的學生（${archived.length} 位）</summary><div class="small muted" style="margin-top:6px">${archived.map(id => esc(students[id].name)).join('、')}　（他們看不到任何資料）</div></details></div>`;
+  }
+  root.innerHTML = html;
+
+  const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };
+  root.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    // 還沒按「儲存」的字先記著，日誌更新、畫面重畫時才不會被洗掉
+    tr.querySelector('.emIn').oninput = e => { drafts[id] = e.target.value; };
+    tr.querySelector('.save').onclick = () => saveEmail(id, tr.querySelector('.emIn').value);
+  });
+}
+
+async function saveEmail(id, raw){
+  const email = String(raw || '').trim().toLowerCase();
+  const ref = doc(db, 'portal', uid, 'roster', id);
+  try{
+    if(!email){
+      await deleteDoc(ref); delete roster[id]; rowMsg[id] = { text: '已清除', ok: true };
+    }else{
+      if(!EMAIL_RE.test(email)){ rowMsg[id] = { text: '電子郵件格式不正確', ok: false }; return render(); }
+      const dup = Object.keys(roster).find(k => k !== id && roster[k].email === email);
+      if(dup){ rowMsg[id] = { text: `這個電子郵件已經給了 ${students[dup] ? students[dup].name : '另一位學生'}`, ok: false }; return render(); }
+      const data = { email, name: students[id] ? students[id].name : '', updatedAt: Date.now() };
+      await setDoc(ref, data); roster[id] = data; rowMsg[id] = { text: '✓ 已儲存', ok: true };
+    }
+    delete drafts[id];
+  }catch(err){
+    console.error(err);
+    rowMsg[id] = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加 portal 那段' : '儲存失敗，請再試一次', ok: false };
+  }
+  render();
+}
+
+function stop(){ unsubs.forEach(u => u()); unsubs = []; }
+function start(){
+  stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
+  const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'students'), snap => { students = {}; snap.forEach(d => students[d.id] = d.data()); studentsLoaded = true; render(); }, onErr));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'roster'), snap => { roster = {}; snap.forEach(d => roster[d.id] = d.data()); rosterLoaded = true; render(); }, onErr));
+}
+
+$('btnLogout').onclick = () => signOut(auth);
+onAuthStateChanged(auth, user => {
+  authReady = true; uid = user ? user.uid : null; loginErr = '';
+  if(uid) start(); else { stop(); render(); }
+  if(uid) render();
+});
+render();
+</script>
+</body>
+</html>

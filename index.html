@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi diario de chino · 我的中文日誌</title>
+<meta name="description" content="Tu calendario de clases y tu estado de pago · 你的上課行事曆與付費狀況">
+<style>
+:root{
+  --bg:#ece8df; --card:#f8f6f0; --line:#d9d3c5; --text:#3b372f; --sub:#7b7467;
+  --accent:#7a6a50; --accent-soft:#e6dfd0; --done:#6f8f72; --off:#b3ab9c; --warn:#a04b3f;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.55;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:560px;margin:0 auto;padding:14px 16px 40px}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.02em}
+.lang{display:flex;gap:4px}
+.lang button{border:1px solid var(--line);background:transparent;color:var(--sub);border-radius:14px;padding:3px 10px;font-size:13px;cursor:pointer;font-family:inherit}
+.lang button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.card h2{font-size:13px;margin:0 0 8px;color:var(--sub);font-weight:600;letter-spacing:.04em}
+.big{font-size:20px;font-weight:600}
+.muted{color:var(--sub);font-size:13px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two .card{margin-bottom:0}
+.grid2{margin-bottom:12px}
+input,select{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+button.primary{width:100%;margin-top:14px;padding:11px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-size:16px;cursor:pointer}
+button.primary:disabled{opacity:.5}
+button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:14px;padding:6px 0;cursor:pointer;text-decoration:underline}
+.tabs{display:flex;gap:6px;margin-bottom:6px}
+.tabs button{flex:1;padding:9px;border:1px solid var(--line);background:transparent;border-radius:8px;font:inherit;color:var(--sub);cursor:pointer}
+.tabs button.on{background:var(--accent-soft);color:var(--text);border-color:var(--accent)}
+.msg{font-size:14px;margin-top:10px}
+.msg.err{color:var(--warn)} .msg.ok{color:var(--done)}
+.center{text-align:center}
+.time{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:3px 0}
+.time b{font-weight:600}
+.tag{font-size:12px;color:var(--sub);margin-left:6px}
+/* 月曆 */
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cal-head button{border:1px solid var(--line);background:transparent;border-radius:8px;width:34px;height:30px;cursor:pointer;color:var(--text);font-size:16px}
+.cal-head button:disabled{opacity:.3}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dow{font-size:11px;color:var(--sub);text-align:center;padding:2px 0}
+.day{aspect-ratio:1/1;border:1px solid transparent;border-radius:8px;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;font:inherit;font-size:14px;color:var(--text);cursor:pointer;padding:0;position:relative}
+.day.out{color:#c4bdae}
+.day.today{border-color:var(--accent)}
+.day.sel{background:var(--accent-soft)}
+.dots{display:flex;gap:3px;height:7px;margin-top:2px}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%}
+.dot.done{background:var(--done)}
+.dot.upcoming,.dot.now{border:1.5px solid var(--accent);background:transparent}
+.dot.off{background:var(--off);height:2px;border-radius:1px;align-self:center;width:8px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;color:var(--sub)}
+.legend span{display:flex;align-items:center;gap:5px}
+.lesson{border-top:1px solid var(--line);padding:10px 0}
+.lesson:first-child{border-top:0;padding-top:2px}
+.lesson.off{opacity:.55}
+.lesson.off .time b{text-decoration:line-through}
+.foot{font-size:12px;color:var(--sub);text-align:center;margin-top:18px}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="appTitle"></h1>
+    <div class="lang" id="langBar">
+      <button data-l="es">ES</button><button data-l="tc">繁</button><button data-l="sc">简</button>
+    </div>
+  </header>
+  <main id="app"><div class="card center muted" id="loading"></div></main>
+  <div class="foot" id="foot"></div>
+</div>
+<script src="portal-core.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* 跟日誌、老師後台用同一個 Firebase 專案 */
+const app = initializeApp({
+  apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0",
+  authDomain: "moneybook-50481.firebaseapp.com",
+  projectId: "moneybook-50481",
+  storageBucket: "moneybook-50481.firebasestorage.app",
+  messagingSenderId: "549256761796",
+  appId: "1:549256761796:web:254332f109e7b8ad871491"
+});
+const auth = getAuth(app), db = getFirestore(app);
+
+const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} } };
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ───────── 狀態 ───────── */
+let lang = LS.get('dc.lang') || pcDetectLang(navigator.language);
+let tid = null;                  // 老師的 uid，從老師給的連結（?t=）取得，之後記在這台裝置
+let studentId = null, studentDoc = null, docLoaded = false, docError = null;
+let unsubDoc = null;
+let authMode = 'login';          // 'login' | 'register'
+let calMonth = null, selDay = null;   // calMonth: {y, m}
+let tzSetting = null;            // 學生自己選的時區（沒選就 null）
+let busyMsg = '', busyErr = '';
+const T = (k, p) => pcT(lang, k, p);
+
+(function readTeacherId(){
+  const q = new URLSearchParams(location.search).get('t');
+  if(q && /^[A-Za-z0-9]{20,40}$/.test(q)){ LS.set('dc.t', q); tid = q; history.replaceState(null, '', location.pathname); }
+  else tid = LS.get('dc.t');
+})();
+
+function effectiveTz(){
+  if(tzSetting) return tzSetting;
+  if(studentDoc && studentDoc.tz) return studentDoc.tz;
+  try{ return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Taipei'; }catch(e){ return 'Asia/Taipei'; }
+}
+function tzSource(){
+  if(tzSetting) return 'custom';
+  if(studentDoc && studentDoc.tz) return 'teacher';
+  return 'device';
+}
+function allTimeZones(){
+  try{ if(Intl.supportedValuesOf) return Intl.supportedValuesOf('timeZone'); }catch(e){}
+  return ['America/Mexico_City','America/Bogota','America/Lima','America/Santiago','America/Argentina/Buenos_Aires','America/Sao_Paulo','America/Caracas','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','Europe/Madrid','Asia/Taipei','Asia/Manila'];
+}
+
+/* ───────── 畫面 ───────── */
+function setLang(l){
+  lang = l; LS.set('dc.lang', l);
+  document.documentElement.lang = l === 'es' ? 'es' : l === 'sc' ? 'zh-CN' : 'zh-TW';
+  document.querySelectorAll('#langBar button').forEach(b => b.classList.toggle('on', b.dataset.l === l));
+  $('appTitle').textContent = T('title');
+  render();
+}
+document.querySelectorAll('#langBar button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
+
+function render(){
+  const root = $('app');
+  const user = auth.currentUser;
+  $('foot').textContent = '';
+  if(!tid && !user){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>`; return; }
+  if(!authReady){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(!user) return renderAuth(root);
+  if(!tid){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>${logoutBlock()}`; bindLogout(); return; }
+  if(!user.emailVerified) return renderVerify(root, user);
+  if(rosterState === 'loading') { root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(rosterState === 'none') return renderNotListed(root, user);
+  if(rosterState === 'error') return renderError(root);
+  renderHome(root);
+}
+
+function logoutBlock(){ return `<div class="center"><button class="link" id="btnLogout">${esc(T('logout'))}</button></div>`; }
+function bindLogout(){ const b = $('btnLogout'); if(b) b.onclick = () => signOut(auth); }
+
+function renderAuth(root){
+  root.innerHTML = `
+    <div class="card">
+      <div class="tabs"><button data-m="login" class="${authMode === 'login' ? 'on' : ''}">${esc(T('login'))}</button><button data-m="register" class="${authMode === 'register' ? 'on' : ''}">${esc(T('register'))}</button></div>
+      <form id="authForm" novalidate>
+        <label for="em">${esc(T('email'))}</label><input id="em" type="email" autocomplete="email" inputmode="email" autocapitalize="off" required>
+        <label for="pw">${esc(T('password'))}</label><input id="pw" type="password" autocomplete="${authMode === 'login' ? 'current-password' : 'new-password'}" required>
+        <button class="primary" id="btnAuth" type="submit">${esc(authMode === 'login' ? T('login') : T('register'))}</button>
+      </form>
+      <div class="msg ${busyErr ? 'err' : 'ok'}" id="authMsg">${esc(busyErr || busyMsg)}</div>
+      ${authMode === 'login' ? `<div class="center"><button class="link" id="btnForgot">${esc(T('forgot'))}</button></div>` : ''}
+    </div>`;
+  root.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { authMode = b.dataset.m; busyErr = busyMsg = ''; render(); });
+  $('authForm').onsubmit = async e => {
+    e.preventDefault();
+    const em = $('em').value.trim().toLowerCase(), pw = $('pw').value;
+    busyErr = busyMsg = ''; $('btnAuth').disabled = true;
+    try{
+      auth.languageCode = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW';
+      if(authMode === 'register'){
+        const cred = await createUserWithEmailAndPassword(auth, em, pw);
+        await sendEmailVerification(cred.user);
+      }else{
+        await signInWithEmailAndPassword(auth, em, pw);
+      }
+    }catch(err){ busyErr = T(pcAuthErrorKey(err && err.code)); render(); }
+  };
+  const f = $('btnForgot');
+  if(f) f.onclick = async () => {
+    const em = $('em').value.trim().toLowerCase();
+    if(!em){ $('authMsg').className = 'msg err'; $('authMsg').textContent = T('errEmail'); return; }
+    try{ auth.languageCode = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW'; await sendPasswordResetEmail(auth, em); $('authMsg').className = 'msg ok'; $('authMsg').textContent = T('resetSent'); }
+    catch(err){ $('authMsg').className = 'msg err'; $('authMsg').textContent = T(pcAuthErrorKey(err && err.code)); }
+  };
+}
+
+function renderVerify(root, user){
+  root.innerHTML = `
+    <div class="card">
+      <h2>${esc(T('verifyTitle'))}</h2>
+      <div>${esc(T('verifyMsg', { email: user.email }))}</div>
+      <button class="primary" id="btnDone">${esc(T('verifyDone'))}</button>
+      <div class="center"><button class="link" id="btnResend">${esc(T('verifyResend'))}</button></div>
+      <div class="msg ${busyErr ? 'err' : 'ok'} center" id="vMsg">${esc(busyErr || busyMsg)}</div>
+    </div>${logoutBlock()}`;
+  bindLogout();
+  $('btnDone').onclick = async () => {
+    try{ await user.reload(); }catch(e){}
+    if(auth.currentUser && auth.currentUser.emailVerified){ await auth.currentUser.getIdToken(true); startRoster(); } else render();
+  };
+  $('btnResend').onclick = async () => {
+    try{ auth.languageCode = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW'; await sendEmailVerification(user); busyErr = ''; busyMsg = T('sent'); }
+    catch(err){ busyMsg = ''; busyErr = T(pcAuthErrorKey(err && err.code)); }
+    render();
+  };
+}
+
+function renderNotListed(root, user){
+  root.innerHTML = `<div class="card"><h2>${esc(T('notListedTitle'))}</h2><div>${esc(T('notListedMsg', { email: user.email }))}</div></div>${logoutBlock()}`;
+  bindLogout();
+}
+function renderError(root){
+  root.innerHTML = `<div class="card center"><div class="msg err">${esc(docError || T('errOther'))}</div><button class="link" id="btnRetry">${esc(T('retry'))}</button></div>${logoutBlock()}`;
+  bindLogout(); $('btnRetry').onclick = () => startRoster();
+}
+
+function fmtMs(ms){
+  return new Intl.DateTimeFormat(lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
+}
+
+function timesHtml(v, tz){
+  if(v.allDay) return `<div class="time"><span>${esc(T('off'))}</span></div>`;
+  const shift = v.dayShift === 0 ? '' : `<span class="tag">${esc(v.dayShift < 0 ? T('prevDay') : T('nextDay'))}</span>`;
+  return `<div class="time"><span>${esc(T('twTime'))}</span><b>${esc(v.twStart)}–${esc(v.twEnd)}</b></div>
+          <div class="time"><span>${esc(T('yourTime'))}${shift}</span><b>${esc(v.localStart)}–${esc(v.localEnd)}</b></div>`;
+}
+
+function renderHome(root){
+  if(!docLoaded){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(docError){ return renderError(root); }
+  if(!studentDoc){ root.innerHTML = `<div class="card center">${esc(T('noNoData'))}</div>${logoutBlock()}`; bindLogout(); return; }
+  if(studentDoc.archived){ root.innerHTML = `<div class="card center">${esc(T('archived'))}</div>${logoutBlock()}`; bindLogout(); return; }
+
+  const tz = effectiveTz(), now = Date.now();
+  const groups = pcGroupByLocalDate(studentDoc.lessons || [], tz);
+  const next = pcNextLesson(studentDoc.lessons || [], tz, now);
+  const todayLocal = pcLocalParts(now, tz).date;
+  if(!calMonth) calMonth = { y: +todayLocal.slice(0, 4), m: +todayLocal.slice(5, 7) };
+  if(!selDay) selDay = todayLocal;
+
+  /* 下一堂課 */
+  let nextHtml;
+  if(next){
+    const dd = pcDaysBetween(todayLocal, next.localDate);
+    const rel = next.startMs <= now ? T('now') : dd <= 0 ? T('today') : dd === 1 ? T('tomorrow') : T('inDays', { n: dd });
+    nextHtml = `<div class="row"><span class="big">${esc(pcFmtDate(next.localDate, lang, { weekday: 'long', day: 'numeric', month: 'long' }))}</span><span class="muted">${esc(rel)}</span></div>${timesHtml(next, tz)}`;
+  }else nextHtml = `<div class="muted">${esc(T('noNext'))}</div>`;
+
+  /* 付費＋已上堂數 */
+  const pay = pcPayLine(studentDoc, lang);
+  const taught = `<div class="card"><h2>${esc(T('taught'))}</h2><div class="big">${esc(T('unit', { n: studentDoc.taught || 0 }))}</div></div>`;
+  const payCard = pay ? `<div class="card"><h2>${esc(pay.label)}</h2><div class="big">${esc(pay.value)}</div></div>` : '';
+  const stats = pay ? `<div class="two grid2">${payCard}${taught}</div>` : taught;
+
+  /* 月曆 */
+  const cells = pcMonthGrid(calMonth.y, calMonth.m);
+  const monthTitle = pcFmtDate(`${calMonth.y}-${String(calMonth.m).padStart(2, '0')}-01`, lang, { year: 'numeric', month: 'long' });
+  const dow = [1, 2, 3, 4, 5, 6, 0].map(i => pcFmtDate(pcIsoAdd('2026-11-01', i), lang, { weekday: 'narrow' }));   // 2026-11-01 是週日
+  let grid = dow.map(d => `<div class="dow">${esc(d)}</div>`).join('');
+  cells.forEach(c => {
+    const list = groups[c.date] || [];
+    const dots = list.slice(0, 3).map(v => `<span class="dot ${pcStatus(v, now)}"></span>`).join('');
+    grid += `<button class="day ${c.inMonth ? '' : 'out'} ${c.date === todayLocal ? 'today' : ''} ${c.date === selDay ? 'sel' : ''}" data-d="${c.date}"><span>${+c.date.slice(8)}</span><span class="dots">${dots}</span></button>`;
+  });
+  const dayList = groups[selDay] || [];
+  const detail = dayList.length
+    ? dayList.map(v => `<div class="lesson ${pcStatus(v, now) === 'off' ? 'off' : ''}">${timesHtml(v, tz)}</div>`).join('')
+    : `<div class="muted">${esc(T('noClassDay'))}</div>`;
+
+  /* 時區 */
+  const zones = allTimeZones();
+  const opts = zones.map(z => `<option value="${esc(z)}" ${z === tz ? 'selected' : ''}>${esc(z)}</option>`).join('');
+  const srcLabel = tzSource() === 'teacher' ? T('tzTeacher') : tzSource() === 'device' ? T('tzDevice') : '';
+
+  root.innerHTML = `
+    <div class="card"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
+    <div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div>
+    ${stats}
+    <div class="card">
+      <h2>${esc(T('calendar'))}</h2>
+      <div class="cal-head"><button id="calPrev" aria-label="prev">‹</button><b>${esc(monthTitle)}</b><button id="calNext" aria-label="next">›</button></div>
+      <div class="cal-grid">${grid}</div>
+      <div class="legend"><span><i class="dot done"></i>${esc(T('legendDone'))}</span><span><i class="dot upcoming"></i>${esc(T('legendNext'))}</span><span><i class="dot off"></i>${esc(T('legendOff'))}</span></div>
+    </div>
+    <div class="card"><h2>${esc(T('dayDetail'))} · ${esc(pcFmtDate(selDay, lang, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2>${detail}</div>
+    <div class="card">
+      <h2>${esc(T('timezone'))}</h2>
+      <select id="tzSel">${opts}</select>
+      <div class="muted" style="margin-top:6px">${esc(srcLabel)}</div>
+    </div>
+    ${logoutBlock()}`;
+  $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
+
+  root.querySelectorAll('.day').forEach(b => b.onclick = () => { selDay = b.dataset.d; calMonth = { y: +selDay.slice(0, 4), m: +selDay.slice(5, 7) }; render(); });
+  $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
+  $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
+  $('tzSel').onchange = e => { tzSetting = e.target.value; LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
+  bindLogout();
+}
+
+/* ───────── 資料：先用 Email 找到自己是哪位學生，再即時讀自己那一份 ───────── */
+let rosterState = 'loading', authReady = false;
+
+async function startRoster(){
+  const user = auth.currentUser;
+  if(!user || !tid || !user.emailVerified){ render(); return; }
+  rosterState = 'loading'; docError = null; docLoaded = false; render();
+  try{
+    const q = query(collection(db, 'portal', tid, 'roster'), where('email', '==', String(user.email).toLowerCase()));
+    const snap = await getDocs(q);
+    if(snap.empty){ rosterState = 'none'; render(); return; }
+    studentId = snap.docs[0].id;
+    rosterState = 'ok';
+    tzSetting = LS.get('dc.tz.' + tid) || null;
+    if(unsubDoc) unsubDoc();
+    unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', studentId),
+      s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; render(); },
+      err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
+    render();
+  }catch(err){
+    console.error(err);
+    rosterState = 'error'; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errNet'); render();
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  authReady = true;
+  if(unsubDoc){ unsubDoc(); unsubDoc = null; }
+  studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
+  if(user && user.emailVerified) startRoster(); else render();
+});
+
+setLang(lang);
+</script>
+</body>
+</html>
