@@ -102,6 +102,11 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .rights{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:15px;margin:6px 0 10px;color:var(--sub)}
 .savemsg{font-size:12px;color:var(--sub);min-height:16px;text-align:right}
 .savemsg.err{color:var(--warn)}
+.nud{position:fixed;inset:0;background:rgba(59,55,47,.35);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+.nudc{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 22px 22px;max-width:380px;width:100%;box-shadow:0 8px 30px rgba(59,55,47,.18)}
+.nudx{position:absolute;top:6px;right:8px;width:40px;height:40px;border:0;background:none;font-size:28px;line-height:1;color:var(--sub);cursor:pointer}
+.nudk{font-size:12px;color:var(--sub);letter-spacing:.06em;margin-bottom:8px}
+.nudt{font-size:18px;line-height:1.65;padding-right:14px}
 </style>
 </head>
 <body>
@@ -117,6 +122,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 </div>
 <script src="portal-core.js"></script>
 <script src="portal-hw.js"></script>
+<script src="portal-nudge.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -361,8 +367,51 @@ function renderHome(root){
   $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
   $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
   $('tzSel').onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
-  bindLogout(); bindHwCard(root);
+  bindLogout(); bindHwCard(root); nudMaybeStart();
 }
+
+/* ───────── 彈跳視窗：練習題、激勵句、提醒（只有右上角 X 可以關） ───────── */
+let rosterData = null, rosterReady = false, nudCfg = null, nudCfgTried = false, nudEntered = false, nudTimer = null, nudBox = null;
+const nudOn = () => !!(studentDoc && !studentDoc.archived && !(rosterData && rosterData.nudge && rosterData.nudge.on === false));
+const nudSeen = () => { try{ return JSON.parse(LS.get('dc.seen.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
+const nudMarkSeen = id => { if(PREVIEW) return; const s = nudSeen(); s[id] = 1; LS.set('dc.seen.' + studentId, JSON.stringify(s)); };
+async function nudLoadCfg(){
+  if(nudCfgTried) return; nudCfgTried = true;
+  try{ const s = await getDoc(doc(db, 'portal', tid, 'config', 'nudge')); nudCfg = s.exists() ? s.data() : null; }catch(e){ nudCfg = null; }
+}
+function nudClose(){ if(nudBox){ nudBox.remove(); nudBox = null; } }
+function nudShow(item){
+  nudClose();
+  const box = document.createElement('div');
+  box.className = 'nud'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-live', 'polite');
+  const label = item.kind === 'enc' ? 'nudEnc' : item.kind === 'rem' ? 'nudRem' : 'nudQ';
+  box.innerHTML = `<div class="nudc"><button class="nudx" id="nudX" aria-label="${esc(T('nudClose'))}">×</button><div class="nudk">${esc(T(label))}</div><div class="nudt" id="nudText">${esc(item.text)}</div></div>`;
+  document.body.appendChild(box); nudBox = box;
+  $('nudX').onclick = nudClose;
+}
+function nudReminderCtx(){
+  const tz = effectiveTz(), now = Date.now(), todayLocal = pcLocalParts(now, tz).date;
+  const nx = pcNextLesson(studentDoc.lessons || [], tz, now);
+  return { lang, hwDocs, seenGraded: nudSeen(), pay: studentDoc.pay || '', remaining: studentDoc.remaining, now,
+    payOn: !(rosterData && rosterData.nudge && rosterData.nudge.pay === false),
+    next: nx ? { dd: pcDaysBetween(todayLocal, nx.localDate), localStart: nx.localStart } : null };
+}
+async function nudMaybeStart(){
+  if(nudEntered || !rosterReady || !docLoaded || !hwLoaded || !studentDoc || hwOpen || !nudOn()) return;
+  nudEntered = true;
+  await nudLoadCfg();
+  const todayLocal = pcLocalParts(Date.now(), effectiveTz()).date;
+  const vars = { n: studentDoc.taught || 0, t: nudSpan(studentDoc.since, todayLocal, lang) };
+  const item = nudOnEnter({ cfg: nudCfg, lang, pool: nudBuildPool(hwDocs), vars, reminders: nudReminders(nudCfg, nudReminderCtx()) }, Math.random);
+  if(item && !hwOpen) nudShow(item);
+  nudTimer = setInterval(nudTick, window.__nudEvery || 5 * 60 * 1000);
+}
+function nudTick(){
+  if(document.hidden || nudBox || hwOpen || !nudOn() || !auth.currentUser) return;
+  const q = nudMakeQuestion(nudBuildPool(hwDocs), lang, Math.random);
+  if(q) nudShow(q);
+}
+function nudStop(){ clearInterval(nudTimer); nudTimer = null; nudClose(); nudEntered = false; rosterReady = false; rosterData = null; nudCfgTried = false; nudCfg = null; }
 
 /* ───────── 作業 ───────── */
 let hwDocs = {}, hwLoaded = false, hwErr = false, unsubHw = null;
@@ -401,6 +450,7 @@ function bindHwCard(root){
 }
 function openHw(id){
   const d = hwDocs[id]; if(!d) return;
+  if(d.status === 'graded') nudMarkSeen(id);
   hwOpen = id; hwOpenStatus = d.status; hwConfirming = false; hwSaveState = '';
   hwDraft = JSON.parse(JSON.stringify(d.answers || {})); hwOrder = {};
   // 排序題：把存好的詞語答案還原成「第幾個詞」
@@ -643,7 +693,7 @@ async function startRoster(){
     const q = query(collection(db, 'portal', tid, 'roster'), where('email', '==', String(user.email).toLowerCase()));
     const snap = await getDocs(q);
     if(snap.empty){ rosterState = 'none'; render(); return; }
-    studentId = snap.docs[0].id;
+    studentId = snap.docs[0].id; rosterData = snap.docs[0].data() || {}; rosterReady = true;
     rosterState = 'ok';
     tzSetting = LS.get('dc.tz.' + tid) || null;
     if(unsubDoc) unsubDoc();
@@ -661,6 +711,7 @@ async function startRoster(){
 function startPreview(user){
   tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
   startHw(PREVIEW);
+  getDoc(doc(db, 'portal', tid, 'roster', PREVIEW)).then(s => { rosterData = s.exists() ? s.data() : null; }).catch(() => { rosterData = null; }).then(() => { rosterReady = true; render(); });
   unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
     s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
     err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
@@ -670,7 +721,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw();
+  stopHw(); nudStop();
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

@@ -65,6 +65,13 @@ ol{margin:6px 0 0 18px;padding:0}
 .gblank.y{background:#dbe7da;border-color:#8fb293}.gblank.n{background:#f0d9d3;border-color:#d39b8f}
 .gnotebox{width:100%;min-height:70px;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
 .gmsg{font-size:13px;margin-top:6px}
+.nudta{width:100%;min-height:150px;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;line-height:1.6}
+.nudcols{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.nudrem{display:grid;grid-template-columns:110px 1fr 1fr 1fr;gap:6px;align-items:center;margin:6px 0}
+.nudrem input{font-size:13px;padding:6px 8px}
+details.nd{border-top:1px solid var(--line);padding:8px 0}
+details.nd summary{cursor:pointer;font-size:14px}
+@media (max-width:640px){.nudcols{grid-template-columns:1fr}.nudrem{grid-template-columns:1fr}}
 @media (max-width:640px){
   table,thead,tbody,tr,td{display:block}
   thead{display:none}
@@ -80,6 +87,7 @@ ol{margin:6px 0 0 18px;padding:0}
   <div id="app"><div class="card muted">載入中…</div></div>
 </div>
 <script src="portal-hw.js"></script>
+<script src="portal-nudge.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -97,6 +105,7 @@ const auth = getAuth(app), db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = {};
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
 let pool = {}, poolLoaded = false, admins = {}, hw = {}, hwUnsubs = {};   // hw：學生代號 → { 作業代號 → 文件 }
@@ -139,6 +148,94 @@ function pendingHtml(active){
   list.sort((a, b) => (a.d.submittedAt || 0) - (b.d.submittedAt || 0));
   return `<div class="card"><h2>等你批改（${list.length}）</h2>${list.map(x => `<div class="row" style="padding:5px 0"><b>${esc(students[x.sid].name)}</b><span class="muted">${esc(x.d.title || '')}</span><span class="muted small">${esc(fmtTime(x.d.submittedAt))} 交</span><button class="tiny" data-g="${esc(x.sid)}" data-gw="${esc(x.wid)}">批改</button></div>`).join('')}</div>`;
 }
+/* ───────── 彈跳視窗設定 ───────── */
+const NUD_LABEL = { hwTodo: '作業沒交（{n} 份）', graded: '作業批改好了', classSoon: '快上課了（{day} {time}）', payLow: '課堂快用完（剩 {n} 堂）', paySingle: '單堂付費' };
+function nudDefaults(){
+  return { enc: { tc: NUD_ENC.tc.join('\n'), sc: NUD_ENC.sc.join('\n'), es: NUD_ENC.es.join('\n') } };
+}
+function nudCurrent(){
+  if(nudDraft) return nudDraft;
+  const enc = nudCfg && nudCfg.enc && Array.isArray(nudCfg.enc.tc) && nudCfg.enc.tc.length
+    ? { tc: nudCfg.enc.tc.join('\n'), sc: (nudCfg.enc.sc || []).join('\n'), es: (nudCfg.enc.es || []).join('\n') } : nudDefaults().enc;
+  const rem = {};
+  NUD_REM_KEYS.forEach(k => { const c = nudCfg && nudCfg.rem && nudCfg.rem[k] || {}; rem[k] = { tc: c.tc || NUD_REM[k].tc, sc: c.sc || NUD_REM[k].sc, es: c.es || NUD_REM[k].es }; });
+  return { enc, rem };
+}
+function nudHtml(active){
+  const cur = nudCurrent();
+  let rows = '';
+  active.forEach(id => {
+    const r = roster[id], n = r && r.nudge || {}, m = nudRowMsg[id];
+    rows += r
+      ? `<tr data-nid="${esc(id)}"><td><b>${esc(students[id].name)}</b></td>
+          <td><label><input type="checkbox" class="nOn" ${n.on === false ? '' : 'checked'} style="width:auto"> 彈跳視窗</label></td>
+          <td><label><input type="checkbox" class="nPay" ${n.pay === false ? '' : 'checked'} style="width:auto"> 繳費提醒</label></td>
+          <td class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : '')}</td></tr>`
+      : `<tr><td><b>${esc(students[id].name)}</b></td><td class="muted small" colspan="3">先在上面的表格填電子郵件，才能設定</td></tr>`;
+  });
+  const remRows = NUD_REM_KEYS.map(k => `<div class="nudrem" data-rk="${k}"><div class="small">${esc(NUD_LABEL[k])}</div>
+      <input class="rTc" value="${esc(cur.rem[k].tc)}" aria-label="繁體"><input class="rSc" value="${esc(cur.rem[k].sc)}" aria-label="簡體"><input class="rEs" value="${esc(cur.rem[k].es)}" aria-label="Español"></div>`).join('');
+  return `<div class="card"><h2>彈跳視窗（學生頁會跳出練習題、鼓勵和提醒）</h2>
+    <div class="muted small">學生一進頁面，會隨機跳出一個（練習題、鼓勵或提醒）；停留在頁面的話，每 5 分鐘再跳一題練習題。練習題來自學生收到的練習單，題庫會隨作業增加而變多。學生只能按右上角 X 關掉。</div>
+    <table style="margin-top:8px"><tbody>${rows}</tbody></table>
+    <details class="nd" id="nudDet" ${nudOpen ? 'open' : ''}><summary>修改「鼓勵的話」和「提醒的話」</summary>
+      <div class="muted small" style="margin:8px 0">鼓勵的話：一行一句，三欄請「第幾行對第幾行」。簡體或西文留空的那一行，會用繁體那一句。<br>
+      可以用 <b>{n}</b>＝已上堂數、<b>{t}</b>＝學中文多久（用日誌「基本資料」裡的「起始上課日期」算，沒填就不會出現）；沒有資料的時候，含這些字的句子就不會出現。</div>
+      <div class="nudcols"><div><div class="small">繁體</div><textarea class="nudta" id="eTc">${esc(cur.enc.tc)}</textarea></div>
+        <div><div class="small">簡體（台灣用語）</div><textarea class="nudta" id="eSc">${esc(cur.enc.sc)}</textarea></div>
+        <div><div class="small">Español</div><textarea class="nudta" id="eEs">${esc(cur.enc.es)}</textarea></div></div>
+      <div class="muted small" style="margin-top:12px">提醒的話（有事才會出現）：<b>{n}</b>＝數量、<b>{day}</b>＝今天／明天、<b>{time}</b>＝上課時間</div>
+      ${remRows}
+      <div class="row" style="margin-top:10px"><button id="nudSave">儲存</button><button class="quiet" id="nudReset">還原成預設</button><span class="small ${nudMsg && !nudMsg.ok ? 'err' : 'ok'}" id="nudMsg">${esc(nudMsg ? nudMsg.text : '')}</span></div>
+    </details></div>`;
+}
+function nudReadForm(root){
+  const g = id => root.querySelector(id).value.split('\n');
+  const tc = g('#eTc'), sc = g('#eSc'), es = g('#eEs');
+  const out = { tc: [], sc: [], es: [] };
+  tc.forEach((t, i) => { t = t.trim(); if(!t) return; out.tc.push(t); out.sc.push((sc[i] || '').trim()); out.es.push((es[i] || '').trim()); });
+  const rem = {};
+  root.querySelectorAll('[data-rk]').forEach(d => { rem[d.dataset.rk] = { tc: d.querySelector('.rTc').value.trim(), sc: d.querySelector('.rSc').value.trim(), es: d.querySelector('.rEs').value.trim() }; });
+  return { enc: out, rem };
+}
+function bindNud(root){
+  const det = root.querySelector('#nudDet');
+  if(det) det.addEventListener('toggle', () => { nudOpen = det.open; });
+  root.querySelectorAll('#nudDet textarea, #nudDet input').forEach(el => el.addEventListener('input', () => {
+    const f = nudReadFormRaw(root); nudDraft = f;
+  }));
+  root.querySelectorAll('tr[data-nid]').forEach(tr => {
+    const id = tr.dataset.nid;
+    const save = async () => {
+      const data = { nudge: { on: tr.querySelector('.nOn').checked, pay: tr.querySelector('.nPay').checked } };
+      try{ await updateDoc(doc(db, 'portal', uid, 'roster', id), data); Object.assign(roster[id], data); nudRowMsg[id] = { text: '✓ 已儲存', ok: true }; }
+      catch(err){ console.error(err); nudRowMsg[id] = { text: '儲存失敗，請再試一次', ok: false }; }
+      render();
+    };
+    tr.querySelectorAll('input').forEach(i => i.onchange = save);
+  });
+  const sv = root.querySelector('#nudSave'), rs = root.querySelector('#nudReset');
+  if(sv) sv.onclick = async () => {
+    const f = nudReadForm(root);
+    if(!f.enc.tc.length){ nudMsg = { text: '鼓勵的話至少要有一句（繁體欄）', ok: false }; return render(); }
+    try{ await setDoc(doc(db, 'portal', uid, 'config', 'nudge'), { v: 1, enc: f.enc, rem: f.rem, updatedAt: Date.now() }); nudDraft = null; nudMsg = { text: '✓ 已儲存', ok: true }; }
+    catch(err){ console.error(err); nudMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加 config 那段' : '儲存失敗，請再試一次', ok: false }; }
+    render();
+  };
+  if(rs) rs.onclick = async () => {
+    if(!confirm('要把鼓勵的話和提醒的話，全部還原成預設嗎？你改過的會不見。')) return;
+    try{ await deleteDoc(doc(db, 'portal', uid, 'config', 'nudge')); nudCfg = null; nudDraft = null; nudMsg = { text: '✓ 已還原', ok: true }; }
+    catch(err){ console.error(err); nudMsg = { text: '還原失敗，請再試一次', ok: false }; }
+    render();
+  };
+}
+/* 打字中就先記著（不去掉空行），畫面被更新時才不會洗掉 */
+function nudReadFormRaw(root){
+  const rem = {};
+  root.querySelectorAll('[data-rk]').forEach(d => { rem[d.dataset.rk] = { tc: d.querySelector('.rTc').value, sc: d.querySelector('.rSc').value, es: d.querySelector('.rEs').value }; });
+  return { enc: { tc: root.querySelector('#eTc').value, sc: root.querySelector('#eSc').value, es: root.querySelector('#eEs').value }, rem };
+}
+
 function hwHtml(active){
   let h = pendingHtml(active) + `<div class="card"><h2>作業（從練習單產生器發布）</h2>`;
   const ids = Object.keys(pool).sort((a, b) => (pool[b].upd || pool[b].ts || 0) - (pool[a].upd || pool[a].ts || 0));
@@ -515,9 +612,10 @@ function render(){
     html += `</tbody></table></div>`;
     if(archived.length) html += `<div class="card"><details><summary class="muted">已停課的學生（${archived.length} 位）</summary><div class="small muted" style="margin-top:6px">${archived.map(id => esc(students[id].name)).join('、')}　（他們看不到任何資料）</div></details></div>`;
   }
+  html += nudHtml(active);
   html += hwHtml(active);
   root.innerHTML = html;
-  bindHw(root, active);
+  bindHw(root, active); bindNud(root);
 
   const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };
   root.querySelectorAll('tr[data-id]').forEach(tr => {
@@ -538,7 +636,7 @@ async function saveEmail(id, raw){
       if(!EMAIL_RE.test(email)){ rowMsg[id] = { text: '電子郵件格式不正確', ok: false }; return render(); }
       const dup = Object.keys(roster).find(k => k !== id && roster[k].email === email);
       if(dup){ rowMsg[id] = { text: `這個電子郵件已經給了 ${students[dup] ? students[dup].name : '另一位學生'}`, ok: false }; return render(); }
-      const data = { email, name: students[id] ? students[id].name : '', updatedAt: Date.now() };
+      const data = Object.assign({}, roster[id] || {}, { email, name: students[id] ? students[id].name : '', updatedAt: Date.now() });   // 保留彈跳視窗設定和開始上課日
       await setDoc(ref, data); roster[id] = data; rowMsg[id] = { text: '✓ 已儲存', ok: true };
     }
     delete drafts[id];
@@ -566,6 +664,7 @@ function start(){
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'students'), snap => { students = {}; snap.forEach(d => students[d.id] = d.data()); studentsLoaded = true; syncHw(); render(); }, onErr));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'hwPool'), snap => { pool = {}; snap.forEach(d => pool[d.id] = d.data()); poolLoaded = true; render(); }, err => { console.error(err); poolLoaded = true; render(); }));
+  unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'nudge'), s => { nudCfg = s.exists() ? s.data() : null; render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'admins'), snap => { admins = {}; snap.forEach(d => admins[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'roster'), snap => { roster = {}; snap.forEach(d => roster[d.id] = d.data()); rosterLoaded = true; render(); }, onErr));
 }

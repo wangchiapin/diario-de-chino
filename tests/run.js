@@ -10,6 +10,7 @@ const root = path.join(__dirname, '..');
 const ctx = vm.createContext({ Date, Intl, Math, Object, Array, String, Number, JSON, parseInt, isNaN });
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-core.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-nudge.js'), 'utf8'), ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
 
@@ -206,6 +207,112 @@ test('批改總分：半分加總、四捨五入到 0.5', () => {
 test('Word 批改用的標準答案清單：一題一行、含大題編號', () => {
   const L = C('hwKeyLines')(SAMPLE);
   assert.ok(L.length > 0 && L.every(x => typeof x.key === 'string' && typeof x.no === 'number'));
+});
+
+console.log('\n彈跳視窗（練習題、激勵句、提醒）');
+const HWD = {
+  w1: { status: 'todo', assignedAt: 1000, grammar: '比較句 ＋ 得字補語', sections: [
+    { type: 'translate', items: [{ id: 'a', vocab: '媽媽 mamá · 做菜 cocinar · 好 bien' }, { id: 'b', vocab: '' }] },
+    { type: 'zh2es', items: [{ id: 'c', vocab: '她 ella · 跑 correr' }] }, { type: 'fill', items: [{ id: 'd', zh: '___' }] }] },
+  w2: { status: 'graded', assignedAt: 2000, grammar: '比較句', sections: [{ type: 'translate', items: [{ id: 'e', vocab: '媽媽 mamá' }] }] }
+};
+test('題庫：單字（中文＋西文）與語法點都抽得到，重複的只算一次', () => {
+  const p = C('nudBuildPool')(HWD);
+  assert.strictEqual(p.words.length, 5);
+  assert.strictEqual(J(p.points), J(['比較句', '得字補語']));
+  assert.ok(p.words.some(w => w.zh === '做菜' && w.es === 'cocinar'));
+});
+test('題庫：沒有練習單就是空的，出不了題', () => {
+  const p = C('nudBuildPool')({});
+  assert.strictEqual(C('nudMakeQuestion')(p, 'tc', () => 0.1), null);
+});
+test('題庫：之後練習單變多，題庫跟著變大', () => {
+  const one = C('nudBuildPool')({ w2: HWD.w2 }), all = C('nudBuildPool')(HWD);
+  assert.ok(all.words.length > one.words.length && all.points.length > one.points.length);
+});
+test('5 種題型都出得到，且文字裡沒有留下 { }', () => {
+  const p = C('nudBuildPool')(HWD), seen = {};
+  for (let i = 0; i < 400; i++) { const q = C('nudMakeQuestion')(p, 'tc', Math.random); seen[q.kind] = 1; assert.ok(!/[{}]/.test(q.text), q.text); }
+  assert.strictEqual(Object.keys(seen).sort().join(), 'meaning,recall,sentGram,sentWord,zhOf');
+});
+test('題型文字：三種語言的樣子', () => {
+  const p = { words: [{ zh: '媽媽', es: 'mamá' }], points: ['比較句'] };
+  const q = (k, l) => { for (let i = 0; i < 200; i++) { const r = C('nudMakeQuestion')(p, l, Math.random); if (r.kind === k) return r.text; } };
+  assert.strictEqual(q('zhOf', 'tc'), '「mamá」的中文怎麼說？');
+  assert.strictEqual(q('meaning', 'tc'), '「媽媽」是什麼意思？');
+  assert.strictEqual(q('sentWord', 'tc'), '用「媽媽」造一個句子吧！然後傳給 Ben！');
+  assert.strictEqual(q('sentGram', 'sc'), '用「比較句」造一个句子吧！然后传给 Ben！');
+  assert.strictEqual(q('recall', 'tc'), '你還記得「比較句」怎麼用嗎？');
+  assert.strictEqual(q('zhOf', 'es'), '¿Cómo se dice «mamá» en chino?');
+});
+test('只有語法點、沒有單字時，只出語法點題', () => {
+  const p = { words: [], points: ['被字句'] };
+  for (let i = 0; i < 100; i++) assert.ok(/sentGram|recall/.test(C('nudMakeQuestion')(p, 'tc', Math.random).kind));
+});
+test('激勵句：預設各 20 句，三種語言一樣多，簡體用台灣用字', () => {
+  ['es', 'tc', 'sc'].forEach(l => assert.strictEqual(C('nudEncList')(null, l).length, 20));
+  const sc = C('nudEncList')(null, 'sc').join('');
+  assert.ok(!/視頻|軟件|網絡|信息/.test(sc) && /台湾/.test(sc));
+});
+test('激勵句：缺資料的句子（堂數、多久）會跳過，有資料才出現', () => {
+  const none = new Set(); for (let i = 0; i < 500; i++) { const e = C('nudMakeEnc')(null, 'tc', {}, Math.random); none.add(e.text); assert.ok(!/[{}]/.test(e.text)); }
+  assert.strictEqual(none.size, 18);
+  const all = new Set(); for (let i = 0; i < 1500; i++) all.add(C('nudMakeEnc')(null, 'tc', { n: 12, t: '3 個月' }, Math.random).text);
+  assert.ok(all.has('你已經跟 Ben 上了 12 堂課了，好棒！') && all.has('你已經學習中文 3 個月 了，繼續保持！'));
+});
+test('學了多久：天、月、年', () => {
+  const S = C('nudSpan');
+  assert.strictEqual(S('2026-11-01', '2026-11-11', 'tc'), '10 天');
+  assert.strictEqual(S('2026-08-11', '2026-11-11', 'tc'), '3 個月');
+  assert.strictEqual(S('2024-05-01', '2026-11-11', 'tc'), '2 年 6 個月');
+  assert.strictEqual(S('2024-11-11', '2026-11-11', 'es'), '2 años');
+  assert.strictEqual(S('', '2026-11-11', 'tc'), '');
+  assert.strictEqual(S('2026-11-12', '2026-11-11', 'tc'), '');
+});
+test('後台改過的激勵句會取代預設；簡體沒填就用繁體', () => {
+  const cfg = { enc: { tc: ['加油！', '你很棒'], sc: ['加油！', ''], es: [] } };
+  assert.strictEqual(J(C('nudEncList')(cfg, 'sc')), J(['加油！', '你很棒']));
+  assert.strictEqual(J(C('nudEncList')(cfg, 'es')), J(['加油！', '你很棒']));
+});
+const NOW = Date.UTC(2026, 10, 11, 4, 0, 0);
+test('提醒：作業發出滿 3 天還沒交才提醒；批改好還沒看過才提醒', () => {
+  const R = C('nudReminders');
+  const d3 = { w: { status: 'todo', assignedAt: NOW - 3 * 86400000 } }, d2 = { w: { status: 'todo', assignedAt: NOW - 2 * 86400000 } };
+  assert.strictEqual(R(null, { lang: 'tc', hwDocs: d3, now: NOW })[0].text, '你有 1 份作業還沒交，記得寫完傳上來喔！');
+  assert.strictEqual(R(null, { lang: 'tc', hwDocs: d2, now: NOW }).length, 0);
+  const g = { w: { status: 'graded' } };
+  assert.strictEqual(R(null, { lang: 'tc', hwDocs: g, now: NOW, seenGraded: {} })[0].key, 'graded');
+  assert.strictEqual(R(null, { lang: 'tc', hwDocs: g, now: NOW, seenGraded: { w: 1 } }).length, 0);
+});
+test('提醒：今天或明天有課；更久以後不提醒', () => {
+  const R = C('nudReminders');
+  assert.strictEqual(R(null, { lang: 'tc', next: { dd: 1, localStart: '10:00' } })[0].text, '明天 10:00 有課，別忘了喔！');
+  assert.strictEqual(R(null, { lang: 'es', next: { dd: 0, localStart: '20:00' } })[0].text, '¡Hoy a las 20:00 tienes clase, no lo olvides!');
+  assert.strictEqual(R(null, { lang: 'tc', next: { dd: 2, localStart: '10:00' } }).length, 0);
+});
+test('提醒：包堂剩 2 堂以下提醒續購；單堂付費在課前一天提醒「上課前記得提前付費唷！」', () => {
+  const R = C('nudReminders');
+  assert.strictEqual(R(null, { lang: 'tc', pay: 'package', remaining: 2 })[0].text, '你的課堂只剩 2 堂了，記得提前續購喔！');
+  assert.strictEqual(R(null, { lang: 'tc', pay: 'package', remaining: 3 }).length, 0);
+  assert.strictEqual(R(null, { lang: 'tc', pay: 'single', next: { dd: 1, localStart: '10:00' } }).map(x => x.key).join(), 'classSoon,paySingle');
+  assert.strictEqual(R(null, { lang: 'tc', pay: 'single', next: { dd: 1, localStart: '10:00' } }).pop().text, '上課前記得提前付費唷！');
+});
+test('提醒：這位學生的繳費提醒關掉時不出現（其他提醒照常）', () => {
+  const R = C('nudReminders');
+  assert.strictEqual(R(null, { lang: 'tc', pay: 'package', remaining: 1, payOn: false }).length, 0);
+  assert.strictEqual(R(null, { lang: 'tc', pay: 'package', remaining: 1, payOn: false, next: { dd: 1, localStart: '9:00' } }).length, 1);
+});
+test('後台改過的提醒文字會取代預設', () => {
+  const cfg = { rem: { graded: { tc: '批改好囉', sc: '', es: '' } } };
+  assert.strictEqual(C('nudReminders')(cfg, { lang: 'tc', hwDocs: { w: { status: 'graded' } } })[0].text, '批改好囉');
+  assert.strictEqual(C('nudReminders')(cfg, { lang: 'sc', hwDocs: { w: { status: 'graded' } } })[0].text, '批改好囉');
+  assert.strictEqual(C('nudReminders')(cfg, { lang: 'es', hwDocs: { w: { status: 'graded' } } })[0].text, '¡Tu tarea ya fue corregida, ve a verla!');
+});
+test('進頁面：沒題庫也沒提醒時只會出激勵句；有的話三種都有機會', () => {
+  const O = C('nudOnEnter'), kinds = new Set();
+  for (let i = 0; i < 100; i++) assert.strictEqual(O({ pool: { words: [], points: [] }, reminders: [], lang: 'tc', vars: {} }, Math.random).kind, 'enc');
+  for (let i = 0; i < 300; i++) kinds.add(O({ pool: { words: [{ zh: '好', es: 'bien' }], points: [] }, reminders: [{ kind: 'rem', text: 'x' }], lang: 'tc', vars: {} }, Math.random).kind);
+  assert.ok(kinds.has('enc') && kinds.has('rem') && kinds.has('sentWord'));
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');

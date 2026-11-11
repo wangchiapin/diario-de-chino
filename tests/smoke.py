@@ -120,7 +120,7 @@ def base_state(extra_store=None, users=None):
                 {'d': day(5), 's': '10:00', 'e': '11:00', 'x': 1},
             ]},
         'portal/%s/students/s2' % TID: {'v': 1, 'name': 'Liz-OtraAlumna', 'archived': False, 'pay': 'single', 'remaining': None, 'taught': 4, 'tz': '', 'lessons': []},
-        'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+        'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}},
     }
     store.update(extra_store or {})
     us = {'pedro@example.com': {'password': 'secret1', 'uid': 'u_pedro', 'emailVerified': True}}
@@ -176,7 +176,7 @@ def student_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
     # 5. 單堂付費：只顯示「單堂付費」
-    ctx, page, errs = new_page(browser, base_state({'portal/%s/roster/s2' % TID: {'email': 'liz@example.com', 'name': 'x'}}, {'liz@example.com': {'password': 'secret2', 'uid': 'u_liz', 'emailVerified': True}}))
+    ctx, page, errs = new_page(browser, base_state({'portal/%s/roster/s2' % TID: {'email': 'liz@example.com', 'name': 'x', 'nudge': {'on': False}}}, {'liz@example.com': {'password': 'secret2', 'uid': 'u_liz', 'emailVerified': True}}))
     page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
     page.fill('#em', 'liz@example.com'); page.fill('#pw', 'secret2'); page.click('#btnAuth'); page.wait_for_timeout(600)
     txt = page.inner_text('#app')
@@ -274,7 +274,7 @@ def hw_admin_tests(browser, base):
     teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
     store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
              'portal/%s/students/s2' % TID: {'v': 1, 'name': 'Liz', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
-             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}},
              'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1760000000000, 'upd': 1760000000000, 'name': '把字句練習', 'grammar': '把字句', 'count': 3, 'data': json.dumps(HW_STATE)}}
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
@@ -427,7 +427,7 @@ def hw_grade_tests(browser, base):
     teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
     path = 'portal/%s/students/s1/hw/w1' % TID
     store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
-             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}},
              'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1760000000000, 'upd': 1760000000000, 'name': '把字句練習', 'grammar': '把字句', 'count': 3, 'data': json.dumps(HW_STATE)},
              path: grade_docs()}
     ctx, page, errs = new_page(browser, base_state(store, teacher))
@@ -568,7 +568,7 @@ def hw_word_tests(browser, base):
     # --- 老師批改 Word ---
     teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
     store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
-             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}},
              'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1, 'upd': 1, 'name': '把字句練習', 'count': 3, 'data': json.dumps(HW_STATE)},
              path: grade_docs(),
              fpath: {'name': 'mi-tarea.docx', 'size': 100, 'at': 1, 'b64': base64.b64encode(make_docx(['1. 被', '2. 我書把放好'])).decode()}}
@@ -602,6 +602,131 @@ def hw_word_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def nudge_tests(browser, base):
+    import json
+    print('\n學生頁：彈跳視窗')
+    R = 'portal/%s/roster/s1' % TID
+    HW = 'portal/%s/students/s1/hw/w1' % TID
+    def login(page):
+        page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+        page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    def mk(extra, init='window.__nudEvery=900;', lg='tc'):
+        ctx, page, errs = new_page(browser, base_state(extra))
+        page.add_init_script(init + "localStorage.setItem('dc.lang','%s');" % lg)
+        return ctx, page, errs
+    on = {R: {'email': 'pedro@example.com', 'name': 'Pedro'}}
+
+    # 1. 進頁面彈出一個、只有 X、關掉後每隔一段時間再彈一題練習題
+    ctx, page, errs = mk(dict(on, **{HW: hw_doc()}))
+    login(page); page.wait_for_timeout(300)
+    check('進頁面：彈出一個視窗', page.locator('.nud').count() == 1)
+    check('視窗裡只有一個按鈕（右上角 X）', page.locator('.nud button').count() == 1 and page.inner_text('.nudx') == '×')
+    page.wait_for_timeout(1200)
+    check('不關掉的話不會疊出第二個', page.locator('.nud').count() == 1)
+    page.click('.nudx'); page.wait_for_timeout(100)
+    check('按 X 關掉', page.locator('.nud').count() == 0)
+    page.wait_for_timeout(1200)
+    check('停留在頁面：過一段時間又彈出練習題', page.locator('.nud').count() == 1)
+    t = page.inner_text('#nudText'); page.click('.nudx')
+    check('這次是練習題（從練習單抽的單字或語法點），沒有答案和按鈕', ('放' in t or '把字句' in t) and ('？' in t or '!' in t or '！' in t or '?' in t), t)
+    check('沒有記連續天數', page.evaluate("Object.keys(localStorage).filter(k => k.indexOf('streak') >= 0).length") == 0)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 2. 後台關掉：不彈
+    ctx, page, errs = mk(dict(on, **{R: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}}}))
+    login(page); page.wait_for_timeout(2200)
+    check('後台關掉這位學生：一直都不彈', page.locator('.nud').count() == 0); ctx.close()
+
+    # 3. 正在做作業：不彈
+    ctx, page, errs = mk(dict(on, **{HW: hw_doc()}), 'window.__nudEvery=900; Math.random=()=>0.0;')
+    login(page); page.wait_for_timeout(200)
+    if page.locator('.nud').count(): page.click('.nudx')
+    page.click('[data-hw=w1]'); page.wait_for_timeout(2000)
+    check('正在做作業時不彈出', page.locator('.nud').count() == 0, page.inner_text('#app')[:80]); ctx.close()
+
+    # 4. 沒有練習單、沒有提醒：只會出激勵句（預設 20 句），且沒留下大括號
+    calm = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'package', 'remaining': 5, 'taught': 12, 'tz': 'Asia/Taipei', 'lessons': []}}
+    ctx, page, errs = mk(dict(on, **calm))
+    login(page); page.wait_for_timeout(300)
+    t = page.inner_text('#nudText')
+    ok = page.evaluate('NUD_ENC.tc').__contains__(t) or t.startswith('你已經')
+    check('只出激勵句、沒有 { }', page.locator('.nud').count() == 1 and '{' not in t and ok, t)
+    page.click('.nudx'); page.wait_for_timeout(1500)
+    check('沒有練習單的時候，5 分鐘那一次不會彈（沒有題目可出）', page.locator('.nud').count() == 0); ctx.close()
+
+    # 5. 後台改過的激勵句
+    cfg = {'portal/%s/config/nudge' % TID: {'enc': {'tc': ['這是老師自己寫的鼓勵'], 'sc': [], 'es': ['Frase de Ben']}}}
+    ctx, page, errs = mk(dict(on, **calm, **cfg), lg='es')
+    login(page); page.wait_for_timeout(300)
+    check('用老師在後台改過的句子（西文）', page.inner_text('#nudText') == 'Frase de Ben', page.inner_text('#nudText')); ctx.close()
+
+    # 6. 提醒（Math.random 固定成 0.99 → 有提醒就出提醒）：包堂剩 1 堂；這位學生關掉繳費提醒就不出
+    low = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'package', 'remaining': 1, 'taught': 12, 'tz': 'Asia/Taipei', 'lessons': []}}
+    ctx, page, errs = mk(dict(on, **low), 'window.__nudEvery=900; Math.random=()=>0.99;')
+    login(page); page.wait_for_timeout(300)
+    check('剩 1 堂：提醒續購', '只剩 1 堂' in page.inner_text('#nudText'), page.inner_text('#nudText')); ctx.close()
+    ctx, page, errs = mk(dict(on, **dict(low, **{R: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': True, 'pay': False}}})), 'window.__nudEvery=900; Math.random=()=>0.99;')
+    login(page); page.wait_for_timeout(300)
+    check('關掉繳費提醒：改出激勵句', page.locator('.nud').count() == 1 and '只剩' not in page.inner_text('#nudText')); ctx.close()
+
+    # 7. 單堂付費、明天有課
+    one = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'remaining': None, 'taught': 5, 'tz': 'Asia/Taipei', 'lessons': [{'d': day(1), 's': '10:00', 'e': '11:00', 'x': 0}]}}
+    ctx, page, errs = mk(dict(on, **one), 'window.__nudEvery=900; Math.random=()=>0.99;')
+    login(page); page.wait_for_timeout(300)
+    check('單堂付費：上課前記得提前付費唷！', page.inner_text('#nudText') == '上課前記得提前付費唷！', page.inner_text('#nudText')); ctx.close()
+
+    # 8. 簡體：用簡體文字
+    ctx, page, errs = mk(dict(on, **low), 'window.__nudEvery=900; Math.random=()=>0.99;', lg='sc')
+    login(page); page.wait_for_timeout(300)
+    check('簡體介面：提醒用簡體字', '课堂只剩 1 堂' in page.inner_text('#nudText'), page.inner_text('#nudText'))
+    ctx.close()
+    ctx, page, errs = mk(dict(on, **{HW: hw_doc()}))
+    login(page); page.wait_for_timeout(200)
+    check('視窗在 #app 外面，換語言重畫畫面不會把它洗掉', page.locator('body > .nud').count() == 1)
+    page.click('.nudx'); ctx.close()
+
+
+def nudge_admin_tests(browser, base):
+    print('\n老師後台：彈跳視窗設定')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    R = 'portal/%s/roster/s1' % TID
+    C = 'portal/%s/config/nudge' % TID
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'package', 'remaining': 2, 'taught': 5, 'tz': 'Asia/Taipei', 'lessons': []},
+             'portal/%s/students/s2' % TID: {'v': 1, 'name': 'Liz', 'archived': False, 'pay': 'single', 'remaining': None, 'taught': 3, 'tz': '', 'lessons': []},
+             R: {'email': 'pedro@example.com', 'name': 'Pedro'}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.goto(base + 'admin.html'); page.wait_for_timeout(300)
+    page.fill('#em', 'teacher@example.com'); page.fill('#pw', 'tpass12'); page.click('#go'); page.wait_for_timeout(600)
+    check('每位有電子郵件的學生都有開關；沒填電子郵件的提示先填', page.locator('tr[data-nid=s1]').count() == 1 and '先在上面的表格填電子郵件' in page.inner_text('#app'))
+    check('預設是開的', page.locator('tr[data-nid=s1] .nOn').is_checked() and page.locator('tr[data-nid=s1] .nPay').is_checked())
+    page.uncheck('tr[data-nid=s1] .nPay'); page.wait_for_timeout(300)
+    check('關掉繳費提醒：馬上存起來', page.evaluate("window.__fb.store['%s'].nudge" % R) == {'on': True, 'pay': False} and '已儲存' in page.inner_text('tr[data-nid=s1]'))
+    page.uncheck('tr[data-nid=s1] .nOn'); page.wait_for_timeout(300)
+    check('關掉這位學生的彈跳視窗', page.evaluate("window.__fb.store['%s'].nudge.on" % R) is False)
+    # 存電子郵件不會洗掉這些設定
+    page.fill('tr[data-id=s1] .emIn', 'pedro@example.com'); page.click('tr[data-id=s1] .save'); page.wait_for_timeout(300)
+    r = page.evaluate("window.__fb.store['%s']" % R)
+    check('重新儲存電子郵件：開關還在', r['nudge']['on'] is False, r)
+    # 編輯句子
+    page.click('#nudDet summary'); page.wait_for_timeout(100)
+    check('預設：鼓勵的話繁體 20 行、簡體 20 行、西文 20 行', all(len(page.input_value(i).split('\n')) == 20 for i in ['#eTc', '#eSc', '#eEs']))
+    check('提醒的話五種，預設單堂付費文字正確', page.locator('[data-rk]').count() == 5 and page.input_value('[data-rk=paySingle] .rTc') == '上課前記得提前付費唷！')
+    page.fill('#eTc', '第一句\n\n第二句 {n}'); page.fill('#eSc', '第一句\n\n'); page.fill('#eEs', 'Frase uno\n\nFrase dos {n}')
+    page.fill('[data-rk=graded] .rTc', '批改好了！')
+    page.evaluate("window.__fb.subs.forEach(s => s.fire())"); page.wait_for_timeout(200)
+    check('日誌更新、畫面重畫時，打到一半的字不會不見，編輯區也維持展開', page.input_value('#eTc') == '第一句\n\n第二句 {n}' and page.is_visible('#eTc'))
+    page.click('#nudSave'); page.wait_for_timeout(300)
+    c = page.evaluate("window.__fb.store['%s']" % C)
+    check('儲存：空行被拿掉，三欄一行對一行', c['enc']['tc'] == ['第一句', '第二句 {n}'] and c['enc']['sc'] == ['第一句', ''] and c['enc']['es'] == ['Frase uno', 'Frase dos {n}'], c)
+    check('提醒文字也存起來', c['rem']['graded']['tc'] == '批改好了！' and c['rem']['paySingle']['es'].startswith('¡Recuerda pagar'))
+    page.click('#nudDet summary', force=True) if not page.is_visible('#eTc') else None
+    page.once('dialog', lambda d: d.accept()); page.click('#nudReset'); page.wait_for_timeout(300)
+    check('還原成預設：設定檔刪掉，畫面回到 20 行', ('%s' % C) not in page.evaluate('Object.keys(window.__fb.store)') and len(page.input_value('#eTc').split('\n')) == 20)
+    page.fill('#eTc', ''); page.click('#nudSave'); page.wait_for_timeout(200)
+    check('鼓勵的話全空：擋下來', '至少要有一句' in page.inner_text('#app') and ('%s' % C) not in page.evaluate('Object.keys(window.__fb.store)'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -612,6 +737,8 @@ with sync_playwright() as p:
     hw_student_tests(browser, base)
     hw_grade_tests(browser, base)
     hw_word_tests(browser, base)
+    nudge_tests(browser, base)
+    nudge_admin_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

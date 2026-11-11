@@ -2,11 +2,11 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-11 14:38（新增 students/{sid}/hwFiles：學生用 Word 交作業的檔案）
+// 最後更新：2026-11-11 18:57（新增 portal/{tid}/config：彈跳視窗的鼓勵句與提醒文字）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-11 18:57 新增 portal/{tid}/config（老師在後台改的彈跳視窗文字；老師寫，驗證過信箱的學生可讀）
 //   - 2026-11-11 14:38 新增 portal/{tid}/students/{sid}/hwFiles（學生上傳的 Word，轉成文字存放；學生只能在作業還沒交時寫自己的）
 //   - 2026-11-11 11:02 students/{sid}/hw 加學生更新規則（只能改 answers、status、submittedAt，且只有還沒交的）
-//   - 2026-11-11 10:52 新增 portal/{tid}/admins、hwPool、students/{sid}/hw（作業，第一步：發布與發給學生）
 //
 // 誰能做什麼：
 //   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
@@ -94,4 +94,18 @@
         && request.auth.token.email_verified == true
         && get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email
         && get(/databases/$(database)/documents/portal/$(tid)/students/$(sid)/hw/$(wid)).data.status == 'todo';
+    }
+
+
+// ===================================================================
+// 第五批（彈跳視窗文字）：只要「新增」下面這一段，貼在其他 match 旁邊（並排）。不用動前面的任何一段。
+// 每位學生的「開關」和「開始上課日」放在原本的 roster 文件裡（老師本來就能寫、學生本來就能讀自己那一份），不用改規則。
+// ===================================================================
+
+    // 彈跳視窗的鼓勵句與提醒文字：老師在後台改。只有老師能寫；已驗證信箱的登入者可讀（都是公開性質的短句，不含任何學生資料）。
+    match /portal/{tid}/config/{cid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        request.auth.token.email_verified == true);
+      allow write: if request.auth != null && request.auth.uid == tid;
     }
