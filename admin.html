@@ -138,7 +138,7 @@ let authReady = false, loginErr = '';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function payText(s){
-  if(s.pay === 'package') return s.remaining != null ? `包堂・剩 ${s.remaining} 堂` : '包堂';
+  if(s.pay === 'package') return s.remaining != null ? (s.remaining < 0 ? `包堂・已超過 ${-s.remaining} 堂` : `包堂・剩 ${s.remaining} 堂`) : '包堂';
   if(s.pay === 'single') return '單堂付費';
   return '—';
 }
@@ -675,7 +675,7 @@ function render(){
     active.forEach(id => {
       const s = students[id], r = roster[id], m = rowMsg[id];
       html += `<tr data-id="${esc(id)}">
-        <td><b>${esc(s.name)}</b></td><td>${esc(payText(s))}</td><td>${s.taught || 0} 堂</td>
+        <td><b>${esc(s.name)}</b></td><td${s.pay === 'package' && s.remaining < 0 ? ' class="err"' : ''}>${esc(payText(s))}</td><td>${s.taught || 0} 堂</td>
         <td class="small">${esc(s.tz || '（沒設定）')}</td><td class="small">${esc(fmtTime(s.updatedAt))}</td>
         <td class="em"><input type="email" class="emIn" value="${esc(drafts[id] != null ? drafts[id] : (r ? r.email : ''))}" placeholder="student@example.com" autocapitalize="off"></td>
         <td><button class="save">儲存</button> <a class="pv" href="index.html?preview=${encodeURIComponent(id)}" target="_blank" rel="noopener">預覽</a><div class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : (r ? '已設定' : ''))}</div></td></tr>`;

@@ -102,6 +102,8 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .rights{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:15px;margin:6px 0 10px;color:var(--sub)}
 .savemsg{font-size:12px;color:var(--sub);min-height:16px;text-align:right}
 .savemsg.err{color:var(--warn)}
+.slowhint{visibility:hidden;animation:slowshow 0s 10s forwards}
+@keyframes slowshow{to{visibility:visible}}
 .nud{position:fixed;inset:0;background:rgba(59,55,47,.35);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
 .nudc{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 22px 22px;max-width:380px;width:100%;box-shadow:0 8px 30px rgba(59,55,47,.18)}
 .nudx{position:absolute;top:6px;right:8px;width:40px;height:40px;border:0;background:none;font-size:28px;line-height:1;color:var(--sub);cursor:pointer}
@@ -117,7 +119,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
       <button data-l="es">ES</button><button data-l="tc">繁</button><button data-l="sc">简</button>
     </div>
   </header>
-  <main id="app"><div class="card center muted" id="loading"></div></main>
+  <main id="app"><div class="card center muted" id="loading"><div class="slowhint"><div class="small" style="margin:10px 0 6px">等很久了嗎？Tarda mucho?</div><button onclick="location.reload()">重新載入 / Recargar</button></div></div></main>
   <div class="foot" id="foot"></div>
 </div>
 <script src="portal-core.js"></script>
@@ -153,6 +155,11 @@ let calMonth = null, selDay = null;   // calMonth: {y, m}
 let tzSetting = null;            // 學生自己選的時區（沒選就 null）
 let busyMsg = '', busyErr = '';
 const T = (k, p) => pcT(lang, k, p);
+const pageT0 = Date.now();
+function loadingHtml(){
+  const el = Math.min(((Date.now() - pageT0) / 1000), 60).toFixed(1);
+  return `<div class="card center muted">${esc(T('loading'))}<div class="slowhint" style="animation-delay:-${el}s"><div class="small" style="margin:10px 0 6px">${esc(T('slow'))}</div><button onclick="location.reload()">${esc(T('reload'))}</button></div></div>`;
+}
 
 // 老師預覽：?preview=學生代號。用老師後台登入的帳號，唯讀看那位學生登入後會看到的畫面
 const PREVIEW = (function(){ const v = new URLSearchParams(location.search).get('preview'); return v && v.indexOf('/') < 0 && v.length < 200 ? v : null; })();
@@ -189,9 +196,9 @@ function setLang(l){
 document.querySelectorAll('#langBar button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
 
 function renderPreview(root, user){
-  if(!authReady){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(!authReady){ root.innerHTML = loadingHtml(); return; }
   if(!user){ root.innerHTML = `<div class="card center">老師預覽要先登入老師後台。<br><a href="admin.html">前往老師後台登入</a>，登入後再按學生旁邊的「預覽」。</div>`; return; }
-  if(!docLoaded){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(!docLoaded){ root.innerHTML = loadingHtml(); return; }
   if(docError) return renderError(root);
   renderHome(root);
   root.insertAdjacentHTML('afterbegin', `<div class="card center" style="background:#e6dfd0">老師預覽：${esc(studentDoc && studentDoc.name || PREVIEW)}（唯讀，學生看到的就是這個畫面）　<a href="admin.html">回後台</a></div>`);
@@ -203,11 +210,11 @@ function render(){
   $('foot').textContent = '';
   if(PREVIEW) return renderPreview(root, user);
   if(!tid && !user){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>`; return; }
-  if(!authReady){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(!authReady){ root.innerHTML = loadingHtml(); return; }
   if(!user) return renderAuth(root);
   if(!tid){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>${logoutBlock()}`; bindLogout(); return; }
   if(!user.emailVerified) return renderVerify(root, user);
-  if(rosterState === 'loading') { root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(rosterState === 'loading') { root.innerHTML = loadingHtml(); return; }
   if(rosterState === 'none') return renderNotListed(root, user);
   if(rosterState === 'error') return renderError(root);
   renderHome(root);
@@ -302,7 +309,7 @@ function timesHtml(v, tz){
 }
 
 function renderHome(root){
-  if(!docLoaded){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(!docLoaded){ root.innerHTML = loadingHtml(); return; }
   if(docError){ return renderError(root); }
   if(!studentDoc){ root.innerHTML = `<div class="card center">${esc(T('noNoData'))}</div>${logoutBlock()}`; bindLogout(); return; }
   if(studentDoc.archived){ root.innerHTML = `<div class="card center">${esc(T('archived'))}</div>${logoutBlock()}`; bindLogout(); return; }
