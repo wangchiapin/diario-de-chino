@@ -49,13 +49,15 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .dow{font-size:11px;color:var(--sub);text-align:center;padding:2px 0}
 .day{aspect-ratio:1/1;border:1px solid transparent;border-radius:8px;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;font:inherit;font-size:14px;color:var(--text);cursor:pointer;padding:0;position:relative}
 .day.out{color:#c4bdae}
-.day.today{border-color:var(--accent)}
-.day.sel{background:var(--accent-soft)}
-.dots{display:flex;gap:3px;height:7px;margin-top:2px}
-.dot{display:inline-block;width:6px;height:6px;border-radius:50%}
-.dot.done{background:var(--done)}
-.dot.upcoming,.dot.now{border:1.5px solid var(--accent);background:transparent}
-.dot.off{background:var(--off);height:2px;border-radius:1px;align-self:center;width:8px}
+.day.today{font-weight:700;box-shadow:inset 0 0 0 2px var(--accent)}
+.day.sel{box-shadow:0 0 0 2px #3b372f;z-index:1}
+.day.today.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 2px #3b372f}
+.day.st-done{background:#dbe7da;color:#35553a;border-color:#b9cdb8}
+.day.st-up{background:#f0e2c3;color:#5a4624;border-color:#d2b97f}
+.day.st-off{background:#e8e4db;color:#9a9385;text-decoration:line-through;border-color:#d6d0c3}
+.day.out.st-done,.day.out.st-up,.day.out.st-off{opacity:.55}
+.sw{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid}
+.sw.done{background:#dbe7da;border-color:#b9cdb8}.sw.up{background:#f0e2c3;border-color:#d2b97f}.sw.off{background:#e8e4db;border-color:#d6d0c3}
 .legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;color:var(--sub)}
 .legend span{display:flex;align-items:center;gap:5px}
 .lesson{border-top:1px solid var(--line);padding:10px 0}
@@ -282,8 +284,10 @@ function renderHome(root){
   let grid = dow.map(d => `<div class="dow">${esc(d)}</div>`).join('');
   cells.forEach(c => {
     const list = groups[c.date] || [];
-    const dots = list.slice(0, 3).map(v => `<span class="dot ${pcStatus(v, now)}"></span>`).join('');
-    grid += `<button class="day ${c.inMonth ? '' : 'out'} ${c.date === todayLocal ? 'today' : ''} ${c.date === selDay ? 'sel' : ''}" data-d="${c.date}"><span>${+c.date.slice(8)}</span><span class="dots">${dots}</span></button>`;
+    const sts = list.map(v => pcStatus(v, now));
+    // 同一天有好幾堂時：還有沒上的課 > 已上 > 請假／沒上課
+    const st = sts.some(x => x === 'upcoming' || x === 'now') ? 'st-up' : sts.includes('done') ? 'st-done' : sts.length ? 'st-off' : '';
+    grid += `<button class="day ${c.inMonth ? '' : 'out'} ${st} ${c.date === todayLocal ? 'today' : ''} ${c.date === selDay ? 'sel' : ''}" data-d="${c.date}"><span>${+c.date.slice(8)}</span></button>`;
   });
   const dayList = groups[selDay] || [];
   const detail = dayList.length
@@ -303,7 +307,7 @@ function renderHome(root){
       <h2>${esc(T('calendar'))}</h2>
       <div class="cal-head"><button id="calPrev" aria-label="prev">‹</button><b>${esc(monthTitle)}</b><button id="calNext" aria-label="next">›</button></div>
       <div class="cal-grid">${grid}</div>
-      <div class="legend"><span><i class="dot done"></i>${esc(T('legendDone'))}</span><span><i class="dot upcoming"></i>${esc(T('legendNext'))}</span><span><i class="dot off"></i>${esc(T('legendOff'))}</span></div>
+      <div class="legend"><span><i class="sw done"></i>${esc(T('legendDone'))}</span><span><i class="sw up"></i>${esc(T('legendNext'))}</span><span><i class="sw off"></i>${esc(T('legendOff'))}</span></div>
     </div>
     <div class="card"><h2>${esc(T('dayDetail'))} · ${esc(pcFmtDate(selDay, lang, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2>${detail}</div>
     <div class="card">

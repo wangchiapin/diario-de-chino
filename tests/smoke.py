@@ -162,7 +162,7 @@ def student_tests(browser, base):
     check('已上 12 堂', '12 clases' in txt)
     check('下一堂課：台灣 10:00–11:00，墨西哥 前一天 20:00–21:00', '10:00–11:00' in txt and '20:00–21:00' in txt and 'día anterior' in txt, txt)
     check('看不到別的學生', 'OtraAlumna' not in page.content())
-    check('月曆有三種標記（已上、還沒上、請假）', page.locator('.dot.done').count() >= 1 and page.locator('.dot.upcoming').count() >= 1 and page.locator('.dot.off').count() >= 2)
+    check('月曆有三種標記（已上、還沒上、請假）', page.locator('.day.st-done').count() >= 1 and page.locator('.day.st-up').count() >= 1 and page.locator('.day.st-off').count() >= 1)
     page.click('#langBar button[data-l=tc]'); txt = page.inner_text('#app')
     check('切繁體：剩餘堂數、台灣時間、你的當地時間、前一天', '剩餘堂數' in txt and '台灣時間' in txt and '你的當地時間' in txt and '前一天' in txt)
     # 換時區：改成台灣 → 兩個時間一樣
@@ -240,7 +240,7 @@ def preview_tests(browser, base):
     page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(500)
     txt = page.inner_text('#app')
     check('老師預覽：看到「老師預覽」橫幅與學生姓名', '老師預覽' in txt and 'Pedro' in txt, txt[:200])
-    check('預覽看到跟學生一樣的內容（剩 3 堂、12 堂、月曆）', '3 clases' in txt and '12 clases' in txt and page.locator('.dot.done').count() >= 1)
+    check('預覽看到跟學生一樣的內容（剩 3 堂、12 堂、月曆）', '3 clases' in txt and '12 clases' in txt and page.locator('.day.st-done').count() >= 1)
     check('預覽直接讀老師自己路徑下的那位學生（不查對照表）', page.evaluate('window.__fb.reads.length') == 0 and page.evaluate("window.__fb.subs.map(s => s.ref.path)") == ['portal/%s/students/s1' % TID])
     check('預覽沒有登出按鈕', page.locator('#btnLogout').count() == 0)
     page.select_option('#tzSel', 'Asia/Taipei'); page.wait_for_timeout(100)
