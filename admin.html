@@ -72,6 +72,16 @@ ol{margin:6px 0 0 18px;padding:0}
 details.nd{border-top:1px solid var(--line);padding:8px 0}
 details.nd summary{cursor:pointer;font-size:14px}
 @media (max-width:640px){.nudcols{grid-template-columns:1fr}.nudrem{grid-template-columns:1fr}}
+.tabbar{display:flex;gap:6px;margin-bottom:12px}
+.tabbar button{background:transparent;color:var(--accent);position:relative}
+.tabbar button.on{background:var(--accent);color:#fff}
+.tabbar .bd{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;text-align:center;margin-left:5px;padding:0 4px}
+@media (max-width:640px){
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;gap:2px;background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .tabbar button{flex:1;border:0;border-radius:10px;padding:10px 2px;font-size:14px}
+  .tabbar button.on{background:var(--accent-soft);color:var(--text);font-weight:600}
+  .wrap{padding-bottom:90px}
+}
 @media (max-width:640px){
   table,thead,tbody,tr,td{display:block}
   thead{display:none}
@@ -105,6 +115,7 @@ const auth = getAuth(app), db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
 let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = {};
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
@@ -258,8 +269,11 @@ function hwHtml(active){
     h += '</div>';
   });
   h += `</div>`;
-
-  h += `<div class="card"><h2>發布帳號（讓練習單產生器可以發布作業）</h2>
+  return h;
+}
+/* 發布帳號卡片（放在「設定」分頁） */
+function pubHtml(){
+  let h = `<div class="card"><h2>發布帳號（讓練習單產生器可以發布作業）</h2>
     <div class="muted small">老師代號（貼到練習單產生器）：</div>
     <div class="row" style="margin:4px 0 10px"><input id="tidShow" readonly value="${esc(uid)}" style="flex:1;min-width:200px"><button id="tidCopy" class="tiny">複製</button></div>
     <div class="muted small">練習單產生器登入 Google 後，會顯示「帳號代碼」。把它貼在這裡，這個帳號才能發布作業：</div>
@@ -612,9 +626,18 @@ function render(){
     html += `</tbody></table></div>`;
     if(archived.length) html += `<div class="card"><details><summary class="muted">已停課的學生（${archived.length} 位）</summary><div class="small muted" style="margin-top:6px">${archived.map(id => esc(students[id].name)).join('、')}　（他們看不到任何資料）</div></details></div>`;
   }
-  html += nudHtml(active);
-  html += hwHtml(active);
-  root.innerHTML = html;
+  const pend = active.reduce((n, sid) => n + Object.keys(hw[sid] || {}).filter(w => hw[sid][w].status === 'submitted').length, 0);
+  const TABS = [['stu', '學生'], ['hw', '作業'], ['nud', '彈跳視窗'], ['set', '設定']];
+  if(!TABS.some(t => t[0] === adminTab)) adminTab = 'stu';
+  const pane = (k, h) => `<section class="tabp ${adminTab === k ? '' : 'hidden'}" data-p="${k}">${h}</section>`;
+  root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}</button>`).join('')}</nav>`
+    + pane('stu', html) + pane('hw', hwHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
+  root.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => {
+    adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
+    root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
+    root.querySelectorAll('.tabp').forEach(x => x.classList.toggle('hidden', x.dataset.p !== adminTab));
+    window.scrollTo(0, 0);
+  });
   bindHw(root, active); bindNud(root);
 
   const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };

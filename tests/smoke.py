@@ -79,6 +79,10 @@ def serve():
 passed = failed = 0
 
 
+def tab(page, k):
+    page.click('#tabbar [data-t=%s]' % k); page.wait_for_timeout(50)
+
+
 def check(name, cond, extra=''):
     global passed, failed
     if cond:
@@ -279,6 +283,7 @@ def hw_admin_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'hw')
     txt = page.inner_text('#app')
     check('作業清單顯示作業名稱和總分', '把字句練習' in txt and '3 分' in txt, txt[-300:])
     check('顯示老師代號，給產生器貼上', page.input_value('#tidShow') == TID)
@@ -296,6 +301,7 @@ def hw_admin_tests(browser, base):
     page.click('.hwrow[data-wid=w1] [data-a=assign]'); page.click('.hwrow[data-wid=w1] [data-a=assign]'); page.wait_for_timeout(100)
     check('已發過的學生不能重複勾選', page.locator('.picks input[data-sid=s1]').is_disabled())
     # 發布帳號
+    tab(page, 'set')
     page.fill('#adCode', 'abc'); page.click('#adAdd'); page.wait_for_timeout(200)
     check('帳號代碼格式不對會擋下來', '格式不對' in page.inner_text('#app'))
     page.fill('#adCode', TID); page.click('#adAdd'); page.wait_for_timeout(200)
@@ -433,6 +439,7 @@ def hw_grade_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'hw')
     check('最上面有「等你批改」，列出 Pedro', '等你批改（1）' in page.inner_text('#app') and 'Pedro' in page.inner_text('#app'))
     page.click('.card [data-g=s1]'); page.wait_for_timeout(200)
     txt = page.inner_text('#app')
@@ -469,6 +476,7 @@ def hw_grade_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'hw')
     page.click('.hwrow [data-g=s1]'); page.wait_for_timeout(200)
     check('已批改的重新打開：還原上次的分數和標記', page.inner_text('#gScore').strip() == '2 / 3' and '<s>' in page.evaluate("document.querySelector('[data-edit]').innerHTML") and '更新批改' in page.inner_text('#app'))
     page.click('#gBack'); page.wait_for_timeout(100)
@@ -477,6 +485,7 @@ def hw_grade_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    tab(page, 'hw')
     page.click('.card [data-g=s1]'); page.wait_for_timeout(200)
     page.once('dialog', lambda dlg: dlg.accept())
     page.click('#gRedo'); page.wait_for_timeout(400)
@@ -515,6 +524,7 @@ def hw_grade_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    tab(page, 'hw')
     page.click('.card [data-g=s1]'); page.wait_for_timeout(200)
     page.click('.gi[data-id=se1] .gb button.y'); page.check('#gHide'); page.click('#gDone'); page.wait_for_timeout(400)
     d = page.evaluate("window.__fb.store['%s']" % path)
@@ -575,6 +585,7 @@ def hw_word_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    tab(page, 'hw')
     page.click('.card [data-g=s1]'); page.wait_for_timeout(1200)
     txt = page.inner_text('#app')
     check('老師：學生有 Word → 進入 Word 批改，內容顯示出來', '學生的 Word：mi-tarea.docx' in txt and '我書把放好' in page.inner_text('[data-edit]') and page.locator('#gGot').count() == 1, txt[:300])
@@ -697,6 +708,7 @@ def nudge_admin_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.goto(base + 'admin.html'); page.wait_for_timeout(300)
     page.fill('#em', 'teacher@example.com'); page.fill('#pw', 'tpass12'); page.click('#go'); page.wait_for_timeout(600)
+    tab(page, 'nud')
     check('每位有電子郵件的學生都有開關；沒填電子郵件的提示先填', page.locator('tr[data-nid=s1]').count() == 1 and '先在上面的表格填電子郵件' in page.inner_text('#app'))
     check('預設是開的', page.locator('tr[data-nid=s1] .nOn').is_checked() and page.locator('tr[data-nid=s1] .nPay').is_checked())
     page.uncheck('tr[data-nid=s1] .nPay'); page.wait_for_timeout(300)
@@ -704,7 +716,7 @@ def nudge_admin_tests(browser, base):
     page.uncheck('tr[data-nid=s1] .nOn'); page.wait_for_timeout(300)
     check('關掉這位學生的彈跳視窗', page.evaluate("window.__fb.store['%s'].nudge.on" % R) is False)
     # 存電子郵件不會洗掉這些設定
-    page.fill('tr[data-id=s1] .emIn', 'pedro@example.com'); page.click('tr[data-id=s1] .save'); page.wait_for_timeout(300)
+    tab(page, 'stu'); page.fill('tr[data-id=s1] .emIn', 'pedro@example.com'); page.click('tr[data-id=s1] .save'); page.wait_for_timeout(300); tab(page, 'nud')
     r = page.evaluate("window.__fb.store['%s']" % R)
     check('重新儲存電子郵件：開關還在', r['nudge']['on'] is False, r)
     # 編輯句子
@@ -727,6 +739,40 @@ def nudge_admin_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def admin_tabs_tests(browser, base):
+    import json
+    print('\n老師後台：分頁')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    def hwd(status):
+        d = hw_doc(status); return d
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1760000000000, 'upd': 1760000000000, 'name': '把字句練習', 'grammar': '把字句', 'count': 3, 'data': json.dumps(HW_STATE)},
+             'portal/%s/students/s1/hw/w1' % TID: hwd('submitted')}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(700)
+    check('四個分頁：學生、作業、彈跳視窗、設定', page.inner_text('#tabbar').replace('\n', '').startswith('學生作業') and page.locator('#tabbar button').count() == 4)
+    check('預設在「學生」：看得到對照表，看不到作業和發布帳號', page.is_visible('tr[data-id=s1]') and not page.is_visible('.hwrow') and not page.is_visible('#tidShow'))
+    check('作業分頁有紅點數字（1 份等批改）', page.inner_text('#tabbar [data-t=hw] .bd') == '1')
+    box = page.locator('#tabbar').bounding_box()
+    check('手機版：分頁列固定在畫面最下方', abs((box['y'] + box['height']) - 800) < 2, box)
+    page.evaluate('window.scrollTo(0, 99999)'); page.wait_for_timeout(100)
+    box2 = page.locator('#tabbar').bounding_box()
+    check('捲動後分頁列還在原地', abs(box2['y'] - box['y']) < 2, box2)
+    tab(page, 'hw')
+    check('作業分頁：等你批改和作業清單', page.is_visible('.hwrow') and '等你批改' in page.inner_text('#app') and not page.is_visible('tr[data-id=s1]'))
+    tab(page, 'nud'); check('彈跳視窗分頁', page.is_visible('tr[data-nid=s1]'))
+    tab(page, 'set'); check('設定分頁：老師代號與發布帳號', page.input_value('#tidShow') == TID)
+    page.evaluate("window.__fb.subs.forEach(s => s.fire())"); page.wait_for_timeout(200)
+    check('資料更新、畫面重畫時，停留在原本的分頁', page.is_visible('#tidShow'))
+    page.reload(); page.wait_for_timeout(700)
+    check('重新開啟：記得上次的分頁', page.is_visible('#tidShow'))
+    tab(page, 'hw'); page.click('.card [data-g=s1]'); page.wait_for_timeout(300)
+    check('進入批改：分頁列不出現（整頁批改）', page.locator('#tabbar').count() == 0)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -739,6 +785,7 @@ with sync_playwright() as p:
     hw_word_tests(browser, base)
     nudge_tests(browser, base)
     nudge_admin_tests(browser, base)
+    admin_tabs_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)
