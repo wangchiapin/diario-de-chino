@@ -152,6 +152,75 @@ function hwSumReview(items) {
   return { got: Math.round(got * 2) / 2, max: max };
 }
 
+/* ───────── Word（.docx）：下載空白作業、讀回學生上傳的檔案 ─────────
+   下載：用 JSZip 手工組出最簡單的 .docx（標題、題目、空格），不依賴別的套件。
+   labels：{ name, date, typeName:{fill:'…',…}, matchNote }  由頁面依學生語言給 */
+function hwXml(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function hwP(text, o) {
+  o = o || {};
+  var rpr = '<w:rFonts w:ascii="Calibri" w:eastAsia="PMingLiU" w:hAnsi="Calibri"/>' + (o.bold ? '<w:b/>' : '') + (o.color ? '<w:color w:val="' + o.color + '"/>' : '') + '<w:sz w:val="' + (o.size || 24) + '"/>';
+  var ppr = '<w:spacing w:before="' + (o.before || 0) + '" w:after="' + (o.after == null ? 80 : o.after) + '"/>' + (o.shade ? '<w:shd w:val="clear" w:color="auto" w:fill="' + o.shade + '"/>' : '');
+  return '<w:p><w:pPr>' + ppr + '</w:pPr><w:r><w:rPr>' + rpr + '</w:rPr><w:t xml:space="preserve">' + hwXml(text) + '</w:t></w:r></w:p>';
+}
+function hwBuildDocx(d, labels) {
+  var NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'], L = labels || {}, tn = L.typeName || {}, body = '';
+  var line = '＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿';
+  body += hwP(d.title || '', { bold: true, size: 36, after: 120 });
+  body += hwP((L.name || 'Nombre') + '：' + line.slice(0, 10) + '    ' + (L.date || 'Fecha') + '：' + line.slice(0, 6), { color: '777777', after: 200 });
+  (d.sections || []).forEach(function (sec, si) {
+    body += hwP((NUM[si] || (si + 1)) + '、' + (tn[sec.type] || sec.type), { bold: true, size: 28, before: 240, after: 120 });
+    if (sec.bank && sec.bank.length && (sec.type === 'fill' || sec.type === 'cloze')) body += hwP(sec.bank.join('　'), { shade: 'F0ECE1', after: 120 });
+    if (sec.type === 'match') {
+      body += hwP((L.matchNote || ''), { color: '777777', size: 20 });
+      sec.rights.forEach(function (r, k) { body += hwP(hwLetter(k) + '　' + r, { after: 40 }); });
+    }
+    sec.items.forEach(function (q, qi) {
+      var n = (qi + 1) + '. ';
+      switch (sec.type) {
+        case 'fill': body += hwP(n + String(q.zh || '').replace('__', '（　　　）') + (q.es ? '    ' + q.es : '')); break;
+        case 'cloze': body += hwP(n + String(q.text || '').replace(/\{(\d+)\}/g, '（$1　　）')); break;
+        case 'order': body += hwP(n + (q.tokens || []).join(' ／ ') + (q.es ? '    ' + q.es : '')); body += hwP('→ ' + line, { color: '999999' }); break;
+        case 'choice':
+          body += hwP(n + (q.es || ''));
+          (q.options || []).forEach(function (o) { body += hwP('　　' + hwLetter(o.i) + '　' + o.t, { after: 20 }); });
+          body += hwP('→ ' + (L.pick || 'A / B / C'), { color: '999999' }); break;
+        case 'fix': body += hwP(n + q.wrong); body += hwP('→ ' + line, { color: '999999' }); break;
+        case 'translate': body += hwP(n + q.es + (q.vocab ? '  (' + q.vocab + ')' : '')); body += hwP('→ ' + line, { color: '999999' }); break;
+        case 'zh2es': body += hwP(n + q.zh + (q.vocab ? '  (' + q.vocab + ')' : '')); body += hwP('→ ' + line, { color: '999999' }); break;
+        case 'match': body += hwP(n + q.zh + '　→　' + (L.letter || 'A/B/C'), {}); break;
+        case 'sentence': body += hwP(n + q.cue + (q.es ? '    ' + q.es : '')); body += hwP('→ ' + line, { color: '999999' }); break;
+      }
+    });
+  });
+  var doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + body + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  var zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  zip.file('word/document.xml', doc);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+var HW_FILE_MAX = 600 * 1024;   // 一個 Word 檔最大 600KB（轉成文字存放後要小於 Firestore 單筆 1MB）
+function hwDownloadBlob(blob, name) {
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function hwBlobToB64(blob) {
+  return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1] || ''); }; r.onerror = rej; r.readAsDataURL(blob); });
+}
+function hwB64ToBlob(b64, type) {
+  var bin = atob(b64), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+  return new Blob([u], { type: type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+/* 標準答案整理成一行一題，批改 Word 時寫給學生看 */
+function hwKeyLines(state) {
+  var out = [];
+  hwActiveSections(state).forEach(function (sec, si) {
+    var items = hwActiveItems(sec);
+    items.forEach(function (it, qi) { out.push({ sec: si, no: qi + 1, type: sec.type, key: hwKeyText(sec.type, it) }); });
+  });
+  return out;
+}
+
 /* ───────── 發給學生的那一份（存進學生自己的資料夾） ───────── */
 function hwAssignDoc(wid, state, now) {
   var s = hwBuildStudent(state);

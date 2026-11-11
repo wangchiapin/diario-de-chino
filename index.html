@@ -120,7 +120,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* 跟日誌、老師後台用同一個 Firebase 專案 */
 const app = initializeApp({
@@ -366,6 +366,7 @@ function renderHome(root){
 
 /* ───────── 作業 ───────── */
 let hwDocs = {}, hwLoaded = false, hwErr = false, unsubHw = null;
+let hwFile = null, hwFileMsg = '', hwFileBusy = false;
 let hwOpen = null, hwOpenStatus = null, hwDraft = {}, hwOrder = {}, hwTimer = null, hwSaveState = '', hwConfirming = false;
 
 function startHw(sid){
@@ -408,7 +409,17 @@ function openHw(id){
     a.forEach(t => { const i = q.tokens.findIndex((x, k) => x === t && used.indexOf(k) < 0); if(i >= 0) used.push(i); });
     hwOrder[q.id] = used;
   }); });
+  hwFile = null; hwFileMsg = ''; hwFileBusy = false; hwLoadFile(id);
   render(); window.scrollTo(0, 0);
+}
+async function hwLoadFile(id){
+  if(PREVIEW) return;
+  try{
+    const s = await getDoc(doc(db, 'portal', tid, 'students', studentId, 'hwFiles', id));
+    if(hwOpen !== id) return;
+    hwFile = s.exists() ? { name: s.data().name, size: s.data().size, at: s.data().at } : null;
+  }catch(err){ hwFile = null; }
+  hwWordDraw();
 }
 function hwSetDraft(id, val){
   if(val === '' || val == null || (Array.isArray(val) && !val.some(x => x))) delete hwDraft[id]; else hwDraft[id] = val;
@@ -496,6 +507,63 @@ function hwOrderInner(q, dis){
     ${used.length && !dis ? `<button class="btn quiet" style="padding:3px 12px;font-size:13px" data-k="orc" data-id="${esc(q.id)}">${esc(T('hwClear'))}</button>` : ''}</div>`;
 }
 
+function loadJs(src){
+  return new Promise((res, rej) => {
+    if(window.__loaded && window.__loaded[src]) return res();
+    const sc = document.createElement('script'); sc.src = src;
+    sc.onload = () => { (window.__loaded = window.__loaded || {})[src] = 1; res(); }; sc.onerror = () => rej(new Error('load ' + src));
+    document.head.appendChild(sc);
+  });
+}
+function hwWordHtml(d, locked){
+  if(PREVIEW) return '';
+  if(locked){
+    return hwFile ? `<div class="card"><h2>${esc(T('hwWordTitle'))}</h2><div>${esc(T('hwWordUploaded', { name: hwFile.name }))}</div></div>` : '';
+  }
+  return `<div class="card" id="hwWordBox">${hwWordInner()}</div>`;
+}
+function hwWordInner(){
+  return `<h2>${esc(T('hwWordTitle'))}</h2><div class="muted" style="font-size:13px">${esc(T('hwWordHelp'))}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn quiet" id="hwWDown">${esc(T('hwWordDown'))}</button>
+      <label class="btn" style="cursor:pointer;display:inline-block">${esc(T(hwFileBusy ? 'hwWordBusy' : 'hwWordUp'))}<input type="file" id="hwWUp" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none"></label></div>
+    ${hwFile ? `<div style="margin-top:10px;font-size:14px">✓ ${esc(T('hwWordUploaded', { name: hwFile.name }))} <button class="btn quiet" id="hwWDel" style="padding:2px 12px;font-size:12px">${esc(T('hwWordRemove'))}</button></div>` : ''}
+    <div class="savemsg err" id="hwWMsg" style="min-height:0">${esc(hwFileMsg)}</div>`;
+}
+function hwWordDraw(){
+  const box = $('hwWordBox'); if(!box) return;
+  box.innerHTML = hwWordInner(); hwWordBind();
+}
+function hwWordBind(){
+  const d = hwDocs[hwOpen]; if(!d) return;
+  const dn = $('hwWDown'); if(!dn) return;
+  dn.onclick = async () => {
+    hwFileMsg = ''; try{
+      await loadJs('vendor/jszip.min.js');
+      const tn = {}; ['fill','cloze','order','choice','fix','translate','zh2es','match','sentence'].forEach(k => tn[k] = T('hwT_' + k));
+      const blob = await hwBuildDocx(d, { name: T('hwWordName'), date: T('hwWordDate'), typeName: tn, matchNote: T('hwMatchNote') });
+      hwDownloadBlob(blob, (d.title || 'tarea').replace(/[\\/:*?"<>|]/g, '_') + '.docx');
+    }catch(err){ console.error(err); hwFileMsg = T('hwWordDownFail'); hwWordDraw(); }
+  };
+  $('hwWUp').onchange = async e => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    hwFileMsg = '';
+    if(!/\.docx$/i.test(f.name)){ hwFileMsg = T('hwWordType'); return hwWordDraw(); }
+    if(f.size > HW_FILE_MAX){ hwFileMsg = T('hwWordBig'); return hwWordDraw(); }
+    hwFileBusy = true; hwWordDraw();
+    try{
+      const b64 = await hwBlobToB64(f), meta = { name: f.name, size: f.size, at: Date.now() };
+      await setDoc(doc(db, 'portal', tid, 'students', studentId, 'hwFiles', hwOpen), Object.assign({ b64 }, meta));
+      hwFile = meta;
+    }catch(err){ console.error(err); hwFileMsg = T('hwWordFail'); }
+    hwFileBusy = false; hwWordDraw();
+  };
+  const del = $('hwWDel'); if(del) del.onclick = async () => {
+    try{ await deleteDoc(doc(db, 'portal', tid, 'students', studentId, 'hwFiles', hwOpen)); hwFile = null; hwFileMsg = ''; }catch(err){ console.error(err); hwFileMsg = T('hwWordFail'); }
+    hwWordDraw();
+  };
+}
+
 function renderHw(root){
   const d = hwDocs[hwOpen];
   const locked = d.status !== 'todo' || PREVIEW;
@@ -505,7 +573,13 @@ function renderHw(root){
     <div>${hwChip(d)} <span class="muted">${esc(T('hwPoints', { n: d.total || 0 }))}</span></div>
     ${d.status === 'graded' && d.result && !hwHideScore(d) ? `<div class="big" style="margin-top:6px">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</div>` : ''}
     ${PREVIEW ? `<div class="msg">${esc(T('hwPreviewRO'))}</div>` : d.status === 'submitted' ? `<div class="msg">${esc(T('hwLocked'))}</div>` : ''}${d.status === 'graded' && d.review && d.review.note ? `<div class="tnote"><b>${esc(T('hwTeacherNote'))}</b><br>${esc(d.review.note)}</div>` : ''}</div>`;
-  (d.sections || []).forEach((sec, si) => {
+  const wm = d.status === 'graded' && d.review && d.review.word;
+  h += hwWordHtml(d, locked);
+  if(wm){
+    h += `<div class="card"><h2>${esc(T('hwWordMarkedTitle'))}</h2><div class="mk">${hwCleanMark(wm.mark || '')}</div></div>`;
+    if(Array.isArray(wm.keys) && wm.keys.length) h += `<div class="card"><h2>${esc(T('hwAnswersTitle'))}</h2>${wm.keys.map(k => `<div style="padding:2px 0;font-size:15px">${esc(k)}</div>`).join('')}</div>`;
+  }
+  (wm ? [] : (d.sections || [])).forEach((sec, si) => {
     h += `<div class="card"><h2>${NUM[si] || si + 1}、${esc(T('hwT_' + sec.type))}</h2>`;
     if(sec.bank && sec.bank.length && (sec.type === 'fill' || sec.type === 'cloze')) h += `<div class="bank">${sec.bank.map(esc).join('　')}</div>`;
     if(sec.type === 'match') h += `<div class="rights">${sec.rights.map((r, k) => `<div><b>${hwLetter(k)}</b> ${esc(r)}</div>`).join('')}</div>`;
@@ -516,6 +590,7 @@ function renderHw(root){
   root.innerHTML = h;
   $('hwBack').onclick = () => { clearTimeout(hwTimer); if(hwSaveState === 'saving') hwSave(); hwOpen = null; render(); window.scrollTo(0, 0); };
   if(locked) return;
+  hwWordBind();
   hwShowSave(); hwActionDraw(d);
   root.oninput = e => {
     const t = e.target, k = t.dataset.k, id = t.dataset.id; if(!k) return;
@@ -545,7 +620,7 @@ function hwActionDraw(d){
     box.innerHTML = `<button class="btn" id="hwSubmit" style="width:100%">${esc(T('hwSubmit'))}</button>`;
     $('hwSubmit').onclick = () => { hwConfirming = true; hwActionDraw(d); };
   }else{
-    const n = hwUnansweredCount(d);
+    const n = hwFile ? 0 : hwUnansweredCount(d);
     box.innerHTML = `<div class="msg" style="margin:0 0 10px">${esc(T('hwConfirm'))}${n ? ' ' + esc(T('hwUnanswered', { n })) : ''}</div>
       <div style="display:flex;gap:10px"><button class="btn quiet" id="hwNo" style="flex:1">${esc(T('hwNo'))}</button><button class="btn" id="hwYes" style="flex:1">${esc(T('hwYes'))}</button></div>`;
     $('hwNo').onclick = () => { hwConfirming = false; hwActionDraw(d); };

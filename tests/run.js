@@ -192,6 +192,21 @@ test('資料夾裡的 portal-hw.js 用到的 Firestore 文件格式，不含 und
   const d = C('hwAssignDoc')('w1', SAMPLE, 123);
   assert.ok(!/undefined/.test(JSON.stringify(d, (k, v) => v === undefined ? 'undefined' : v)));
 });
+test('標準答案文字：選擇題顯示字母加選項、段落填空用頓號、配對顯示西文', () => {
+  const K = C('hwKeyText');
+  assert.strictEqual(K('choice', { options: ['甲', '乙'], answer: 1 }), 'B　乙');
+  assert.strictEqual(K('cloze', { answers: ['把', '被'] }), '把、被');
+  assert.strictEqual(K('match', { es: 'poner' }), 'poner');
+  assert.strictEqual(K('fix', { correct: '我把書放好' }), '我把書放好');
+});
+test('批改總分：半分加總、四捨五入到 0.5', () => {
+  const r = C('hwSumReview')({ a: { got: 1, max: 1 }, b: { got: 0.5, max: 1 }, c: { got: 0, max: 2 } });
+  assert.strictEqual(r.got, 1.5); assert.strictEqual(r.max, 4);
+});
+test('Word 批改用的標準答案清單：一題一行、含大題編號', () => {
+  const L = C('hwKeyLines')(SAMPLE);
+  assert.ok(L.length > 0 && L.every(x => typeof x.key === 'string' && typeof x.no === 'number'));
+});
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);

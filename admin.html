@@ -83,7 +83,7 @@ ol{margin:6px 0 0 18px;padding:0}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, setDoc, deleteDoc, updateDoc, deleteField, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, updateDoc, deleteField, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp({
   apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0",
@@ -250,7 +250,9 @@ function gradeItems(sid, wid){
   return { list, secs: hwActiveSections(st).map(sc => sc.type), note: d.review && d.review.note || '', hideScore: !!(d.review && d.review.hideScore) };
 }
 const GDKEY = (sid, wid) => 'dc.grade.' + uid + '.' + sid + '.' + wid;
-function gradeSaveLocal(){ if(!gradeOpen || !gdraft) return; try{ localStorage.setItem(GDKEY(gradeOpen.sid, gradeOpen.wid), JSON.stringify({ t: Date.now(), items: gdraft.list.map(r => ({ id: r.id, got: r.got, blanks: r.blanks, mark: r.mark })), note: gdraft.note, hide: !!gdraft.hideScore })); }catch(e){} }
+function gradeSaveLocal(){ if(!gradeOpen || !gdraft) return;
+  if(gdraft.word){ try{ localStorage.setItem(GDKEY(gradeOpen.sid, gradeOpen.wid), JSON.stringify({ word: 1, t: Date.now(), mark: gdraft.list[0].mark, got: gdraft.wordGot, note: gdraft.note, hide: !!gdraft.hideScore })); }catch(e){} return; }
+  try{ localStorage.setItem(GDKEY(gradeOpen.sid, gradeOpen.wid), JSON.stringify({ t: Date.now(), items: gdraft.list.map(r => ({ id: r.id, got: r.got, blanks: r.blanks, mark: r.mark })), note: gdraft.note, hide: !!gdraft.hideScore })); }catch(e){} }
 function gradeLoadLocal(sid, wid, g){
   try{
     const d = (hw[sid] || {})[wid], raw = localStorage.getItem(GDKEY(sid, wid)); if(!raw || !d || d.status !== 'submitted') return false;
@@ -261,12 +263,49 @@ function gradeLoadLocal(sid, wid, g){
 }
 function gradeClearLocal(sid, wid){ try{ localStorage.removeItem(GDKEY(sid, wid)); }catch(e){} }
 
-function openGrade(sid, wid){
+function loadJs(src){
+  return new Promise((res, rej) => {
+    if(window.__loaded && window.__loaded[src]) return res();
+    const sc = document.createElement('script'); sc.src = src;
+    sc.onload = () => { (window.__loaded = window.__loaded || {})[src] = 1; res(); }; sc.onerror = () => rej(new Error('load ' + src));
+    document.head.appendChild(sc);
+  });
+}
+async function openGrade(sid, wid){
+  const d0 = (hw[sid] || {})[wid], st = poolState(wid);
+  if(!st || !st.sections || !d0){ alert('這份作業的內容讀不出來，請回練習單產生器重新發布。'); return; }
+  // 學生有上傳 Word 嗎？有的話用「看 Word、標記、給總分」的方式批改
+  let fileDoc = null;
+  try{ const f = await getDoc(doc(db, 'portal', uid, 'students', sid, 'hwFiles', wid)); if(f.exists()) fileDoc = f.data(); }catch(err){ console.error(err); }
+  if(fileDoc && !(d0.review && d0.review.items)){ return openWordGrade(sid, wid, fileDoc, st); }
   const g = gradeItems(sid, wid);
   if(!g){ alert('這份作業的內容讀不出來，請回練習單產生器重新發布。'); return; }
   const restored = gradeLoadLocal(sid, wid, g);
   gradeOpen = { sid, wid, restored }; gdraft = g; gmsg = null;
   gradeRender(); window.scrollTo(0, 0);
+}
+async function openWordGrade(sid, wid, fileDoc, st){
+  const d = hw[sid][wid], total = hwTotal(st);
+  let html = '', warn = '';
+  try{
+    await loadJs('vendor/mammoth.browser.min.js');
+    const blob = hwB64ToBlob(fileDoc.b64), buf = await blob.arrayBuffer();
+    html = hwCleanMark((await window.mammoth.convertToHtml({ arrayBuffer: buf })).value);
+  }catch(err){ console.error(err); warn = '這份 Word 的內容讀不出來（可能格式比較特別）。請先按「下載原檔」自己看，再把想說的寫在下面。'; }
+  const old = d.review && d.review.word;
+  const row = { id: '__word', type: 'word', manual: true, max: total, got: null, mark: (old && old.mark) || html || '' };
+  gdraft = { word: true, list: [row], fileDoc, total, warn, fileName: fileDoc.name, keys: hwKeyLines(st).map(k => (NUMZH[k.sec] || k.sec + 1) + '・' + k.no + '　' + k.key),
+    note: d.review && d.review.note || '', hideScore: !!(d.review && d.review.hideScore), wordGot: d.result ? d.result.got : null };
+  gradeOpen = { sid, wid, restored: false };
+  const restored = gradeLoadLocalWord(sid, wid, gdraft); gradeOpen.restored = restored;
+  gmsg = null; gradeRender(); window.scrollTo(0, 0);
+}
+function gradeLoadLocalWord(sid, wid, g){
+  try{
+    const d = (hw[sid] || {})[wid], raw = localStorage.getItem(GDKEY(sid, wid)); if(!raw || !d || d.status !== 'submitted') return false;
+    const sv = JSON.parse(raw); if(!sv.word) return false;
+    g.list[0].mark = sv.mark || g.list[0].mark; g.wordGot = sv.got; g.note = sv.note || ''; g.hideScore = !!sv.hide; return true;
+  }catch(e){ return false; }
 }
 function closeGrade(){ gradeSaveLocal(); gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0); }
 function gradeTotal(){ return hwSumReview(Object.fromEntries(gdraft.list.map(r => [r.id, { got: r.got, max: r.max }]))); }
@@ -294,9 +333,29 @@ function gcardHtml(r){
   }
   return h + '</div>';
 }
+function gradeBottomHtml(d, g){
+  return `<div class="card"><h2>給學生的話（選填）</h2><textarea class="gnotebox" id="gNote" placeholder="例如：整體很棒，注意「把」字句的位置。">${esc(g.note)}</textarea>
+    <label class="row small" style="margin-top:10px;gap:6px"><input type="checkbox" id="gHide" style="width:auto" ${g.hideScore ? 'checked' : ''}>不顯示分數給學生（還是會顯示每題對錯和標準答案；你這邊仍看得到分數）</label>
+    <div class="row" style="margin-top:10px"><button id="gDone">${d.status === 'graded' ? '更新批改' : '完成批改'}</button>${d.status === 'submitted' ? '<button class="quiet" id="gRedo">退回重做</button>' : ''}<span class="gmsg ${gmsg && !gmsg.ok ? 'err' : 'ok'}" id="gMsg">${esc(gmsg ? gmsg.text : '')}</span></div>
+    <div class="muted small" style="margin-top:8px">按「完成批改」後，學生才看得到結果和標準答案。「退回重做」會讓學生重新作答（他原本的答案會保留）。</div></div>`;
+}
+function gradeWordRender(){
+  const o = gradeOpen, root = $('app'), d = (hw[o.sid] || {})[o.wid], s = students[o.sid] || {}, g = gdraft, r = g.list[0];
+  let h = `<div class="gbar"><button class="quiet" id="gBack">‹ 返回</button><div><b>${esc(s.name || '')}</b> <span class="muted">${esc(d.title || '')}</span></div></div>`;
+  h += `<div class="gnote">${d.status === 'graded' ? '這份已經批改過了。改完按「更新批改」。' : (o.restored ? '已接回你上次沒按完成的批改。' : '這位學生是用 Word 交的。下面是他的內容，選取文字就能標記（底線、刪除線、底色、粗體），也可以直接打字修改；最後給一個總分。')}</div>`;
+  h += `<div class="card"><h2>學生的 Word：${esc(g.fileName || '')}</h2><div class="row"><button class="tiny quiet" id="gDl">下載原檔</button></div>${g.warn ? `<div class="gmsg err">${esc(g.warn)}</div>` : ''}
+    <div class="gi" data-id="__word"><div class="gtools"><span class="sep">選取文字後按：</span><button data-f="bold"><b>B</b></button><button data-f="underline"><u>U</u></button><button data-f="strikeThrough"><s>S</s></button><button data-f="hl" data-c="#fff0a8" style="background:#fff0a8">黃</button><button data-f="hl" data-c="#cfe6c9" style="background:#cfe6c9">綠</button><button data-f="hl" data-c="#f6cfc6" style="background:#f6cfc6">紅</button><button data-f="removeFormat">清除</button></div>
+    <div class="gedit" contenteditable="true" data-edit="1" spellcheck="false" style="min-height:200px">${r.mark || '<br>'}</div></div></div>`;
+  h += `<div class="card"><h2>總分</h2><div class="row"><input type="number" id="gGot" min="0" max="${g.total}" step="0.5" style="width:100px" value="${g.wordGot == null ? '' : g.wordGot}" placeholder="分數"><span>／ ${g.total}</span></div></div>`;
+  h += gradeBottomHtml(d, g);
+  root.innerHTML = h; bindGrade(root);
+  $('gGot').oninput = e => { g.wordGot = e.target.value === '' ? null : Math.max(0, Math.min(g.total, +e.target.value)); gradeSaveLocal(); };
+  $('gDl').onclick = () => hwDownloadBlob(hwB64ToBlob(g.fileDoc.b64), g.fileName || 'tarea.docx');
+}
 function gradeRender(){
   const o = gradeOpen, root = $('app'), d = (hw[o.sid] || {})[o.wid], s = students[o.sid] || {}, g = gdraft;
   if(!d){ gradeOpen = null; return render(); }
+  if(g.word) return gradeWordRender();
   g.clozeMine = {};
   g.list.forEach(r => { if(r.type === 'cloze'){ const a = (d.answers || {})[r.id]; g.clozeMine[r.id] = Array.isArray(a) ? a : []; } });
   const manualN = g.list.filter(r => r.manual).length, tot = gradeTotal();
@@ -309,16 +368,13 @@ function gradeRender(){
     h += gcardHtml(r);
   });
   if(open) h += '</div>';
-  h += `<div class="card"><h2>給學生的話（選填）</h2><textarea class="gnotebox" id="gNote" placeholder="例如：整體很棒，注意「把」字句的位置。">${esc(g.note)}</textarea>
-    <label class="row small" style="margin-top:10px;gap:6px"><input type="checkbox" id="gHide" style="width:auto" ${g.hideScore ? 'checked' : ''}>不顯示分數給學生（還是會顯示每題對錯和標準答案；你這邊仍看得到分數）</label>
-    <div class="row" style="margin-top:10px"><button id="gDone">${d.status === 'graded' ? '更新批改' : '完成批改'}</button>${d.status === 'submitted' ? '<button class="quiet" id="gRedo">退回重做</button>' : ''}<span class="gmsg ${gmsg && !gmsg.ok ? 'err' : 'ok'}" id="gMsg">${esc(gmsg ? gmsg.text : '')}</span></div>
-    <div class="muted small" style="margin-top:8px">按「完成批改」後，學生才看得到結果和標準答案。「退回重做」會讓學生重新作答（他原本的答案會保留）。</div></div>`;
+  h += gradeBottomHtml(d, g);
   root.innerHTML = h;
   bindGrade(root);
 }
 const HW_TYPE_NAME = { fill: '選詞填空', cloze: '段落填空', order: '排序', choice: '選擇', fix: '改錯', translate: '西翻中', zh2es: '中翻西', match: '配對', sentence: '造句' };
 
-function gradeUpdateScore(){ const t = gradeTotal(); const el = $('gScore'); if(el) el.textContent = t.got + ' / ' + t.max; gradeSaveLocal(); }
+function gradeUpdateScore(){ if(gdraft.word) return gradeSaveLocal(); const t = gradeTotal(); const el = $('gScore'); if(el) el.textContent = t.got + ' / ' + t.max; gradeSaveLocal(); }
 function gradeCard(root, id){ return root.querySelector(`.gi[data-id="${CSS.escape(id)}"]`); }
 function gradeRedrawCard(root, id){
   const r = gdraft.list.find(x => x.id === id), el = gradeCard(root, id); if(!r || !el) return;
@@ -360,7 +416,18 @@ function bindGrade(root){
   root.onpaste = e => { const ed = e.target.closest && e.target.closest('[data-edit]'); if(!ed) return; e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text')); };
 }
 function setGmsg(text, ok){ gmsg = { text, ok }; const el = $('gMsg'); if(el){ el.textContent = text; el.className = 'gmsg ' + (ok ? 'ok' : 'err'); } }
+async function gradeFinishWord(){
+  const o = gradeOpen, g = gdraft, btn = $('gDone');
+  if(g.wordGot == null){ setGmsg('請先填總分', false); const el = $('gGot'); if(el) el.focus(); return; }
+  const res = { got: g.wordGot, max: g.total }; btn.disabled = true; setGmsg('送出中…', true);
+  try{
+    await updateDoc(doc(db, 'portal', uid, 'students', o.sid, 'hw', o.wid), { status: 'graded', result: res, review: { word: { mark: hwCleanMark(g.list[0].mark), keys: g.keys }, note: (g.note || '').trim(), hideScore: !!g.hideScore, gradedAt: Date.now() } });
+    gradeClearLocal(o.sid, o.wid);
+    gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0);
+  }catch(err){ console.error(err); btn.disabled = false; setGmsg('送出失敗，請再試一次', false); }
+}
 async function gradeFinish(){
+  if(gdraft.word) return gradeFinishWord();
   const o = gradeOpen, g = gdraft, d = (hw[o.sid] || {})[o.wid];
   const need = g.list.filter(r => r.got == null);
   if(need.length){

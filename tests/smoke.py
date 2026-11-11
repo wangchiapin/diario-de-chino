@@ -56,6 +56,7 @@ export function onSnapshot(ref, cb, err){
   const fire = () => ref.col ? cb(colSnap(listCol(ref.path))) : cb(snapDoc(ref.path));
   sub.fire = fire; setTimeout(fire, 0); return () => { fb().subs = fb().subs.filter(s => s !== sub); };
 }
+export async function getDoc(ref){ return snapDoc(ref.path); }
 export async function setDoc(ref, data){ fb().store[ref.path] = data; fb().subs.forEach(s => s.fire()); }
 export async function updateDoc(ref, data){ if(window.__fb.failUpdate){ const e = new Error('x'); e.code = 'unavailable'; throw e; } const nd = Object.assign({}, fb().store[ref.path], data); Object.keys(nd).forEach(k => { if(nd[k] && nd[k].__del) delete nd[k]; }); fb().store[ref.path] = nd; fb().subs.forEach(s => s.fire()); }
 export function deleteField(){ return { __del: true }; }
@@ -521,6 +522,86 @@ def hw_grade_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def make_docx(text):
+    import io, zipfile
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        z.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        paras = ''.join('<w:p><w:r><w:t>%s</w:t></w:r></w:p>' % x for x in text)
+        z.writestr('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>%s</w:body></w:document>' % paras)
+    return b.getvalue()
+
+
+def hw_word_tests(browser, base):
+    import json, base64, zipfile, io
+    print('\nWord：學生下載與上傳、老師批改')
+    path = 'portal/%s/students/s1/hw/w1' % TID
+    fpath = 'portal/%s/students/s1/hwFiles/w1' % TID
+    # --- 學生 ---
+    ctx, page, errs = new_page(browser, base_state({path: hw_doc()}))
+    page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+    page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    page.click('[data-hw=w1]'); page.wait_for_timeout(300)
+    check('學生：作業頁有「下載 Word」和「上傳」', page.locator('#hwWDown').count() == 1 and page.locator('#hwWUp').count() == 1)
+    with page.expect_download() as dl:
+        page.click('#hwWDown')
+    dpath = dl.value.path()
+    z = zipfile.ZipFile(dpath); xml = z.read('word/document.xml').decode('utf-8')
+    check('下載的 Word：是正確的 .docx，有標題、題目和空格，沒有標準答案', dl.value.suggested_filename.endswith('.docx') and '把字句練習' in xml and '請你' in xml and '（　　　）' in xml and 'poner' in xml, xml[:200])
+    # 上傳
+    up = make_docx(['1. 把', '2. 我把書放好'])
+    page.set_input_files('#hwWUp', files=[{'name': 'mi-tarea.docx', 'mimeType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'buffer': up}]); page.wait_for_timeout(500)
+    f = page.evaluate("window.__fb.store['%s']" % fpath)
+    check('上傳：存進 hwFiles，內容還原得回原檔', f and f['name'] == 'mi-tarea.docx' and base64.b64decode(f['b64']) == up, f and f.get('name'))
+    check('上傳後顯示「已上傳」', 'mi-tarea.docx' in page.inner_text('#hwWordBox'))
+    page.set_input_files('#hwWUp', files=[{'name': 'x.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF'}]); page.wait_for_timeout(200)
+    check('不是 .docx：擋下來並提示', '.docx' in page.inner_text('#hwWordBox') and page.evaluate("window.__fb.store['%s'].name" % fpath) == 'mi-tarea.docx')
+    page.set_input_files('#hwWUp', files=[{'name': 'big.docx', 'mimeType': 'application/octet-stream', 'buffer': b'0' * (700 * 1024)}]); page.wait_for_timeout(300)
+    check('檔案太大：擋下來並提示，舊檔還在', '600 KB' in page.inner_text('#hwWordBox') and page.evaluate("window.__fb.store['%s'].name" % fpath) == 'mi-tarea.docx')
+    page.click('#hwSubmit'); page.wait_for_timeout(100)
+    check('有上傳 Word 時，交出前不提醒「還有幾題沒作答」', '還沒作答' not in page.inner_text('#hwAction') and 'faltan' not in page.inner_text('#hwAction').lower())
+    page.click('#hwNo'); page.click('#hwWDel'); page.wait_for_timeout(300)
+    check('移除上傳的檔案', fpath not in page.evaluate('Object.keys(window.__fb.store)'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # --- 老師批改 Word ---
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1, 'upd': 1, 'name': '把字句練習', 'count': 3, 'data': json.dumps(HW_STATE)},
+             path: grade_docs(),
+             fpath: {'name': 'mi-tarea.docx', 'size': 100, 'at': 1, 'b64': base64.b64encode(make_docx(['1. 被', '2. 我書把放好'])).decode()}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    page.click('.card [data-g=s1]'); page.wait_for_timeout(1200)
+    txt = page.inner_text('#app')
+    check('老師：學生有 Word → 進入 Word 批改，內容顯示出來', '學生的 Word：mi-tarea.docx' in txt and '我書把放好' in page.inner_text('[data-edit]') and page.locator('#gGot').count() == 1, txt[:300])
+    page.click('#gDone'); page.wait_for_timeout(200)
+    check('沒填總分：擋下來', '請先填總分' in page.inner_text('#app') and page.evaluate("window.__fb.store['%s'].status" % path) == 'submitted')
+    page.evaluate("""() => { const el = document.querySelector('[data-edit]'); const r = document.createRange(); r.selectNodeContents(el.lastChild); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }""")
+    page.click('[data-f=strikeThrough]'); page.wait_for_timeout(100)
+    page.fill('#gGot', '2'); page.fill('#gNote', 'Casi!'); page.check('#gHide')
+    with page.expect_download() as dl2:
+        page.click('#gDl')
+    check('下載原檔：跟學生上傳的一樣', open(dl2.value.path(), 'rb').read()[:2] == b'PK')
+    page.click('#gDone'); page.wait_for_timeout(400)
+    d = page.evaluate("window.__fb.store['%s']" % path)
+    w = d['review']['word']
+    check('完成批改：總分、標記、標準答案、給學生的話、隱藏分數都寫進去', d['status'] == 'graded' and d['result'] == {'got': 2, 'max': 3} and ('line-through' in w['mark']) and any('把' in k for k in w['keys']) and d['review']['note'] == 'Casi!' and d['review']['hideScore'] is True, json.dumps(d.get('review'), ensure_ascii=False)[:300])
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # --- 學生看 Word 批改結果 ---
+    ctx, page, errs = new_page(browser, base_state(store | {path: dict(grade_docs('graded', {'word': w, 'note': 'Casi!', 'hideScore': True}, {'got': 2, 'max': 3}))}))
+    page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+    page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    page.click('#langBar button[data-l=tc]'); page.click('[data-hw=w1]'); page.wait_for_timeout(300)
+    txt = page.inner_text('#app')
+    check('學生：看到老師批改後的 Word、標準答案、老師的話，沒有分數也沒有空白題目', '老師批改後的 Word' in txt and '標準答案' in txt and 'Casi!' in txt and '得分' not in txt and page.locator('.mk span[style*=line-through]').count() >= 1 and page.locator('.hwq').count() == 0, txt[:300])
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -530,6 +611,7 @@ with sync_playwright() as p:
     hw_admin_tests(browser, base)
     hw_student_tests(browser, base)
     hw_grade_tests(browser, base)
+    hw_word_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

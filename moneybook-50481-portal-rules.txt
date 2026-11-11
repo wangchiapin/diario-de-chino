@@ -2,11 +2,11 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-11 11:02（學生可交作業：students/{sid}/hw 加上學生更新規則）
+// 最後更新：2026-11-11 14:38（新增 students/{sid}/hwFiles：學生用 Word 交作業的檔案）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-11 14:38 新增 portal/{tid}/students/{sid}/hwFiles（學生上傳的 Word，轉成文字存放；學生只能在作業還沒交時寫自己的）
 //   - 2026-11-11 11:02 students/{sid}/hw 加學生更新規則（只能改 answers、status、submittedAt，且只有還沒交的）
 //   - 2026-11-11 10:52 新增 portal/{tid}/admins、hwPool、students/{sid}/hw（作業，第一步：發布與發給學生）
-//   - 2026-11-11 新增 portal/{tid}/students 與 portal/{tid}/roster
 //
 // 誰能做什麼：
 //   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
@@ -68,3 +68,30 @@
 // 「match /portal/{tid}/students/{sid}/hw/{hid} { ... }」那一整段，換成上面這個新版本
 // （差別只有最後多了 allow update 那一段，學生才能存答案和交出作業）。
 // ===================================================================
+
+
+// ===================================================================
+// 第四批（Word 上傳）：只要「新增」下面這一段，貼在其他 match 旁邊（跟上面一樣並排）。
+// 不用動前面的任何一段。
+// ===================================================================
+
+    // 學生用 Word 交作業：Word 檔轉成文字（b64）存在這裡，一份作業一個檔。
+    // 老師全部讀寫；學生只能讀、寫「自己的」，而且只有作業還沒交（todo）時才能新增、換檔、刪除；檔案文字要小於約 600KB 的檔案。
+    match /portal/{tid}/students/{sid}/hwFiles/{wid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
+      allow write: if request.auth != null && request.auth.uid == tid;
+      allow create, update: if request.auth != null
+        && request.auth.token.email_verified == true
+        && get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/portal/$(tid)/students/$(sid)/hw/$(wid)).data.status == 'todo'
+        && request.resource.data.keys().hasOnly(['b64', 'name', 'size', 'at'])
+        && request.resource.data.b64 is string
+        && request.resource.data.b64.size() < 850000;
+      allow delete: if request.auth != null
+        && request.auth.token.email_verified == true
+        && get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/portal/$(tid)/students/$(sid)/hw/$(wid)).data.status == 'todo';
+    }
