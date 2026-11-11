@@ -106,6 +106,52 @@ function hwAutoGrade(state, answers) {
   return res;
 }
 
+
+/* ───────── 批改：標準答案的文字、老師標記的安全過濾、批改結果 ───────── */
+function hwLetter(i) { return String.fromCharCode(65 + i); }
+/* 一題的標準答案（給學生看；批改完成時才寫進學生的資料） */
+function hwKeyText(type, it, sec, items) {
+  switch (type) {
+    case 'fill': case 'order': case 'translate': case 'zh2es': case 'sentence': return String(it.answer || '');
+    case 'cloze': return (it.answers || []).join('、');
+    case 'choice': { var o = (it.options || [])[it.answer]; return typeof it.answer === 'number' ? hwLetter(it.answer) + (o ? '　' + o : '') : ''; }
+    case 'fix': return String(it.correct || '');
+    case 'match': return String(it.es || '');
+  }
+  return '';
+}
+/* 老師的標記只留這幾種：粗體、底線、刪除線、背景色、換行。其他全部拿掉。 */
+function hwCleanMark(html) {
+  var box = document.createElement('div'); box.innerHTML = String(html || '');
+  var OK = { B: 1, STRONG: 1, U: 1, S: 1, STRIKE: 1, DEL: 1, BR: 1, DIV: 1, P: 1, SPAN: 1, FONT: 1, MARK: 1 };
+  var COLORS = /^(#[0-9a-f]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|rgba\([^)]*\)|[a-z]+)$/i;
+  function walk(node) {
+    Array.prototype.slice.call(node.childNodes).forEach(function (c) {
+      if (c.nodeType === 3) return;
+      if (c.nodeType !== 1 || !OK[c.tagName]) { if (c.nodeType === 1 && !OK[c.tagName]) { walk(c); while (c.firstChild) node.insertBefore(c.firstChild, c); } node.removeChild(c); return; }
+      var bg = '', fw = '', td = '';
+      if (c.style) { bg = c.style.backgroundColor || ''; fw = c.style.fontWeight || ''; td = c.style.textDecorationLine || c.style.textDecoration || ''; }
+      var tag = c.tagName, color = c.getAttribute('color');
+      while (c.attributes.length) c.removeAttribute(c.attributes[0].name);
+      var st = '';
+      if (bg && COLORS.test(bg)) st += 'background-color:' + bg + ';';
+      if (fw === 'bold' || +fw >= 600) st += 'font-weight:700;';
+      if (/underline/.test(td)) st += 'text-decoration-line:underline;';
+      if (/line-through/.test(td)) st += (/underline/.test(td) ? '' : 'text-decoration-line:line-through;');
+      if (st) c.setAttribute('style', st);
+      walk(c);
+    });
+  }
+  walk(box);
+  return box.innerHTML;
+}
+/* 批改結果：reviewItems = { 題目id: { got, max, ... } }，算總分 */
+function hwSumReview(items) {
+  var got = 0, max = 0;
+  Object.keys(items).forEach(function (k) { max += items[k].max || 0; got += items[k].got || 0; });
+  return { got: Math.round(got * 2) / 2, max: max };
+}
+
 /* ───────── 發給學生的那一份（存進學生自己的資料夾） ───────── */
 function hwAssignDoc(wid, state, now) {
   var s = hwBuildStudent(state);

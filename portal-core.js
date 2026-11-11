@@ -152,6 +152,7 @@ var PC_I18N = {
     hwUnanswered: 'Te faltan {n} respuestas.', hwYes: 'Sí, entregar', hwNo: 'Cancelar', hwSaving: 'Guardando…', hwSaved: 'Guardado', hwSaveErr: 'No se pudo guardar. Revisa tu conexión.',
     hwLocked: 'Ya entregaste esta tarea. Tu profesor la corregirá.', hwScore: 'Puntos: {got}/{max}', hwPoints: '{n} pts', hwAssigned: 'Asignada: {t}', hwClear: 'Borrar',
     hwPreviewRO: 'Vista previa del profesor: solo lectura.', hwPick: 'Elige', hwWrite: 'Escribe tu respuesta',
+    hwKey: 'Respuesta correcta', hwSample: 'Respuesta de ejemplo', hwTeacherNote: 'Mensaje de tu profesor', hwRight: 'Correcto', hwWrong: 'Incorrecto', hwHalf: 'Parcial', hwNoAns: '(sin respuesta)', hwMarked: 'Corrección de tu profesor',
     hwT_fill: 'Completa con la palabra correcta', hwT_cloze: 'Completa el texto con la palabra correcta', hwT_order: 'Ordena las palabras para formar una oración',
     hwT_choice: 'Elige la oración correcta', hwT_fix: 'Escribe la oración correcta', hwT_translate: 'Traduce al chino', hwT_zh2es: 'Traduce al español',
     hwT_match: 'Une cada palabra con su significado', hwT_sentence: 'Escribe una oración con la palabra o estructura indicada'
@@ -179,6 +180,7 @@ var PC_I18N = {
     hwUnanswered: '還有 {n} 題沒作答。', hwYes: '確定交出', hwNo: '取消', hwSaving: '儲存中…', hwSaved: '已儲存', hwSaveErr: '儲存失敗，請檢查網路。',
     hwLocked: '你已經交出這份作業，等老師批改。', hwScore: '得分：{got}／{max}', hwPoints: '{n} 分', hwAssigned: '發出日期：{t}', hwClear: '清除',
     hwPreviewRO: '老師預覽：只能看，不能作答。', hwPick: '請選擇', hwWrite: '寫下你的答案',
+    hwKey: '標準答案', hwSample: '示範答案', hwTeacherNote: '老師的話', hwRight: '答對了', hwWrong: '答錯了', hwHalf: '對一半', hwNoAns: '（沒有作答）', hwMarked: '老師批改',
     hwT_fill: '選詞填空：選出正確的詞填入空格', hwT_cloze: '段落填空：選出正確的詞填入空格', hwT_order: '排序：把詞語排成通順的句子',
     hwT_choice: '選擇：選出正確的句子', hwT_fix: '改錯：找出錯誤，寫出正確的句子', hwT_translate: '西翻中：翻成中文', hwT_zh2es: '中翻西：翻成西班牙文',
     hwT_match: '配對：把每個詞語和它的意思連起來', hwT_sentence: '造句：用指定的詞語或句型造句'
@@ -206,6 +208,7 @@ var PC_I18N = {
     hwUnanswered: '还有 {n} 题没作答。', hwYes: '确定交出', hwNo: '取消', hwSaving: '储存中…', hwSaved: '已储存', hwSaveErr: '储存失败，请检查网路。',
     hwLocked: '你已经交出这份作业，等老师批改。', hwScore: '得分：{got}／{max}', hwPoints: '{n} 分', hwAssigned: '发出日期：{t}', hwClear: '清除',
     hwPreviewRO: '老师预览：只能看，不能作答。', hwPick: '请选择', hwWrite: '写下你的答案',
+    hwKey: '标准答案', hwSample: '示范答案', hwTeacherNote: '老师的话', hwRight: '答对了', hwWrong: '答错了', hwHalf: '对一半', hwNoAns: '（没有作答）', hwMarked: '老师批改',
     hwT_fill: '选词填空：选出正确的词填入空格', hwT_cloze: '段落填空：选出正确的词填入空格', hwT_order: '排序：把词语排成通顺的句子',
     hwT_choice: '选择：选出正确的句子', hwT_fix: '改错：找出错误，写出正确的句子', hwT_translate: '西翻中：翻成中文', hwT_zh2es: '中翻西：翻成西班牙文',
     hwT_match: '配对：把每个词语和它的意思连起来', hwT_sentence: '造句：用指定的词语或句型造句'

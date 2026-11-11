@@ -57,7 +57,8 @@ export function onSnapshot(ref, cb, err){
   sub.fire = fire; setTimeout(fire, 0); return () => { fb().subs = fb().subs.filter(s => s !== sub); };
 }
 export async function setDoc(ref, data){ fb().store[ref.path] = data; fb().subs.forEach(s => s.fire()); }
-export async function updateDoc(ref, data){ if(window.__fb.failUpdate){ const e = new Error('x'); e.code = 'unavailable'; throw e; } fb().store[ref.path] = Object.assign({}, fb().store[ref.path], data); fb().subs.forEach(s => s.fire()); }
+export async function updateDoc(ref, data){ if(window.__fb.failUpdate){ const e = new Error('x'); e.code = 'unavailable'; throw e; } const nd = Object.assign({}, fb().store[ref.path], data); Object.keys(nd).forEach(k => { if(nd[k] && nd[k].__del) delete nd[k]; }); fb().store[ref.path] = nd; fb().subs.forEach(s => s.fire()); }
+export function deleteField(){ return { __del: true }; }
 export async function deleteDoc(ref){ delete fb().store[ref.path]; fb().subs.forEach(s => s.fire()); }
 """
 STUBS = {
@@ -408,6 +409,118 @@ def hw_student_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def grade_docs(status='submitted', review=None, result=None):
+    d = {'v': 1, 'wid': 'w1', 'title': '把字句練習', 'grammar': '把字句', 'total': 3, 'assignedAt': 1760000000000, 'submittedAt': 1760000100000,
+         'status': status, 'answers': {'f1': '把', 'c1': 0, 'se1': '我書放好把。'}, 'sections': [
+        {'id': 's1', 'type': 'fill', 'bank': ['放'], 'items': [{'id': 'f1', 'zh': '請你__書放好。', 'es': 'Pon el libro.'}]},
+        {'id': 's2', 'type': 'choice', 'bank': [], 'items': [{'id': 'c1', 'es': 'Elige', 'options': [{'i': 0, 't': '我書把放好'}, {'i': 1, 't': '我把書放好'}, {'i': 2, 't': '把我書放好'}]}]},
+        {'id': 's3', 'type': 'sentence', 'bank': [], 'items': [{'id': 'se1', 'cue': '把', 'es': ''}]}]}
+    if review: d['review'] = review
+    if result: d['result'] = result
+    return d
+
+
+def hw_grade_tests(browser, base):
+    import json
+    print('\n老師後台：批改作業')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    path = 'portal/%s/students/s1/hw/w1' % TID
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1760000000000, 'upd': 1760000000000, 'name': '把字句練習', 'grammar': '把字句', 'count': 3, 'data': json.dumps(HW_STATE)},
+             path: grade_docs()}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    check('最上面有「等你批改」，列出 Pedro', '等你批改（1）' in page.inner_text('#app') and 'Pedro' in page.inner_text('#app'))
+    page.click('.card [data-g=s1]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('進入批改：顯示題目、學生答案和標準答案', '請你＿＿＿書放好' in txt and '我書把放好' in txt and '標準答案' in txt and '示範答案' in txt, txt[:400])
+    check('自動批改：填空答對標成對、選擇答錯標成錯，造句還沒打分',
+          page.locator('.gi[data-id=f1] .gb button.on.y').count() == 1 and page.locator('.gi[data-id=c1] .gb button.on.n').count() == 1 and page.locator('.gi[data-id=se1] .gb button.on').count() == 0)
+    check('分數即時顯示', page.inner_text('#gScore').strip() == '1 / 3', page.inner_text('#gScore'))
+    page.click('#gDone'); page.wait_for_timeout(200)
+    check('造句還沒打分就按完成：擋下來並提醒', '還有 1 題沒打分' in page.inner_text('#app') and page.locator('.gi.need').count() == 1)
+    check('沒打完分就不會寫入', page.evaluate("window.__fb.store['%s'].status" % path) == 'submitted')
+    # 標記：選取文字、加底線、再打一半分
+    page.evaluate("""() => { const el = document.querySelector('.gi[data-id=se1] [data-edit]'); const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }""")
+    page.click('.gi[data-id=se1] .gtools button[data-f=underline]'); page.wait_for_timeout(100)
+    page.evaluate("""() => { const el = document.querySelector('.gi[data-id=se1] [data-edit]'); const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }""")
+    page.click('.gi[data-id=se1] .gtools button[data-c="#fff0a8"]'); page.wait_for_timeout(100)
+    check('標記：選取的文字加上底線和背景色', page.evaluate("document.querySelector('.gi[data-id=se1] [data-edit]').innerHTML").count('underline') >= 1 and 'background' in page.evaluate("document.querySelector('.gi[data-id=se1] [data-edit]').innerHTML"))
+    page.click('.gi[data-id=se1] .gb button.h'); page.wait_for_timeout(100)
+    check('給一半分：分數變 1.5 / 3', page.inner_text('#gScore').strip() == '1.5 / 3', page.inner_text('#gScore'))
+    page.click('.gi[data-id=c1] .gb button.y'); page.wait_for_timeout(100)
+    check('老師可以改自動批改的結果：選擇改成對，分數 2.5 / 3', page.inner_text('#gScore').strip() == '2.5 / 3')
+    page.fill('#gNote', '很棒！注意「把」的位置。')
+    page.click('#gDone'); page.wait_for_timeout(400)
+    d = page.evaluate("window.__fb.store['%s']" % path)
+    check('完成批改：狀態變已批改、總分正確', d['status'] == 'graded' and d['result'] == {'got': 2.5, 'max': 3}, d.get('result'))
+    it = d['review']['items']
+    check('寫進學生資料：標準答案、老師標記、給學生的話', it['f1']['key'] == '把' and it['c1']['key'].startswith('B') and 'underline' in it['se1']['mark'] and it['se1']['got'] == 0.5 and d['review']['note'].startswith('很棒'), json.dumps(it, ensure_ascii=False)[:500])
+    check('標記裡沒有不安全的標籤', '<script' not in it['se1']['mark'] and 'onerror' not in it['se1']['mark'])
+    check('批改完回到清單：「等你批改」消失、顯示已批改 2.5/3', '等你批改' not in page.inner_text('#app') and '已批改 2.5/3' in page.inner_text('#app'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 已批改的可以再開來改；退回重做
+    review = {'items': {'f1': {'got': 1, 'max': 1, 'key': '把'}, 'c1': {'got': 0, 'max': 1, 'key': 'B　我把書放好'}, 'se1': {'got': 1, 'max': 1, 'key': '我把書放好。', 'mark': '我<s>書</s>放好把。'}}, 'note': ''}
+    store[path] = grade_docs('graded', review, {'got': 2, 'max': 3})
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    page.click('.hwrow [data-g=s1]'); page.wait_for_timeout(200)
+    check('已批改的重新打開：還原上次的分數和標記', page.inner_text('#gScore').strip() == '2 / 3' and '<s>' in page.evaluate("document.querySelector('[data-edit]').innerHTML") and '更新批改' in page.inner_text('#app'))
+    page.click('#gBack'); page.wait_for_timeout(100)
+    store[path] = grade_docs()
+    ctx.close()
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    page.click('.card [data-g=s1]'); page.wait_for_timeout(200)
+    page.once('dialog', lambda dlg: dlg.accept())
+    page.click('#gRedo'); page.wait_for_timeout(400)
+    d = page.evaluate("window.__fb.store['%s']" % path)
+    check('退回重做：狀態變回未交，答案保留，沒有批改結果', d['status'] == 'todo' and d['answers']['f1'] == '把' and 'review' not in d and 'result' not in d and 'submittedAt' not in d, d)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 學生看到的批改結果
+    review = {'items': {'f1': {'got': 1, 'max': 1, 'key': '把'}, 'c1': {'got': 0, 'max': 1, 'key': 'B　我把書放好', 'note': '把字句：把＋物品＋動作'}, 'se1': {'got': 0.5, 'max': 1, 'key': '我把書放好。', 'mark': '我<s>書</s><u>放好</u>把。<script>alert(1)</script>'}}, 'note': '很棒！'}
+    store[path] = grade_docs('graded', review, {'got': 1.5, 'max': 3})
+    ctx, page, errs = new_page(browser, base_state(store))
+    page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+    page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    page.click('#langBar button[data-l=tc]'); page.click('[data-hw=w1]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('學生：看到分數、老師的話', '1.5' in txt and '很棒！' in txt and '老師的話' in txt, txt[:300])
+    check('學生：答對的標對，答錯的標錯並看到標準答案和備註', '答對了' in txt and '答錯了' in txt and '我把書放好' in txt and '把字句：把＋物品＋動作' in txt)
+    check('學生：造句看到老師的標記（刪除線、底線）和示範答案，標記裡的程式碼被拿掉', page.locator('.mk s').count() == 1 and page.locator('.mk u').count() == 1 and page.locator('.mk script').count() == 0 and '示範答案' in txt)
+    check('學生：批改後所有輸入都不能改', page.locator('input[data-id=f1]').is_disabled())
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 不顯示分數：只藏分數，對錯和標準答案還在
+    review['hideScore'] = True; store[path] = grade_docs('graded', review, {'got': 1.5, 'max': 3})
+    ctx, page, errs = new_page(browser, base_state(store))
+    page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+    page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    page.click('#langBar button[data-l=tc]')
+    check('不顯示分數：作業清單沒有分數', '1.5' not in page.inner_text('#app') and '已批改' in page.inner_text('#app'))
+    page.click('[data-hw=w1]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('不顯示分數：作業裡沒有分數，但對錯、標準答案、老師的話都在', '得分' not in txt and '0.5/1' not in txt and '答對了' in txt and '答錯了' in txt and '我把書放好' in txt and '很棒！' in txt, txt[:300])
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 老師勾「不顯示分數」→ 寫進去
+    store[path] = grade_docs()
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    page.click('.card [data-g=s1]'); page.wait_for_timeout(200)
+    page.click('.gi[data-id=se1] .gb button.y'); page.check('#gHide'); page.click('#gDone'); page.wait_for_timeout(400)
+    d = page.evaluate("window.__fb.store['%s']" % path)
+    check('勾了不顯示分數：review.hideScore 為真，後台分數照樣存', d['review']['hideScore'] is True and d['result']['max'] == 3 and '已批改 2/3' in page.inner_text('#app'), d.get('result'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -416,6 +529,7 @@ with sync_playwright() as p:
     preview_tests(browser, base)
     hw_admin_tests(browser, base)
     hw_student_tests(browser, base)
+    hw_grade_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

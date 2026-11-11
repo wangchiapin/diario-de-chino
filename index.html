@@ -87,6 +87,13 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .hwq .opt{display:flex;gap:10px;align-items:center;padding:5px 0;font-size:17px}
 .hwq input[type=radio]{width:20px;height:20px;flex:none;margin:0;padding:0;accent-color:#7a6a50}
 .hwq .opt b{flex:none}
+.rv{margin:6px 0 2px;padding:8px 10px;border-radius:8px;font-size:14px;line-height:1.7}
+.rv.y{background:#dbe7da}.rv.n{background:#f3dfd9}.rv.h{background:#f0e2c3}
+.rv .k{display:block;color:var(--text)}.rv .lab{font-size:12px;color:var(--sub);margin-right:6px}.rv .nt{display:block;font-size:12px;color:var(--sub)}
+.mk{margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:17px;line-height:1.8;white-space:pre-wrap}
+.tnote{background:#f0ece1;border-radius:8px;padding:10px 12px;font-size:15px;margin-top:10px;white-space:pre-wrap}
+.rvb{font-size:13px;font-weight:600;margin-right:6px}
+
 .bank{background:#f0ece1;border-radius:8px;padding:8px 12px;margin:6px 0 4px;font-size:17px;line-height:1.9}
 .tok{font:inherit;font-size:17px;padding:5px 10px;margin:3px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);cursor:pointer}
 .ans{min-height:44px;border-bottom:2px solid var(--accent);padding:4px 0;margin-bottom:6px}
@@ -109,6 +116,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
   <div class="foot" id="foot"></div>
 </div>
 <script src="portal-core.js"></script>
+<script src="portal-hw.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -383,7 +391,7 @@ function hwCardHtml(){
   if(!ids.length) return '';
   return `<div class="card"><h2>${esc(T('hwTitle'))}</h2>` + ids.map(id => {
     const d = hwDocs[id];
-    return `<div class="hwitem"><div><div class="t">${esc(d.title || '—')}</div>${hwChip(d)}${d.status === 'graded' && d.result ? ` <span class="muted">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</span>` : ''}</div>
+    return `<div class="hwitem"><div><div class="t">${esc(d.title || '—')}</div>${hwChip(d)}${d.status === 'graded' && d.result && !hwHideScore(d) ? ` <span class="muted">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</span>` : ''}</div>
       <button class="btn ${d.status === 'todo' && !PREVIEW ? '' : 'quiet'}" data-hw="${esc(id)}">${esc(T(d.status === 'todo' && !PREVIEW ? 'hwStart' : 'hwView'))}</button></div>`;
   }).join('') + '</div>';
 }
@@ -431,6 +439,24 @@ function hwUnansweredCount(d){
   return n;
 }
 
+const hwHideScore = d => !!(d && d.review && d.review.hideScore);
+/* 批改後：老師標記的作答、每題的對錯和標準答案 */
+function hwTa(q, a, D){
+  const d = hwDocs[hwOpen], rv = d && d.status === 'graded' && d.review && d.review.items && d.review.items[q.id];
+  if(rv && typeof rv.mark === 'string' && rv.mark) return `<div class="lab-mk"><span class="muted" style="font-size:12px">${esc(T('hwMarked'))}</span></div><div class="mk">${hwCleanMark(rv.mark)}</div>`;
+  return `<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea>`;
+}
+function hwReviewHtml(sec, q){
+  const d = hwDocs[hwOpen], rv = d && d.status === 'graded' && d.review && d.review.items && d.review.items[q.id];
+  if(!rv) return '';
+  const cls = rv.got >= rv.max ? 'y' : rv.got > 0 ? 'h' : 'n';
+  const ico = cls === 'y' ? '✓' : cls === 'h' ? '½' : '✗';
+  const word = T(cls === 'y' ? 'hwRight' : cls === 'h' ? 'hwHalf' : 'hwWrong');
+  const pts = !hwHideScore(d) && (sec.type === 'cloze' || cls === 'h') ? ` (${rv.got}/${rv.max})` : '';
+  const keyLab = sec.type === 'sentence' ? 'hwSample' : 'hwKey';
+  return `<div class="rv ${cls}"><span class="rvb">${ico} ${esc(word)}${esc(pts)}</span>${cls === 'y' && ['translate','zh2es','sentence'].indexOf(sec.type) < 0 ? '' : `<span class="k"><span class="lab">${esc(T(keyLab))}</span>${esc(rv.key || '')}</span>`}${rv.note ? `<span class="nt">${esc(rv.note)}</span>` : ''}</div>`;
+}
+
 function hwItemHtml(sec, q, no, dis){
   const a = hwDraft[q.id], D = dis ? ' disabled' : '';
   const head = `<span class="no">${no}</span>`;
@@ -453,11 +479,11 @@ function hwItemHtml(sec, q, no, dis){
     case 'fix':
       return `<div class="hwq">${head}<span class="zh">${esc(q.wrong)}</span><textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
     case 'translate':
-      return `<div class="hwq">${head}<span>${esc(q.es)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+      return `<div class="hwq">${head}<span>${esc(q.es)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}${hwTa(q, a, D)}</div>`;
     case 'zh2es':
-      return `<div class="hwq">${head}<span class="zh">${esc(q.zh)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+      return `<div class="hwq">${head}<span class="zh">${esc(q.zh)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}${hwTa(q, a, D)}</div>`;
     case 'sentence':
-      return `<div class="hwq">${head}<span class="zh">${esc(q.cue)}</span>${es}<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+      return `<div class="hwq">${head}<span class="zh">${esc(q.cue)}</span>${es}${hwTa(q, a, D)}</div>`;
     case 'match':
       return `<div class="matchrow"><span class="no">${no}</span><span class="zh" style="font-size:18px;flex:1">${esc(q.zh)}</span><select data-k="mt" data-id="${esc(q.id)}"${D}><option value="">${esc(T('hwPick'))}</option>${sec.rights.map((r, k) => `<option value="${k}" ${a === k ? 'selected' : ''}>${hwLetter(k)}</option>`).join('')}</select></div>`;
   }
@@ -477,13 +503,13 @@ function renderHw(root){
   let h = `<div class="card"><button class="btn quiet" id="hwBack" style="padding:4px 14px;font-size:13px">‹ ${esc(T('hwBack'))}</button>
     <h2 style="margin-top:12px">${esc(d.title || '')}</h2>
     <div>${hwChip(d)} <span class="muted">${esc(T('hwPoints', { n: d.total || 0 }))}</span></div>
-    ${d.status === 'graded' && d.result ? `<div class="big" style="margin-top:6px">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</div>` : ''}
-    ${PREVIEW ? `<div class="msg">${esc(T('hwPreviewRO'))}</div>` : d.status !== 'todo' ? `<div class="msg">${esc(T('hwLocked'))}</div>` : ''}</div>`;
+    ${d.status === 'graded' && d.result && !hwHideScore(d) ? `<div class="big" style="margin-top:6px">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</div>` : ''}
+    ${PREVIEW ? `<div class="msg">${esc(T('hwPreviewRO'))}</div>` : d.status === 'submitted' ? `<div class="msg">${esc(T('hwLocked'))}</div>` : ''}${d.status === 'graded' && d.review && d.review.note ? `<div class="tnote"><b>${esc(T('hwTeacherNote'))}</b><br>${esc(d.review.note)}</div>` : ''}</div>`;
   (d.sections || []).forEach((sec, si) => {
     h += `<div class="card"><h2>${NUM[si] || si + 1}、${esc(T('hwT_' + sec.type))}</h2>`;
     if(sec.bank && sec.bank.length && (sec.type === 'fill' || sec.type === 'cloze')) h += `<div class="bank">${sec.bank.map(esc).join('　')}</div>`;
     if(sec.type === 'match') h += `<div class="rights">${sec.rights.map((r, k) => `<div><b>${hwLetter(k)}</b> ${esc(r)}</div>`).join('')}</div>`;
-    sec.items.forEach((q, qi) => { h += hwItemHtml(sec, q, qi + 1, locked); });
+    sec.items.forEach((q, qi) => { h += hwItemHtml(sec, q, qi + 1, locked) + hwReviewHtml(sec, q); });
     h += '</div>';
   });
   if(!locked) h += `<div class="card" id="hwFoot"><div class="savemsg" id="hwSave"></div><div id="hwAction"></div></div>`;

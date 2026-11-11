@@ -36,6 +36,35 @@ button.tiny{font-size:12px;padding:3px 10px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hidden{display:none !important}
 ol{margin:6px 0 0 18px;padding:0}
+
+/* 批改 */
+.gbar{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.gbar .sc{font-size:18px;font-weight:600;margin-left:auto}
+.gnote{background:#f0ece1;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:10px}
+.gi{padding:12px 0;border-top:1px solid var(--line)}
+.gi:first-of-type{border-top:0}
+.gi.need{background:#f7ebe6;border-radius:8px;padding:12px 8px}
+.gq{font-size:17px;line-height:1.9}
+.gq .no{color:var(--sub);font-size:13px;margin-right:6px}
+.gq .es{font-size:13px;color:var(--sub);display:block}
+.ga{margin-top:4px;font-size:16px}
+.ga .lab,.gk .lab{font-size:12px;color:var(--sub);margin-right:6px}
+.gk{margin-top:2px;font-size:15px;color:#5f7f63}
+.gk .nt{display:block;font-size:12px;color:var(--sub)}
+.gb{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.gb button{background:#fff;color:var(--text);border:1px solid var(--line);padding:6px 16px;min-width:64px}
+.gb button.on.y{background:#dbe7da;border-color:#8fb293;color:#35553a;font-weight:600}
+.gb button.on.h{background:#f0e2c3;border-color:#d2b97f;color:#5a4624;font-weight:600}
+.gb button.on.n{background:#f0d9d3;border-color:#d39b8f;color:#8a3a2e;font-weight:600}
+.gtools{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.gtools button{background:#fff;color:var(--text);border:1px solid var(--line);padding:4px 11px;font-size:14px;border-radius:8px;min-width:36px}
+.gtools .sep{font-size:12px;color:var(--sub);margin-left:4px}
+.gedit{margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:17px;line-height:1.8;min-height:50px;white-space:pre-wrap;outline:none}
+.gedit:focus{border-color:var(--accent)}
+.gblank{display:inline-block;padding:1px 9px;margin:2px 4px 2px 0;border-radius:8px;border:1px solid var(--line);cursor:pointer;background:#fff}
+.gblank.y{background:#dbe7da;border-color:#8fb293}.gblank.n{background:#f0d9d3;border-color:#d39b8f}
+.gnotebox{width:100%;min-height:70px;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.gmsg{font-size:13px;margin-top:6px}
 @media (max-width:640px){
   table,thead,tbody,tr,td{display:block}
   thead{display:none}
@@ -54,7 +83,7 @@ ol{margin:6px 0 0 18px;padding:0}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, setDoc, deleteDoc, updateDoc, deleteField, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp({
   apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0",
@@ -73,6 +102,7 @@ let unsubs = [];
 let pool = {}, poolLoaded = false, admins = {}, hw = {}, hwUnsubs = {};   // hw：學生代號 → { 作業代號 → 文件 }
 let assignOpen = null, assignSel = {}, hwNote = {}, adminDraft = { code: '', label: '' }, adminMsg = null;
 const poolCache = {};
+let gradeOpen = null, gdraft = null, gmsg = null;   // 批改中：{sid,wid}、批改草稿
 let rowMsg = {};          // 學生代號 → {text, ok}
 let drafts = {};          // 學生代號 → 還沒儲存的電子郵件
 let authReady = false, loginErr = '';
@@ -102,8 +132,15 @@ function hwChip(d){
   if(d.status === 'submitted') return '<span class="chip submitted">已交，待批改</span>';
   return '<span class="chip todo">未交</span>';
 }
+function pendingHtml(active){
+  const list = [];
+  active.forEach(sid => Object.keys(hw[sid] || {}).forEach(wid => { const d = hw[sid][wid]; if(d.status === 'submitted') list.push({ sid, wid, d }); }));
+  if(!list.length) return '';
+  list.sort((a, b) => (a.d.submittedAt || 0) - (b.d.submittedAt || 0));
+  return `<div class="card"><h2>等你批改（${list.length}）</h2>${list.map(x => `<div class="row" style="padding:5px 0"><b>${esc(students[x.sid].name)}</b><span class="muted">${esc(x.d.title || '')}</span><span class="muted small">${esc(fmtTime(x.d.submittedAt))} 交</span><button class="tiny" data-g="${esc(x.sid)}" data-gw="${esc(x.wid)}">批改</button></div>`).join('')}</div>`;
+}
 function hwHtml(active){
-  let h = `<div class="card"><h2>作業（從練習單產生器發布）</h2>`;
+  let h = pendingHtml(active) + `<div class="card"><h2>作業（從練習單產生器發布）</h2>`;
   const ids = Object.keys(pool).sort((a, b) => (pool[b].upd || pool[b].ts || 0) - (pool[a].upd || pool[a].ts || 0));
   if(!poolLoaded){ h += '<div class="muted">載入中…</div>'; }
   else if(!ids.length){ h += `<div class="muted small">還沒有作業。到練習單產生器，登入 Google 後按「發布給學生頁」，作業就會出現在這裡。第一次要先在下面「發布帳號」設定。</div>`; }
@@ -112,7 +149,7 @@ function hwHtml(active){
     const rows = active.map(sid => ({ sid, d: (hw[sid] || {})[wid] })).filter(x => x.d);
     h += `<div class="hwrow" data-wid="${esc(wid)}"><div class="row"><b>${esc(p.name || '（沒有名稱）')}</b><span class="muted small">${total} 分　${esc(fmtTime(p.upd || p.ts))}</span>
       <button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button></div>`;
-    if(rows.length) h += `<div class="small" style="margin-top:4px">${rows.map(x => `<span class="muted">${esc(students[x.sid].name)}</span> ${hwChip(x.d)}`).join('')}</div>`;
+    if(rows.length) h += `<div class="small" style="margin-top:4px">${rows.map(x => `<span class="muted">${esc(students[x.sid].name)}</span> ${hwChip(x.d)}${x.d.status !== 'todo' ? `<button class="tiny quiet" data-g="${esc(x.sid)}" data-gw="${esc(wid)}">${x.d.status === 'graded' ? '看批改' : '批改'}</button> ` : ''}`).join('')}</div>`;
     if(assignOpen === wid){
       const sel = assignSel[wid] || {};
       h += `<div class="picks" style="margin-top:8px">${active.map(sid => {
@@ -136,6 +173,7 @@ function hwHtml(active){
   return h;
 }
 function bindHw(root, active){
+  root.querySelectorAll('[data-g]').forEach(b => b.onclick = () => openGrade(b.dataset.g, b.dataset.gw));
   const c = $('tidCopy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(uid); c.textContent = '已複製'; }catch(e){ $('tidShow').select(); } };
   const ac = $('adCode'), al = $('adLabel');
   if(ac){ ac.oninput = () => { adminDraft.code = ac.value; }; al.oninput = () => { adminDraft.label = al.value; }; $('adAdd').onclick = addAdmin; }
@@ -179,8 +217,186 @@ async function sendAssign(wid){
   render();
 }
 
+/* ───────── 批改畫面 ───────── */
+const NUMZH = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+const MANUAL = { translate: 1, zh2es: 1, sentence: 1 };
+function nl2br(t){ return esc(t).replace(/\n/g, '<br>'); }
+
+// 把這份作業整理成一題一題：題目、學生答案、標準答案、分數
+function gradeItems(sid, wid){
+  const st = poolState(wid), d = (hw[sid] || {})[wid]; if(!st || !st.sections || !d) return null;
+  const ans = d.answers || {}, auto = hwAutoGrade(st, ans), old = d.review && d.review.items || {};
+  const list = [];
+  hwActiveSections(st).forEach((sec, si) => {
+    const items = hwActiveItems(sec), perm = sec.type === 'match' ? hwMatchPerm(items) : null;
+    items.forEach((it, qi) => {
+      const a = ans[it.id], au = auto.items[it.id], o = old[it.id], t = sec.type;
+      let q = '', es = '', mine = '';
+      if(t === 'fill'){ q = esc(it.zh || '').replace('__', '＿＿＿'); es = it.es || ''; mine = a || ''; }
+      else if(t === 'cloze'){ q = esc(it.text || '').replace(/\{(\d+)\}/g, '（$1）'); mine = Array.isArray(a) ? a.map(x => x || '＿').join('、') : ''; }
+      else if(t === 'order'){ q = esc((it.tokens || []).join(' ／ ')); es = it.es || ''; mine = Array.isArray(a) ? a.join('') : ''; }
+      else if(t === 'choice'){ q = esc(it.es || ''); es = (it.options || []).map((x, i) => hwLetter(i) + ' ' + x).join('　'); mine = typeof a === 'number' ? hwLetter(a) + '　' + ((it.options || [])[a] || '') : ''; }
+      else if(t === 'fix'){ q = esc(it.wrong || ''); mine = a || ''; }
+      else if(t === 'translate'){ q = esc(it.es || ''); mine = a || ''; }
+      else if(t === 'zh2es'){ q = esc(it.zh || ''); mine = a || ''; }
+      else if(t === 'sentence'){ q = esc(it.cue || ''); es = it.es || ''; mine = a || ''; }
+      else if(t === 'match'){ q = esc(it.zh || ''); const r = typeof a === 'number' && perm[a] != null ? items[perm[a]] : null; mine = r ? hwLetter(a) + '　' + r.es : ''; }
+      const row = { id: it.id, type: t, no: qi + 1, secNo: si, first: qi === 0, q, es, mine, key: hwKeyText(t, it), note: String(it.note || it.tip || ''), max: au.max, manual: !au.auto,
+        got: au.auto ? au.got : null, blanks: au.blanks ? au.blanks.slice() : null, mark: MANUAL[t] ? nl2br(mine) : '' };
+      if(o){ if(o.got != null) row.got = o.got; if(o.blanks) row.blanks = o.blanks.slice(); if(typeof o.mark === 'string' && o.mark) row.mark = o.mark; }
+      list.push(row);
+    });
+  });
+  return { list, secs: hwActiveSections(st).map(sc => sc.type), note: d.review && d.review.note || '', hideScore: !!(d.review && d.review.hideScore) };
+}
+const GDKEY = (sid, wid) => 'dc.grade.' + uid + '.' + sid + '.' + wid;
+function gradeSaveLocal(){ if(!gradeOpen || !gdraft) return; try{ localStorage.setItem(GDKEY(gradeOpen.sid, gradeOpen.wid), JSON.stringify({ t: Date.now(), items: gdraft.list.map(r => ({ id: r.id, got: r.got, blanks: r.blanks, mark: r.mark })), note: gdraft.note, hide: !!gdraft.hideScore })); }catch(e){} }
+function gradeLoadLocal(sid, wid, g){
+  try{
+    const d = (hw[sid] || {})[wid], raw = localStorage.getItem(GDKEY(sid, wid)); if(!raw || !d || d.status !== 'submitted') return false;
+    const sv = JSON.parse(raw), by = {}; sv.items.forEach(x => by[x.id] = x);
+    g.list.forEach(r => { const x = by[r.id]; if(!x) return; if(x.got != null) r.got = x.got; if(x.blanks) r.blanks = x.blanks; if(typeof x.mark === 'string') r.mark = x.mark; });
+    g.note = sv.note || ''; g.hideScore = !!sv.hide; return true;
+  }catch(e){ return false; }
+}
+function gradeClearLocal(sid, wid){ try{ localStorage.removeItem(GDKEY(sid, wid)); }catch(e){} }
+
+function openGrade(sid, wid){
+  const g = gradeItems(sid, wid);
+  if(!g){ alert('這份作業的內容讀不出來，請回練習單產生器重新發布。'); return; }
+  const restored = gradeLoadLocal(sid, wid, g);
+  gradeOpen = { sid, wid, restored }; gdraft = g; gmsg = null;
+  gradeRender(); window.scrollTo(0, 0);
+}
+function closeGrade(){ gradeSaveLocal(); gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0); }
+function gradeTotal(){ return hwSumReview(Object.fromEntries(gdraft.list.map(r => [r.id, { got: r.got, max: r.max }]))); }
+function gradeNeed(){ return gdraft.list.filter(r => r.got == null).length; }
+
+function gbtn(r, label, val, cls){
+  const on = r.got === val;
+  return `<button class="${cls}${on ? ' on' : ''}" data-v="${val}">${label}</button>`;
+}
+function gcardHtml(r){
+  let h = `<div class="gi${r.got == null && r.manual && gdraft.showNeed ? ' need' : ''}" data-id="${esc(r.id)}"><div class="gq"><span class="no">${r.no}</span>${r.q}${r.es ? `<span class="es">${esc(r.es)}</span>` : ''}</div>`;
+  if(r.type === 'cloze'){
+    h += `<div class="ga"><span class="lab">學生（點一下可改對錯）</span>${(r.blanks || []).map((ok, k) => `<span class="gblank ${ok ? 'y' : 'n'}" data-bl="${k}">${k + 1}. ${esc((gdraft.clozeMine[r.id] || [])[k] || '＿')} ${ok ? '✓' : '✗'}</span>`).join('')}</div>`;
+    h += `<div class="gk"><span class="lab">標準答案</span>${esc(r.key)}</div>`;
+  }else if(r.manual){
+    h += `<div class="gk"><span class="lab">${r.type === 'sentence' ? '示範答案' : '標準答案'}</span>${esc(r.key)}${r.note ? `<span class="nt">${esc(r.note)}</span>` : ''}</div>`;
+    h += `<div class="gtools"><span class="sep">選取文字後按：</span><button data-f="bold"><b>B</b></button><button data-f="underline"><u>U</u></button><button data-f="strikeThrough"><s>S</s></button><button data-f="hl" data-c="#fff0a8" style="background:#fff0a8">黃</button><button data-f="hl" data-c="#cfe6c9" style="background:#cfe6c9">綠</button><button data-f="hl" data-c="#f6cfc6" style="background:#f6cfc6">紅</button><button data-f="removeFormat">清除</button></div>
+      <div class="gedit" contenteditable="true" data-edit="1" spellcheck="false">${r.mark || '<br>'}</div>`;
+  }else{
+    h += `<div class="ga"><span class="lab">學生</span>${r.mine ? `<b>${esc(r.mine)}</b>` : '<span class="muted">（沒有作答）</span>'}</div>`;
+    h += `<div class="gk"><span class="lab">標準答案</span>${esc(r.key)}${r.note ? `<span class="nt">${esc(r.note)}</span>` : ''}</div>`;
+  }
+  if(r.type !== 'cloze'){
+    h += `<div class="gb">${gbtn(r, '✓ 對', r.max, 'y')}${r.manual ? gbtn(r, '½ 一半', r.max / 2, 'h') : ''}${gbtn(r, '✗ 錯', 0, 'n')}</div>`;
+  }
+  return h + '</div>';
+}
+function gradeRender(){
+  const o = gradeOpen, root = $('app'), d = (hw[o.sid] || {})[o.wid], s = students[o.sid] || {}, g = gdraft;
+  if(!d){ gradeOpen = null; return render(); }
+  g.clozeMine = {};
+  g.list.forEach(r => { if(r.type === 'cloze'){ const a = (d.answers || {})[r.id]; g.clozeMine[r.id] = Array.isArray(a) ? a : []; } });
+  const manualN = g.list.filter(r => r.manual).length, tot = gradeTotal();
+  let h = `<div class="gbar"><button class="quiet" id="gBack">‹ 返回</button><div><b>${esc(s.name || '')}</b> <span class="muted">${esc(d.title || '')}</span></div><div class="sc" id="gScore">${tot.got} / ${tot.max}</div></div>`;
+  if(d.status === 'graded') h += `<div class="gnote">這份已經批改過了（${esc(d.result ? d.result.got + '/' + d.result.max : '')}）。改完按「更新批改」，學生會看到新的結果。</div>`;
+  else h += `<div class="gnote">${o.restored ? '已接回你上次沒按完成的批改。' : '選擇、填空、排序、配對、改錯已經幫你自動批改好了，不對的話點一下就能改。'}${manualN ? `西翻中、中翻西、造句共 ${manualN} 題要你打分。` : ''}</div>`;
+  let lastSec = -1, open = false;
+  g.list.forEach(r => {
+    if(r.secNo !== lastSec){ if(open) h += '</div>'; lastSec = r.secNo; open = true; h += `<div class="card"><h2>${NUMZH[r.secNo] || r.secNo + 1}、${esc(HW_TYPE_NAME[r.type] || r.type)}</h2>`; }
+    h += gcardHtml(r);
+  });
+  if(open) h += '</div>';
+  h += `<div class="card"><h2>給學生的話（選填）</h2><textarea class="gnotebox" id="gNote" placeholder="例如：整體很棒，注意「把」字句的位置。">${esc(g.note)}</textarea>
+    <label class="row small" style="margin-top:10px;gap:6px"><input type="checkbox" id="gHide" style="width:auto" ${g.hideScore ? 'checked' : ''}>不顯示分數給學生（還是會顯示每題對錯和標準答案；你這邊仍看得到分數）</label>
+    <div class="row" style="margin-top:10px"><button id="gDone">${d.status === 'graded' ? '更新批改' : '完成批改'}</button>${d.status === 'submitted' ? '<button class="quiet" id="gRedo">退回重做</button>' : ''}<span class="gmsg ${gmsg && !gmsg.ok ? 'err' : 'ok'}" id="gMsg">${esc(gmsg ? gmsg.text : '')}</span></div>
+    <div class="muted small" style="margin-top:8px">按「完成批改」後，學生才看得到結果和標準答案。「退回重做」會讓學生重新作答（他原本的答案會保留）。</div></div>`;
+  root.innerHTML = h;
+  bindGrade(root);
+}
+const HW_TYPE_NAME = { fill: '選詞填空', cloze: '段落填空', order: '排序', choice: '選擇', fix: '改錯', translate: '西翻中', zh2es: '中翻西', match: '配對', sentence: '造句' };
+
+function gradeUpdateScore(){ const t = gradeTotal(); const el = $('gScore'); if(el) el.textContent = t.got + ' / ' + t.max; gradeSaveLocal(); }
+function gradeCard(root, id){ return root.querySelector(`.gi[data-id="${CSS.escape(id)}"]`); }
+function gradeRedrawCard(root, id){
+  const r = gdraft.list.find(x => x.id === id), el = gradeCard(root, id); if(!r || !el) return;
+  const t = document.createElement('div'); t.innerHTML = gcardHtml(r); el.replaceWith(t.firstChild);
+}
+function bindGrade(root){
+  $('gBack').onclick = closeGrade;
+  $('gNote').oninput = e => { gdraft.note = e.target.value; gradeSaveLocal(); };
+  $('gHide').onchange = e => { gdraft.hideScore = e.target.checked; gradeSaveLocal(); };
+  $('gDone').onclick = gradeFinish;
+  const rd = $('gRedo'); if(rd) rd.onclick = gradeRedo;
+  // 工具列：按下去時不要讓選取的文字消失
+  root.onmousedown = e => { if(e.target.closest('.gtools button')) e.preventDefault(); };
+  root.onclick = e => {
+    const card = e.target.closest('.gi'); if(!card) return;
+    const id = card.dataset.id, r = gdraft.list.find(x => x.id === id); if(!r) return;
+    const fb = e.target.closest('.gtools button');
+    if(fb){
+      const edit = card.querySelector('[data-edit]'); edit.focus();
+      document.execCommand('styleWithCSS', false, true);
+      if(fb.dataset.f === 'hl'){ if(!document.execCommand('hiliteColor', false, fb.dataset.c)) document.execCommand('backColor', false, fb.dataset.c); }
+      else document.execCommand(fb.dataset.f, false, null);
+      r.mark = edit.innerHTML; gradeSaveLocal(); return;
+    }
+    const bl = e.target.closest('[data-bl]');
+    if(bl){ const k = +bl.dataset.bl; r.blanks[k] = !r.blanks[k]; r.got = r.blanks.filter(Boolean).length; gradeRedrawCard(root, id); gradeUpdateScore(); return; }
+    const gb = e.target.closest('.gb button');
+    if(gb){
+      r.got = +gb.dataset.v;
+      const edit = card.querySelector('[data-edit]'); if(edit) r.mark = edit.innerHTML;
+      gradeRedrawCard(root, id); gradeUpdateScore();
+    }
+  };
+  root.oninput = e => {
+    const ed = e.target.closest && e.target.closest('[data-edit]'); if(!ed) return;
+    const r = gdraft.list.find(x => x.id === ed.closest('.gi').dataset.id); if(r){ r.mark = ed.innerHTML; gradeSaveLocal(); }
+  };
+  // 貼上時只貼純文字，免得帶進奇怪的格式
+  root.onpaste = e => { const ed = e.target.closest && e.target.closest('[data-edit]'); if(!ed) return; e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text')); };
+}
+function setGmsg(text, ok){ gmsg = { text, ok }; const el = $('gMsg'); if(el){ el.textContent = text; el.className = 'gmsg ' + (ok ? 'ok' : 'err'); } }
+async function gradeFinish(){
+  const o = gradeOpen, g = gdraft, d = (hw[o.sid] || {})[o.wid];
+  const need = g.list.filter(r => r.got == null);
+  if(need.length){
+    g.showNeed = true; gradeRender();
+    setGmsg(`還有 ${need.length} 題沒打分（已標成紅底），打完才能送出`, false);
+    const el = document.querySelector('.gi.need'); if(el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return;
+  }
+  const items = {};
+  g.list.forEach(r => {
+    const it = { got: r.got, max: r.max, key: r.key };
+    if(r.note) it.note = r.note;
+    if(r.blanks) it.blanks = r.blanks;
+    if(r.manual) it.mark = hwCleanMark(r.mark);
+    items[r.id] = it;
+  });
+  const res = hwSumReview(items), btn = $('gDone'); btn.disabled = true; setGmsg('送出中…', true);
+  try{
+    await updateDoc(doc(db, 'portal', uid, 'students', o.sid, 'hw', o.wid), { status: 'graded', result: res, review: { items, note: (g.note || '').trim(), hideScore: !!g.hideScore, gradedAt: Date.now() } });
+    gradeClearLocal(o.sid, o.wid);
+    gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0);
+  }catch(err){ console.error(err); btn.disabled = false; setGmsg('送出失敗，請再試一次', false); }
+}
+async function gradeRedo(){
+  const o = gradeOpen;
+  if(!confirm('要把這份作業退回給學生重做嗎？學生原本的答案會保留，他可以修改後再交一次。')) return;
+  try{
+    await updateDoc(doc(db, 'portal', uid, 'students', o.sid, 'hw', o.wid), { status: 'todo', submittedAt: deleteField(), result: deleteField(), review: deleteField() });
+    gradeClearLocal(o.sid, o.wid);
+    gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0);
+  }catch(err){ console.error(err); setGmsg('退回失敗，請再試一次', false); }
+}
+
 function render(){
   const root = $('app');
+  if(uid && gradeOpen && gdraft && authReady){ $('btnLogout').classList.remove('hidden'); return; }   // 批改中：不要被資料更新洗掉畫面
   $('btnLogout').classList.toggle('hidden', !uid);
   if(!authReady){ root.innerHTML = '<div class="card muted">載入中…</div>'; return; }
   if(!uid){
@@ -289,7 +505,7 @@ function start(){
 
 $('btnLogout').onclick = () => signOut(auth);
 onAuthStateChanged(auth, user => {
-  authReady = true; uid = user ? user.uid : null; loginErr = '';
+  authReady = true; uid = user ? user.uid : null; loginErr = ''; gradeOpen = null; gdraft = null;
   if(uid) start(); else { stop(); render(); }
   if(uid) render();
 });
