@@ -57,6 +57,7 @@ export function onSnapshot(ref, cb, err){
   sub.fire = fire; setTimeout(fire, 0); return () => { fb().subs = fb().subs.filter(s => s !== sub); };
 }
 export async function setDoc(ref, data){ fb().store[ref.path] = data; fb().subs.forEach(s => s.fire()); }
+export async function updateDoc(ref, data){ if(window.__fb.failUpdate){ const e = new Error('x'); e.code = 'unavailable'; throw e; } fb().store[ref.path] = Object.assign({}, fb().store[ref.path], data); fb().subs.forEach(s => s.fire()); }
 export async function deleteDoc(ref){ delete fb().store[ref.path]; fb().subs.forEach(s => s.fire()); }
 """
 STUBS = {
@@ -241,7 +242,7 @@ def preview_tests(browser, base):
     txt = page.inner_text('#app')
     check('老師預覽：看到「老師預覽」橫幅與學生姓名', '老師預覽' in txt and 'Pedro' in txt, txt[:200])
     check('預覽看到跟學生一樣的內容（剩 3 堂、12 堂、月曆）', '3 clases' in txt and '12 clases' in txt and page.locator('.day.st-done').count() >= 1)
-    check('預覽直接讀老師自己路徑下的那位學生（不查對照表）', page.evaluate('window.__fb.reads.length') == 0 and page.evaluate("window.__fb.subs.map(s => s.ref.path)") == ['portal/%s/students/s1' % TID])
+    check('預覽直接讀老師自己路徑下的那位學生（不查對照表）', page.evaluate('window.__fb.reads.length') == 0 and sorted(page.evaluate("window.__fb.subs.map(s => s.ref.path)")) == sorted(['portal/%s/students/s1' % TID, 'portal/%s/students/s1/hw' % TID]))
     check('預覽沒有登出按鈕', page.locator('#btnLogout').count() == 0)
     page.select_option('#tzSel', 'Asia/Taipei'); page.wait_for_timeout(100)
     check('預覽改時區不會存起來', page.evaluate("localStorage.getItem('dc.tz.%s')" % TID) is None)
@@ -305,6 +306,108 @@ def hw_admin_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def hw_doc(status='todo', answers=None, result=None):
+    d = {'v': 1, 'wid': 'w1', 'title': '把字句練習', 'grammar': '把字句', 'total': 11, 'assignedAt': 1760000000000, 'status': status, 'answers': answers or {}, 'sections': [
+        {'id': 's1', 'type': 'fill', 'bank': ['把', '被'], 'items': [{'id': 'f1', 'zh': '請你__書放好。', 'es': 'Pon el libro.'}]},
+        {'id': 's2', 'type': 'cloze', 'bank': ['把', '被'], 'items': [{'id': 'c1', 'text': '我{1}書放好，書{2}我放好。', 'n': 2}]},
+        {'id': 's3', 'type': 'order', 'bank': [], 'items': [{'id': 'o1', 'tokens': ['放', '我', '把', '書', '好'], 'es': 'Puse el libro.'}]},
+        {'id': 's4', 'type': 'choice', 'bank': [], 'items': [{'id': 'ch1', 'es': 'Elige', 'options': [{'i': 0, 't': '我書把放好'}, {'i': 1, 't': '我把書放好'}, {'i': 2, 't': '把我書放好'}]}]},
+        {'id': 's5', 'type': 'fix', 'bank': [], 'items': [{'id': 'x1', 'wrong': '我書把放好'}]},
+        {'id': 's6', 'type': 'translate', 'bank': [], 'items': [{'id': 't1', 'es': 'Pon el libro.', 'vocab': '放'}]},
+        {'id': 's7', 'type': 'zh2es', 'bank': [], 'items': [{'id': 'z1', 'zh': '我把書放好', 'vocab': ''}]},
+        {'id': 's8', 'type': 'match', 'bank': [], 'rights': ['tomar', 'poner'], 'items': [{'id': 'm1', 'zh': '放'}, {'id': 'm2', 'zh': '拿'}]},
+        {'id': 's9', 'type': 'sentence', 'bank': [], 'items': [{'id': 'se1', 'cue': '把', 'es': ''}]}]}
+    if result: d['result'] = result
+    return d
+
+
+def hw_student_tests(browser, base):
+    import json
+    print('\n學生頁：作業')
+    path = 'portal/%s/students/s1/hw/w1' % TID
+    def login(page):
+        page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+        page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+        page.click('#langBar button[data-l=tc]')
+    ctx, page, errs = new_page(browser, base_state({path: hw_doc()}))
+    login(page)
+    txt = page.inner_text('#app')
+    check('首頁有作業卡片：標題、還沒交、開始作答', '把字句練習' in txt and '還沒交' in txt and '開始作答' in txt, txt[:300])
+    page.click('[data-hw=w1]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('九種題型標題都顯示', all(k in txt for k in ['選詞填空', '段落填空', '排序', '選擇', '改錯', '西翻中', '中翻西', '配對', '造句']))
+    check('詞庫顯示', '把　被' in txt)
+    # 作答
+    page.fill('input[data-id=f1]', '把')
+    page.fill('input[data-id=c1][data-n="0"]', '把'); page.fill('input[data-id=c1][data-n="1"]', '被')
+    page.click('[data-k=ora][data-ti="1"]'); page.click('[data-k=ora][data-ti="2"]'); page.click('[data-k=ora][data-ti="3"]'); page.click('[data-k=ora][data-ti="0"]'); page.click('[data-k=ora][data-ti="4"]')
+    check('排序：點詞語排進答案列', page.inner_text('[data-order=o1] .ans').replace('\n', '') == '我把書放好', page.inner_text('[data-order=o1] .ans'))
+    page.click('[data-k=orm][data-pos="3"]')
+    check('排序：點答案列的詞語會退回', page.inner_text('[data-order=o1] .ans').replace('\n', '') == '我把書好')
+    page.click('[data-k=ora][data-ti="0"]')
+    page.check('input[data-id=ch1][value="1"]')
+    page.fill('textarea[data-id=x1]', '我把書放好')
+    page.fill('textarea[data-id=t1]', '把書放好')
+    page.select_option('select[data-id=m1]', '1'); page.select_option('select[data-id=m2]', '0')
+    page.click('#langBar button[data-l=es]') if False else None
+    page.wait_for_timeout(1800)
+    ans = page.evaluate("window.__fb.store['%s'].answers" % path)
+    check('自動存檔：各題型的答案都存進去了，狀態還是未交', ans.get('f1') == '把' and ans.get('c1') == ['把', '被'] and ans.get('ch1') == 1 and ans.get('x1') == '我把書放好' and ans.get('m1') == 1 and ans.get('m2') == 0 and ans.get('t1') == '把書放好', ans)
+    check('排序答案存成詞語陣列（第 4 個退回後再放在最後）', ans.get('o1') == ['我', '把', '書', '好', '放'], ans.get('o1'))
+    check('狀態沒變：還是 todo', page.evaluate("window.__fb.store['%s'].status" % path) == 'todo')
+    # 打字不被洗掉
+    page.focus('textarea[data-id=se1]'); page.keyboard.type('我把書放好。', delay=30); page.wait_for_timeout(1800)
+    check('自動存檔後輸入框沒有被重畫洗掉（焦點與內容都還在）', page.evaluate("document.activeElement && document.activeElement.dataset.id") == 'se1' and page.input_value('textarea[data-id=se1]') == '我把書放好。')
+    # 交出
+    page.click('#hwSubmit'); page.wait_for_timeout(100)
+    txt = page.inner_text('#hwAction')
+    check('按交出：先確認，並提醒還有幾題沒作答（中翻西 1 題）', '不能再修改' in txt and '還有 1 題' in txt, txt)
+    page.click('#hwNo'); page.wait_for_timeout(100)
+    check('取消：沒有交出去', page.evaluate("window.__fb.store['%s'].status" % path) == 'todo' and page.locator('#hwSubmit').count() == 1)
+    page.click('#hwSubmit'); page.click('#hwYes'); page.wait_for_timeout(600)
+    d = page.evaluate("window.__fb.store['%s']" % path)
+    check('確定交出：狀態 submitted、有交出時間、答案完整', d['status'] == 'submitted' and d.get('submittedAt') and d['answers'].get('se1') == '我把書放好。', d)
+    txt = page.inner_text('#app')
+    check('交出後鎖定：顯示已交出訊息，輸入框全部不能改', '已經交出' in txt and page.locator('input[data-id=f1]').is_disabled() and page.locator('textarea[data-id=t1]').is_disabled() and page.locator('#hwSubmit').count() == 0)
+    check('鎖定時仍看得到自己的答案', page.input_value('input[data-id=f1]') == '把' and page.locator('input[data-id=ch1][value="1"]').is_checked())
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 存檔失敗要提醒
+    ctx, page, errs = new_page(browser, base_state({path: hw_doc()}))
+    login(page); page.click('[data-hw=w1]'); page.evaluate('window.__fb.failUpdate = true')
+    page.fill('input[data-id=f1]', '把'); page.wait_for_timeout(1800)
+    check('存檔失敗：顯示儲存失敗', '儲存失敗' in page.inner_text('#hwSave'))
+    ctx.close()
+
+    # 已批改／已交出的作業：唯讀＋分數
+    ctx, page, errs = new_page(browser, base_state({path: hw_doc('graded', {'f1': '把'}, {'got': 7, 'max': 11})}))
+    login(page)
+    check('首頁顯示已批改和分數', '已批改' in page.inner_text('#app') and '7／11' in page.inner_text('#app'))
+    page.click('[data-hw=w1]'); page.wait_for_timeout(200)
+    check('已批改的作業：唯讀、顯示分數', page.locator('input[data-id=f1]').is_disabled() and '7／11' in page.inner_text('#app'))
+    page.click('#hwBack'); page.wait_for_timeout(100)
+    check('返回首頁', '下一堂課' in page.inner_text('#app') or 'Próxima' in page.inner_text('#app') or '作業' in page.inner_text('#app'))
+    ctx.close()
+
+    # 看不到別人的作業、沒作業時不顯示卡片
+    ctx, page, errs = new_page(browser, base_state({'portal/%s/students/s2/hw/w9' % TID: hw_doc()}))
+    login(page)
+    check('沒有自己的作業：不顯示作業卡片，也看不到別人的', '把字句練習' not in page.content()); ctx.close()
+
+    # 老師預覽：唯讀、不寫入
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    ctx, page, errs = new_page(browser, base_state({path: hw_doc()}, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(500)
+    page.click('#langBar button[data-l=tc]')
+    before = page.evaluate("JSON.stringify(window.__fb.store['%s'])" % path)
+    page.click('[data-hw=w1]'); page.wait_for_timeout(200)
+    check('老師預覽：看得到作業，但輸入框都不能填、沒有交出按鈕', page.locator('input[data-id=f1]').is_disabled() and page.locator('#hwSubmit').count() == 0 and '只能看' in page.inner_text('#app'))
+    page.wait_for_timeout(1500)
+    check('老師預覽：沒有寫入任何資料', page.evaluate("JSON.stringify(window.__fb.store['%s'])" % path) == before)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -312,6 +415,7 @@ with sync_playwright() as p:
     admin_tests(browser, base)
     preview_tests(browser, base)
     hw_admin_tests(browser, base)
+    hw_student_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

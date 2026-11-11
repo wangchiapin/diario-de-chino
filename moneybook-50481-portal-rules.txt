@@ -2,15 +2,16 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-11 10:52（新增作業三段：admins、hwPool、students/{sid}/hw）
+// 最後更新：2026-11-11 11:02（學生可交作業：students/{sid}/hw 加上學生更新規則）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-11 11:02 students/{sid}/hw 加學生更新規則（只能改 answers、status、submittedAt，且只有還沒交的）
 //   - 2026-11-11 10:52 新增 portal/{tid}/admins、hwPool、students/{sid}/hw（作業，第一步：發布與發給學生）
 //   - 2026-11-11 新增 portal/{tid}/students 與 portal/{tid}/roster
 //
 // 誰能做什麼：
 //   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
 //   - 學生只能讀「自己那一份」：電子郵件已經驗證過，而且跟老師填在對照表（roster）裡的一樣。
-//   - 學生不能寫任何東西，也讀不到收入、匯款、備註、別的學生（那些在別的路徑，規則本來就只給本人）。
+//   - 學生唯一能寫的，是自己那份作業的答案和「交出」（見最下面）；讀不到收入、匯款、備註、別的學生（那些在別的路徑，規則本來就只給本人）。
 
     // 學生頁：日誌複製過來的「每位學生自己那一份」（姓名、付費、剩幾堂、已上幾堂、時區、上課日期時間）
     match /portal/{tid}/students/{sid} {
@@ -51,4 +52,19 @@
         (request.auth.token.email_verified == true &&
          get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
       allow write: if request.auth != null && request.auth.uid == tid;
+      // 學生作答：只能改 answers、status、submittedAt；只有「還沒交」(todo) 的作業才能改；status 只能是 todo 或 submitted。
+      // 交出後就鎖住，要重做由老師把 status 改回 todo。
+      allow update: if request.auth != null
+        && request.auth.token.email_verified == true
+        && get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email
+        && resource.data.status == 'todo'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'status', 'submittedAt'])
+        && request.resource.data.status in ['todo', 'submitted'];
     }
+
+
+// ===================================================================
+// 已經貼過第二批的話：不用重貼整份。只要把線上規則裡
+// 「match /portal/{tid}/students/{sid}/hw/{hid} { ... }」那一整段，換成上面這個新版本
+// （差別只有最後多了 allow update 那一段，學生才能存答案和交出作業）。
+// ===================================================================

@@ -66,6 +66,35 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .lesson.off .time b{text-decoration:line-through}
 .foot{font-size:12px;color:var(--sub);text-align:center;margin-top:18px}
 .hidden{display:none !important}
+
+/* 作業 */
+.hwitem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.hwitem:first-of-type{border-top:0;padding-top:2px}
+.hwitem .t{font-weight:600}
+.chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;margin-top:3px}
+.chip.todo{background:#e8e4db;color:#7b7467}.chip.submitted{background:#f0e2c3;color:#5a4624}.chip.graded{background:#dbe7da;color:#35553a}
+.btn{font:inherit;font-size:14px;padding:8px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:18px;cursor:pointer}
+.btn.quiet{background:transparent;color:var(--accent)}
+.btn:disabled{opacity:.5}
+.hwq{padding:10px 0;border-top:1px solid var(--line)}
+.hwq:first-of-type{border-top:0}
+.hwq .no{display:inline-block;min-width:22px;color:var(--sub);font-size:13px}
+.hwq .zh{font-size:18px;line-height:2}
+.hwq .es{font-size:13px;color:var(--sub);margin-top:2px}
+.hwq input[type=text],.hwq textarea,.hwq select{font:inherit;font-size:16px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+.hwq input.blank{width:5.5em;text-align:center;margin:0 3px}
+.hwq textarea{width:100%;min-height:64px;margin-top:6px;resize:vertical}
+.hwq .opt{display:flex;gap:10px;align-items:center;padding:5px 0;font-size:17px}
+.hwq input[type=radio]{width:20px;height:20px;flex:none;margin:0;padding:0;accent-color:#7a6a50}
+.hwq .opt b{flex:none}
+.bank{background:#f0ece1;border-radius:8px;padding:8px 12px;margin:6px 0 4px;font-size:17px;line-height:1.9}
+.tok{font:inherit;font-size:17px;padding:5px 10px;margin:3px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);cursor:pointer}
+.ans{min-height:44px;border-bottom:2px solid var(--accent);padding:4px 0;margin-bottom:6px}
+.ans .tok{background:var(--accent-soft)}
+.matchrow{display:flex;gap:10px;align-items:center;padding:4px 0;font-size:18px}
+.rights{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:15px;margin:6px 0 10px;color:var(--sub)}
+.savemsg{font-size:12px;color:var(--sub);min-height:16px;text-align:right}
+.savemsg.err{color:var(--warn)}
 </style>
 </head>
 <body>
@@ -83,7 +112,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* 跟日誌、老師後台用同一個 Firebase 專案 */
 const app = initializeApp({
@@ -256,6 +285,7 @@ function renderHome(root){
   if(!studentDoc){ root.innerHTML = `<div class="card center">${esc(T('noNoData'))}</div>${logoutBlock()}`; bindLogout(); return; }
   if(studentDoc.archived){ root.innerHTML = `<div class="card center">${esc(T('archived'))}</div>${logoutBlock()}`; bindLogout(); return; }
 
+  if(hwOpen && hwDocs[hwOpen]) return renderHw(root);
   const tz = effectiveTz(), now = Date.now();
   const groups = pcGroupByLocalDate(studentDoc.lessons || [], tz);
   const next = pcNextLesson(studentDoc.lessons || [], tz, now);
@@ -302,6 +332,7 @@ function renderHome(root){
   root.innerHTML = `
     <div class="card"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
     <div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div>
+    ${hwCardHtml()}
     ${stats}
     <div class="card">
       <h2>${esc(T('calendar'))}</h2>
@@ -322,7 +353,182 @@ function renderHome(root){
   $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
   $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
   $('tzSel').onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
-  bindLogout();
+  bindLogout(); bindHwCard(root);
+}
+
+/* ───────── 作業 ───────── */
+let hwDocs = {}, hwLoaded = false, hwErr = false, unsubHw = null;
+let hwOpen = null, hwOpenStatus = null, hwDraft = {}, hwOrder = {}, hwTimer = null, hwSaveState = '', hwConfirming = false;
+
+function startHw(sid){
+  if(unsubHw){ unsubHw(); unsubHw = null; }
+  hwDocs = {}; hwLoaded = false; hwErr = false; hwOpen = null;
+  unsubHw = onSnapshot(collection(db, 'portal', tid, 'students', sid, 'hw'),
+    snap => {
+      hwDocs = {}; snap.forEach(d => hwDocs[d.id] = d.data()); hwLoaded = true; hwErr = false;
+      if(hwOpen && !hwDocs[hwOpen]) hwOpen = null;
+      // 正在作答時，自己存檔造成的更新不重畫（不然輸入框會被洗掉）；只有狀態變了（交出、被批改、被退回）才重畫
+      if(hwOpen && hwDocs[hwOpen].status === hwOpenStatus) return;
+      render();
+    },
+    err => { console.error(err); hwLoaded = true; hwErr = true; render(); });
+}
+function stopHw(){ if(unsubHw){ unsubHw(); unsubHw = null; } hwDocs = {}; hwLoaded = false; hwErr = false; hwOpen = null; clearTimeout(hwTimer); }
+
+const hwLetter = i => String.fromCharCode(65 + i);
+const hwChip = d => `<span class="chip ${esc(d.status)}">${esc(T(d.status === 'graded' ? 'hwStGraded' : d.status === 'submitted' ? 'hwStSubmitted' : 'hwStTodo'))}</span>`;
+
+function hwCardHtml(){
+  const ids = Object.keys(hwDocs).sort((a, b) => (hwDocs[b].assignedAt || 0) - (hwDocs[a].assignedAt || 0));
+  if(!ids.length) return '';
+  return `<div class="card"><h2>${esc(T('hwTitle'))}</h2>` + ids.map(id => {
+    const d = hwDocs[id];
+    return `<div class="hwitem"><div><div class="t">${esc(d.title || '—')}</div>${hwChip(d)}${d.status === 'graded' && d.result ? ` <span class="muted">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</span>` : ''}</div>
+      <button class="btn ${d.status === 'todo' && !PREVIEW ? '' : 'quiet'}" data-hw="${esc(id)}">${esc(T(d.status === 'todo' && !PREVIEW ? 'hwStart' : 'hwView'))}</button></div>`;
+  }).join('') + '</div>';
+}
+function bindHwCard(root){
+  root.querySelectorAll('[data-hw]').forEach(b => b.onclick = () => openHw(b.dataset.hw));
+}
+function openHw(id){
+  const d = hwDocs[id]; if(!d) return;
+  hwOpen = id; hwOpenStatus = d.status; hwConfirming = false; hwSaveState = '';
+  hwDraft = JSON.parse(JSON.stringify(d.answers || {})); hwOrder = {};
+  // 排序題：把存好的詞語答案還原成「第幾個詞」
+  (d.sections || []).forEach(sec => { if(sec.type === 'order') sec.items.forEach(q => {
+    const used = [], a = Array.isArray(hwDraft[q.id]) ? hwDraft[q.id] : [];
+    a.forEach(t => { const i = q.tokens.findIndex((x, k) => x === t && used.indexOf(k) < 0); if(i >= 0) used.push(i); });
+    hwOrder[q.id] = used;
+  }); });
+  render(); window.scrollTo(0, 0);
+}
+function hwSetDraft(id, val){
+  if(val === '' || val == null || (Array.isArray(val) && !val.some(x => x))) delete hwDraft[id]; else hwDraft[id] = val;
+  if(PREVIEW) return;
+  hwSaveState = 'saving'; hwShowSave();
+  clearTimeout(hwTimer); hwTimer = setTimeout(hwSave, 1200);
+}
+function hwShowSave(){
+  const el = $('hwSave'); if(!el) return;
+  el.textContent = hwSaveState === 'saving' ? T('hwSaving') : hwSaveState === 'saved' ? T('hwSaved') : hwSaveState === 'err' ? T('hwSaveErr') : '';
+  el.className = 'savemsg' + (hwSaveState === 'err' ? ' err' : '');
+}
+async function hwSave(extra){
+  const id = hwOpen; if(!id || PREVIEW) return;
+  try{
+    await updateDoc(doc(db, 'portal', tid, 'students', studentId, 'hw', id), Object.assign({ answers: JSON.parse(JSON.stringify(hwDraft)) }, extra || {}));
+    hwSaveState = 'saved'; hwShowSave(); return true;
+  }catch(err){ console.error(err); hwSaveState = 'err'; hwShowSave(); return false; }
+}
+function hwUnansweredCount(d){
+  let n = 0;
+  (d.sections || []).forEach(sec => sec.items.forEach(q => {
+    const a = hwDraft[q.id];
+    if(sec.type === 'cloze'){ for(let k = 0; k < q.n; k++) if(!(Array.isArray(a) && a[k])) n++; }
+    else if(sec.type === 'order'){ if(!(Array.isArray(a) && a.length)) n++; }
+    else if(typeof a === 'undefined' || a === '') n++;
+  }));
+  return n;
+}
+
+function hwItemHtml(sec, q, no, dis){
+  const a = hwDraft[q.id], D = dis ? ' disabled' : '';
+  const head = `<span class="no">${no}</span>`;
+  const es = q.es ? `<div class="es">${esc(q.es)}</div>` : '';
+  switch(sec.type){
+    case 'fill': {
+      const i = q.zh.indexOf('__');
+      const inp = `<input type="text" class="blank" data-k="txt" data-id="${esc(q.id)}" value="${esc(a || '')}" autocomplete="off" autocapitalize="off"${D}>`;
+      return `<div class="hwq">${head}<span class="zh">${i < 0 ? esc(q.zh) + inp : esc(q.zh.slice(0, i)) + inp + esc(q.zh.slice(i + 2))}</span>${es}</div>`;
+    }
+    case 'cloze': {
+      const arr = Array.isArray(a) ? a : [];
+      const html = esc(q.text).replace(/\{(\d+)\}/g, (m, n) => `<input type="text" class="blank" data-k="cz" data-id="${esc(q.id)}" data-n="${n - 1}" placeholder="${n}" value="${esc(arr[n - 1] || '')}" autocomplete="off" autocapitalize="off"${D}>`);
+      return `<div class="hwq"><div class="zh">${html}</div></div>`;
+    }
+    case 'order': return `<div class="hwq" data-order="${esc(q.id)}">${head}${hwOrderInner(q, dis)}${es}</div>`;
+    case 'choice':
+      return `<div class="hwq">${head}${q.es ? `<span class="es" style="display:inline">${esc(q.es)}</span>` : ''}${q.options.map(o =>
+        `<label class="opt"><input type="radio" name="r_${esc(q.id)}" data-k="ch" data-id="${esc(q.id)}" value="${o.i}" ${a === o.i ? 'checked' : ''}${D}><b>${hwLetter(o.i)}</b><span>${esc(o.t)}</span></label>`).join('')}</div>`;
+    case 'fix':
+      return `<div class="hwq">${head}<span class="zh">${esc(q.wrong)}</span><textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+    case 'translate':
+      return `<div class="hwq">${head}<span>${esc(q.es)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+    case 'zh2es':
+      return `<div class="hwq">${head}<span class="zh">${esc(q.zh)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+    case 'sentence':
+      return `<div class="hwq">${head}<span class="zh">${esc(q.cue)}</span>${es}<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+    case 'match':
+      return `<div class="matchrow"><span class="no">${no}</span><span class="zh" style="font-size:18px;flex:1">${esc(q.zh)}</span><select data-k="mt" data-id="${esc(q.id)}"${D}><option value="">${esc(T('hwPick'))}</option>${sec.rights.map((r, k) => `<option value="${k}" ${a === k ? 'selected' : ''}>${hwLetter(k)}</option>`).join('')}</select></div>`;
+  }
+  return '';
+}
+function hwOrderInner(q, dis){
+  const used = hwOrder[q.id] || [], D = dis ? ' disabled' : '';
+  return `<div class="ans">${used.map((ti, pos) => `<button class="tok" data-k="orm" data-id="${esc(q.id)}" data-pos="${pos}"${D}>${esc(q.tokens[ti])}</button>`).join('')}</div>
+    <div>${q.tokens.map((t, ti) => used.indexOf(ti) < 0 ? `<button class="tok" data-k="ora" data-id="${esc(q.id)}" data-ti="${ti}"${D}>${esc(t)}</button>` : '').join('')}
+    ${used.length && !dis ? `<button class="btn quiet" style="padding:3px 12px;font-size:13px" data-k="orc" data-id="${esc(q.id)}">${esc(T('hwClear'))}</button>` : ''}</div>`;
+}
+
+function renderHw(root){
+  const d = hwDocs[hwOpen];
+  const locked = d.status !== 'todo' || PREVIEW;
+  const NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+  let h = `<div class="card"><button class="btn quiet" id="hwBack" style="padding:4px 14px;font-size:13px">‹ ${esc(T('hwBack'))}</button>
+    <h2 style="margin-top:12px">${esc(d.title || '')}</h2>
+    <div>${hwChip(d)} <span class="muted">${esc(T('hwPoints', { n: d.total || 0 }))}</span></div>
+    ${d.status === 'graded' && d.result ? `<div class="big" style="margin-top:6px">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</div>` : ''}
+    ${PREVIEW ? `<div class="msg">${esc(T('hwPreviewRO'))}</div>` : d.status !== 'todo' ? `<div class="msg">${esc(T('hwLocked'))}</div>` : ''}</div>`;
+  (d.sections || []).forEach((sec, si) => {
+    h += `<div class="card"><h2>${NUM[si] || si + 1}、${esc(T('hwT_' + sec.type))}</h2>`;
+    if(sec.bank && sec.bank.length && (sec.type === 'fill' || sec.type === 'cloze')) h += `<div class="bank">${sec.bank.map(esc).join('　')}</div>`;
+    if(sec.type === 'match') h += `<div class="rights">${sec.rights.map((r, k) => `<div><b>${hwLetter(k)}</b> ${esc(r)}</div>`).join('')}</div>`;
+    sec.items.forEach((q, qi) => { h += hwItemHtml(sec, q, qi + 1, locked); });
+    h += '</div>';
+  });
+  if(!locked) h += `<div class="card" id="hwFoot"><div class="savemsg" id="hwSave"></div><div id="hwAction"></div></div>`;
+  root.innerHTML = h;
+  $('hwBack').onclick = () => { clearTimeout(hwTimer); if(hwSaveState === 'saving') hwSave(); hwOpen = null; render(); window.scrollTo(0, 0); };
+  if(locked) return;
+  hwShowSave(); hwActionDraw(d);
+  root.oninput = e => {
+    const t = e.target, k = t.dataset.k, id = t.dataset.id; if(!k) return;
+    if(k === 'txt') hwSetDraft(id, t.value);
+    else if(k === 'cz'){ const arr = Array.isArray(hwDraft[id]) ? hwDraft[id].slice() : []; arr[+t.dataset.n] = t.value; for(let i = 0; i < arr.length; i++) if(arr[i] == null) arr[i] = ''; hwSetDraft(id, arr); }
+  };
+  root.onchange = e => {
+    const t = e.target, k = t.dataset.k, id = t.dataset.id;
+    if(k === 'ch') hwSetDraft(id, +t.value);
+    else if(k === 'mt') hwSetDraft(id, t.value === '' ? '' : +t.value);
+  };
+  root.onclick = e => {
+    const t = e.target.closest('[data-k]'); if(!t) return;
+    const k = t.dataset.k, id = t.dataset.id;
+    if(k !== 'ora' && k !== 'orm' && k !== 'orc') return;
+    const q = d.sections.flatMap(sc => sc.items).find(x => x.id === id), used = (hwOrder[id] = hwOrder[id] || []);
+    if(k === 'ora') used.push(+t.dataset.ti); else if(k === 'orm') used.splice(+t.dataset.pos, 1); else used.length = 0;
+    const box = root.querySelector(`[data-order="${CSS.escape(id)}"]`);
+    const noEl = box.querySelector('.no');   // 只重畫這一題
+    box.innerHTML = (noEl ? noEl.outerHTML : '') + hwOrderInner(q, false) + (q.es ? `<div class="es">${esc(q.es)}</div>` : '');
+    hwSetDraft(id, used.map(i => q.tokens[i]));
+  };
+}
+function hwActionDraw(d){
+  const box = $('hwAction'); if(!box) return;
+  if(!hwConfirming){
+    box.innerHTML = `<button class="btn" id="hwSubmit" style="width:100%">${esc(T('hwSubmit'))}</button>`;
+    $('hwSubmit').onclick = () => { hwConfirming = true; hwActionDraw(d); };
+  }else{
+    const n = hwUnansweredCount(d);
+    box.innerHTML = `<div class="msg" style="margin:0 0 10px">${esc(T('hwConfirm'))}${n ? ' ' + esc(T('hwUnanswered', { n })) : ''}</div>
+      <div style="display:flex;gap:10px"><button class="btn quiet" id="hwNo" style="flex:1">${esc(T('hwNo'))}</button><button class="btn" id="hwYes" style="flex:1">${esc(T('hwYes'))}</button></div>`;
+    $('hwNo').onclick = () => { hwConfirming = false; hwActionDraw(d); };
+    $('hwYes').onclick = async () => {
+      clearTimeout(hwTimer); $('hwYes').disabled = true;
+      const ok = await hwSave({ status: 'submitted', submittedAt: Date.now() });
+      if(!ok){ hwConfirming = false; hwActionDraw(d); }
+    };
+  }
 }
 
 /* ───────── 資料：先用 Email 找到自己是哪位學生，再即時讀自己那一份 ───────── */
@@ -340,8 +546,9 @@ async function startRoster(){
     rosterState = 'ok';
     tzSetting = LS.get('dc.tz.' + tid) || null;
     if(unsubDoc) unsubDoc();
+    startHw(studentId);
     unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', studentId),
-      s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; render(); },
+      s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
       err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
     render();
   }catch(err){
@@ -352,8 +559,9 @@ async function startRoster(){
 
 function startPreview(user){
   tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
+  startHw(PREVIEW);
   unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
-    s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; render(); },
+    s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
     err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
   render();
 }
@@ -361,6 +569,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
+  stopHw();
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

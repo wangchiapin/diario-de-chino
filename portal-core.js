@@ -146,7 +146,15 @@ var PC_I18N = {
     updated: 'Actualizado: {t}', loading: 'Cargando…', archived: 'Esta cuenta ya no está activa.', retry: 'Reintentar',
     errLogin: 'Correo o contraseña incorrectos.', errExists: 'Este correo ya tiene una cuenta. Inicia sesión.', errWeak: 'La contraseña debe tener al menos 6 caracteres.',
     errEmail: 'El correo no es válido.', errMany: 'Demasiados intentos. Espera unos minutos.', errNet: 'Sin conexión. Revisa tu internet.', errOther: 'Algo salió mal. Inténtalo de nuevo.',
-    errNoPerm: 'No tienes permiso para ver estos datos. Confirma tu correo e inténtalo de nuevo.', noNoData: 'Tu profesor todavía no ha publicado tu información.'
+    errNoPerm: 'No tienes permiso para ver estos datos. Confirma tu correo e inténtalo de nuevo.', noNoData: 'Tu profesor todavía no ha publicado tu información.',
+    hwTitle: 'Tareas', hwStTodo: 'Por entregar', hwStSubmitted: 'Entregada, esperando corrección', hwStGraded: 'Corregida',
+    hwStart: 'Hacer la tarea', hwView: 'Ver', hwBack: 'Volver', hwSubmit: 'Entregar la tarea', hwConfirm: '¿Entregar la tarea? Después ya no podrás cambiar tus respuestas.',
+    hwUnanswered: 'Te faltan {n} respuestas.', hwYes: 'Sí, entregar', hwNo: 'Cancelar', hwSaving: 'Guardando…', hwSaved: 'Guardado', hwSaveErr: 'No se pudo guardar. Revisa tu conexión.',
+    hwLocked: 'Ya entregaste esta tarea. Tu profesor la corregirá.', hwScore: 'Puntos: {got}/{max}', hwPoints: '{n} pts', hwAssigned: 'Asignada: {t}', hwClear: 'Borrar',
+    hwPreviewRO: 'Vista previa del profesor: solo lectura.', hwPick: 'Elige', hwWrite: 'Escribe tu respuesta',
+    hwT_fill: 'Completa con la palabra correcta', hwT_cloze: 'Completa el texto con la palabra correcta', hwT_order: 'Ordena las palabras para formar una oración',
+    hwT_choice: 'Elige la oración correcta', hwT_fix: 'Escribe la oración correcta', hwT_translate: 'Traduce al chino', hwT_zh2es: 'Traduce al español',
+    hwT_match: 'Une cada palabra con su significado', hwT_sentence: 'Escribe una oración con la palabra o estructura indicada'
   },
   tc: {
     title: '我的中文日誌', login: '登入', register: '建立帳號', email: '電子郵件', password: '密碼',
@@ -165,7 +173,15 @@ var PC_I18N = {
     updated: '更新時間：{t}', loading: '載入中…', archived: '這個帳號已經停用。', retry: '重試',
     errLogin: '電子郵件或密碼不正確。', errExists: '這個電子郵件已經有帳號，請直接登入。', errWeak: '密碼至少要 6 個字元。',
     errEmail: '電子郵件格式不正確。', errMany: '嘗試次數太多，請過幾分鐘再試。', errNet: '沒有網路，請檢查連線。', errOther: '發生問題，請再試一次。',
-    errNoPerm: '沒有權限查看這些資料。請確認已驗證電子郵件後再試。', noNoData: '老師還沒有發佈你的資料。'
+    errNoPerm: '沒有權限查看這些資料。請確認已驗證電子郵件後再試。', noNoData: '老師還沒有發佈你的資料。',
+    hwTitle: '作業', hwStTodo: '還沒交', hwStSubmitted: '已交出，等老師批改', hwStGraded: '已批改',
+    hwStart: '開始作答', hwView: '查看', hwBack: '返回', hwSubmit: '交出作業', hwConfirm: '要交出作業嗎？交出後就不能再修改。',
+    hwUnanswered: '還有 {n} 題沒作答。', hwYes: '確定交出', hwNo: '取消', hwSaving: '儲存中…', hwSaved: '已儲存', hwSaveErr: '儲存失敗，請檢查網路。',
+    hwLocked: '你已經交出這份作業，等老師批改。', hwScore: '得分：{got}／{max}', hwPoints: '{n} 分', hwAssigned: '發出日期：{t}', hwClear: '清除',
+    hwPreviewRO: '老師預覽：只能看，不能作答。', hwPick: '請選擇', hwWrite: '寫下你的答案',
+    hwT_fill: '選詞填空：選出正確的詞填入空格', hwT_cloze: '段落填空：選出正確的詞填入空格', hwT_order: '排序：把詞語排成通順的句子',
+    hwT_choice: '選擇：選出正確的句子', hwT_fix: '改錯：找出錯誤，寫出正確的句子', hwT_translate: '西翻中：翻成中文', hwT_zh2es: '中翻西：翻成西班牙文',
+    hwT_match: '配對：把每個詞語和它的意思連起來', hwT_sentence: '造句：用指定的詞語或句型造句'
   },
   sc: {
     title: '我的中文日志', login: '登入', register: '建立账号', email: '电子邮件', password: '密码',
@@ -184,7 +200,15 @@ var PC_I18N = {
     updated: '更新时间：{t}', loading: '载入中…', archived: '这个账号已经停用。', retry: '重试',
     errLogin: '电子邮件或密码不正确。', errExists: '这个电子邮件已经有账号，请直接登入。', errWeak: '密码至少要 6 个字元。',
     errEmail: '电子邮件格式不正确。', errMany: '尝试次数太多，请过几分钟再试。', errNet: '没有网路，请检查连线。', errOther: '发生问题，请再试一次。',
-    errNoPerm: '没有权限查看这些资料。请确认已验证电子邮件后再试。', noNoData: '老师还没有发布你的资料。'
+    errNoPerm: '没有权限查看这些资料。请确认已验证电子邮件后再试。', noNoData: '老师还没有发布你的资料。',
+    hwTitle: '作业', hwStTodo: '还没交', hwStSubmitted: '已交出，等老师批改', hwStGraded: '已批改',
+    hwStart: '开始作答', hwView: '查看', hwBack: '返回', hwSubmit: '交出作业', hwConfirm: '要交出作业吗？交出后就不能再修改。',
+    hwUnanswered: '还有 {n} 题没作答。', hwYes: '确定交出', hwNo: '取消', hwSaving: '储存中…', hwSaved: '已储存', hwSaveErr: '储存失败，请检查网路。',
+    hwLocked: '你已经交出这份作业，等老师批改。', hwScore: '得分：{got}／{max}', hwPoints: '{n} 分', hwAssigned: '发出日期：{t}', hwClear: '清除',
+    hwPreviewRO: '老师预览：只能看，不能作答。', hwPick: '请选择', hwWrite: '写下你的答案',
+    hwT_fill: '选词填空：选出正确的词填入空格', hwT_cloze: '段落填空：选出正确的词填入空格', hwT_order: '排序：把词语排成通顺的句子',
+    hwT_choice: '选择：选出正确的句子', hwT_fix: '改错：找出错误，写出正确的句子', hwT_translate: '西翻中：翻成中文', hwT_zh2es: '中翻西：翻成西班牙文',
+    hwT_match: '配对：把每个词语和它的意思连起来', hwT_sentence: '造句：用指定的词语或句型造句'
   }
 };
 
