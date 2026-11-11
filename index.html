@@ -68,6 +68,24 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .hidden{display:none !important}
 
 /* 作業 */
+.lt{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.lt button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--line);background:transparent;color:var(--sub);border-radius:16px;cursor:pointer}
+.lt button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.lrow{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.lrow:first-of-type{border-top:0}
+.lrow .d{color:var(--sub);font-size:13px;min-width:46px}
+.lym{font-size:13px;color:var(--sub);font-weight:600;margin:10px 0 2px}
+.lchip{display:inline-block;background:#ece7dc;border-radius:12px;padding:3px 10px;margin:3px 4px 3px 0;font-size:14px}
+.lchip small{color:var(--sub)}
+.rcard{text-align:center;padding:26px 10px}
+.rcard .z{font-size:34px;font-weight:600}
+.rcard .e{font-size:18px;color:var(--sub);margin-top:10px;min-height:26px}
+.lbar{height:10px;background:#ece7dc;border-radius:6px;overflow:hidden;margin:4px 0 10px}
+.lbar i{display:block;height:100%;background:var(--accent)}
+.lgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.lgrid div{background:#f3efe6;border-radius:8px;padding:8px 4px;text-align:center}
+.lgrid b{display:block;font-size:20px}
+.lgrid span{font-size:11px;color:var(--sub)}
 .hwitem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
 .hwitem:first-of-type{border-top:0;padding-top:2px}
 .hwitem .t{font-weight:600}
@@ -125,6 +143,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <script src="portal-core.js"></script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
+<script src="portal-learn.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -315,6 +334,7 @@ function renderHome(root){
   if(studentDoc.archived){ root.innerHTML = `<div class="card center">${esc(T('archived'))}</div>${logoutBlock()}`; bindLogout(); return; }
 
   if(hwOpen && hwDocs[hwOpen]) return renderHw(root);
+  if(learnOpen) return renderLearn(root);
   const tz = effectiveTz(), now = Date.now();
   const groups = pcGroupByLocalDate(studentDoc.lessons || [], tz);
   const next = pcNextLesson(studentDoc.lessons || [], tz, now);
@@ -362,6 +382,7 @@ function renderHome(root){
     <div class="card"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
     <div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div>
     ${hwCardHtml()}
+    ${learnCardHtml()}
     ${stats}
     <div class="card">
       <h2>${esc(T('calendar'))}</h2>
@@ -382,7 +403,77 @@ function renderHome(root){
   $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
   $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
   $('tzSel').onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
-  bindLogout(); bindHwCard(root); nudMaybeStart();
+  bindLogout(); bindHwCard(root); bindLearnCard(root); nudMaybeStart();
+}
+
+/* ───────── 學習分頁：上課紀錄、已學清單、複習、能力、教材 ───────── */
+let learnOpen = false, learnTab = 'log', revShown = false, revOnlyNot = false, revSeed = 1, revIdx = 0, revRound = null, matDoc = null, matLoaded = false, matTried = false;
+const LT = (k, p) => learnT(lang, k, p);
+const revDeck = pool => { if(!revRound) revRound = learnDeck(pool.words, revMarks(), revOnlyNot, revSeed).map(w => w.zh); return revRound.map(zh => pool.words.find(w => w.zh === zh)).filter(Boolean); };   // 一輪開始時固定牌組，標「我記得」才不會讓下一張被跳過
+const revMarks = () => { try{ return JSON.parse(LS.get('dc.rev.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
+const revMark = (zh, v) => { if(PREVIEW) return; const m = revMarks(); if(v) m[zh] = 1; else delete m[zh]; LS.set('dc.rev.' + studentId, JSON.stringify(m)); };
+async function loadMaterials(){
+  if(matTried) return; matTried = true;
+  try{ const s = await getDoc(doc(db, 'portal', tid, 'materials', studentId)); matDoc = s.exists() ? s.data() : null; }catch(e){ matDoc = null; }
+  matLoaded = true; if(learnOpen) render();
+}
+function learnCardHtml(){
+  return `<div class="card"><div class="row"><h2 style="margin:0">${esc(LT('learn'))}</h2><button class="btn" id="learnGo">${esc(LT('learnBtn'))}</button></div></div>`;
+}
+function bindLearnCard(root){ const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; loadMaterials(); render(); window.scrollTo(0, 0); }; }
+function renderLearn(root){
+  const pool = nudBuildPool(hwDocs);
+  const tabs = ['log', 'words', 'review', 'ability', 'files'], names = { log: 'tLog', words: 'tWords', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
+  let body = '';
+  if(learnTab === 'log'){
+    const groups = learnLogGroups(studentDoc.log), n = groups.reduce((a, g) => a + g.rows.length, 0);
+    const nx = studentDoc.next && studentDoc.next.n ? `<div class="card"><h2>${esc(LT('nextUp'))}</h2><div>${esc(studentDoc.next.n)}</div></div>` : '';
+    body = nx + (n ? `<div class="card"><h2>${esc(LT('logCount', { n }))}</h2>` + groups.map(g => `<div class="lym">${esc(pcFmtDate(g.ym + '-01', lang, { year: 'numeric', month: 'long' }))}</div>` +
+      g.rows.map(r => `<div class="lrow"><span class="d">${esc(pcFmtDate(r.d, lang, { month: 'numeric', day: 'numeric' }))}</span><span>${esc(r.p)}</span></div>`).join('')).join('') + '</div>'
+      : `<div class="card center muted">${esc(LT('logEmpty'))}</div>`);
+  }else if(learnTab === 'words'){
+    if(!pool.words.length && !pool.points.length) body = `<div class="card center muted">${esc(LT('wordsEmpty'))}</div>`;
+    else body = (pool.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: pool.points.length }))}</h2>${pool.points.map(x => `<span class="lchip">${esc(x)}</span>`).join('')}</div>` : '') +
+      (pool.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: pool.words.length }))}</h2>${pool.words.map(w => `<span class="lchip">${esc(w.zh)}${w.es ? ` <small>${esc(w.es)}</small>` : ''}</span>`).join('')}</div>` : '');
+  }else if(learnTab === 'review'){
+    const deck = revDeck(pool);
+    const tog = `<div class="lt"><button id="revAll" class="${revOnlyNot ? '' : 'on'}">${esc(LT('revAll'))}</button><button id="revNot" class="${revOnlyNot ? 'on' : ''}">${esc(LT('revOnlyNot'))}</button></div>`;
+    if(!pool.words.length) body = `<div class="card center muted">${esc(LT('revEmpty'))}</div>`;
+    else if(!deck.length) body = tog + `<div class="card center muted">${esc(LT('revNoNot'))}</div>`;
+    else if(revIdx >= deck.length) body = tog + `<div class="card center"><div class="big">${esc(LT('revDone'))}</div><div style="margin-top:12px"><button class="btn" id="revAgain">${esc(LT('revAgain'))}</button></div></div>`;
+    else{
+      const w = deck[revIdx];
+      body = tog + `<div class="card rcard"><div class="muted">${esc(LT('revLeft', { n: deck.length - revIdx }))}</div><div class="z">${esc(w.zh)}</div><div class="e">${revShown ? esc(w.es || '—') : ''}</div>
+        <div style="margin-top:14px">${revShown ? `<button class="btn" id="revKnow">${esc(LT('revKnow'))}</button> <button class="btn quiet" id="revNotYet">${esc(LT('revNot'))}</button>` : `<button class="btn" id="revShow">${esc(LT('revShow'))}</button>`}</div></div>`;
+    }
+  }else if(learnTab === 'ability'){
+    const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
+    body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${pool.words.length}</b><span>${esc(LT('abWords'))}</span></div><div><b>${pool.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
+    else{
+      if(types.length) body += `<div class="card"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
+      if(ab.trend.length) body += `<div class="card"><h2>${esc(LT('abTrend'))}</h2>${ab.trend.map(t => `<div class="row"><span>${esc(t.title)}</span><b>${t.pct}%</b></div><div class="lbar"><i style="width:${t.pct}%"></i></div>`).join('')}<div class="muted">${esc(LT('abNote'))}</div></div>`;
+    }
+  }else{
+    const files = learnFiles(matDoc);
+    body = !matLoaded ? `<div class="card center muted">${esc(T('loading'))}</div>` : files.length
+      ? `<div class="card">${files.map(f => `<div class="hwitem"><div><div class="t">${esc(f.n)}</div>${f.t ? `<div class="muted">${esc(fmtMs(f.t))}</div>` : ''}</div><a class="btn quiet" style="text-decoration:none" href="${esc(f.u)}" target="_blank" rel="noopener noreferrer">${esc(LT('fOpen'))}</a></div>`).join('')}</div>`
+      : `<div class="card center muted">${esc(LT('fEmpty'))}</div>`;
+  }
+  root.innerHTML = `<div class="card"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
+    <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}</button>`).join('')}</div>${body}${logoutBlock()}`;
+  $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
+  $('learnBack').onclick = () => { learnOpen = false; render(); window.scrollTo(0, 0); };
+  root.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { learnTab = b.dataset.lt; revShown = false; revIdx = 0; revRound = null; render(); });
+  const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
+  on('revAll', () => { revOnlyNot = false; revRound = null; revIdx = 0; revShown = false; render(); });
+  on('revNot', () => { revOnlyNot = true; revRound = null; revIdx = 0; revShown = false; render(); });
+  on('revAgain', () => { revIdx = 0; revShown = false; revSeed++; revRound = null; render(); });
+  on('revShow', () => { revShown = true; render(); });
+  const cur = () => revDeck(pool)[revIdx];
+  on('revKnow', () => { const w = cur(); if(w) revMark(w.zh, false); revIdx++; revShown = false; render(); });
+  on('revNotYet', () => { const w = cur(); if(w) revMark(w.zh, true); revIdx++; revShown = false; render(); });
+  bindLogout();
 }
 
 /* ───────── 彈跳視窗：練習題、激勵句、提醒（只有右上角 X 可以關） ───────── */
@@ -736,7 +827,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw(); nudStop(); reqTried = false; reqOk = false;
+  stopHw(); nudStop(); reqTried = false; reqOk = false; learnOpen = false; matDoc = null; matLoaded = false; matTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

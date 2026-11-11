@@ -2,11 +2,11 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-11 19:50（新增 portal/{tid}/requests：學生驗證信箱後留給老師的「新註冊」）
+// 最後更新：2026-11-11 21:29（新增 portal/{tid}/materials：Drive 學生資料夾的教材 PDF 連結）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-11 21:29 新增 portal/{tid}/materials/{sid}（教材 PDF 連結；老師的 Apps Script 寫入，學生只能讀自己那一份）
 //   - 2026-11-11 19:50 新增 portal/{tid}/requests（學生只能寫「自己的」一筆，信箱要是自己驗證過的；老師讀寫）
 //   - 2026-11-11 18:57 新增 portal/{tid}/config（老師在後台改的彈跳視窗文字；老師寫，驗證過信箱的學生可讀）
-//   - 2026-11-11 14:38 新增 portal/{tid}/students/{sid}/hwFiles（學生上傳的 Word，轉成文字存放；學生只能在作業還沒交時寫自己的）
 //
 // 誰能做什麼：
 //   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
@@ -126,4 +126,20 @@
         && request.resource.data.email == request.auth.token.email.lower()
         && request.resource.data.uid == request.auth.uid;
       allow delete: if request.auth != null && request.auth.uid == tid;
+    }
+
+
+// ===================================================================
+// 第七批（教材）：只要「新增」下面這一段，貼在其他 match 旁邊（並排）。不用動前面的任何一段。
+// Drive 裡「一位學生一個資料夾」的 PDF，由老師的 Apps Script（日誌 repo 的 apps-script/MaterialsSync.gs）掃描後寫到這裡。
+// Apps Script 用服務帳號寫入，不受規則限制；規則只管「誰能讀」：老師，或是「信箱已驗證、而且就是這位學生」的人。
+// ===================================================================
+
+    // 教材連結：只有老師和該位學生讀得到；網頁端一律不能寫（寫入只有 Apps Script 服務帳號）。
+    match /portal/{tid}/materials/{sid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
+      allow write: if request.auth != null && request.auth.uid == tid;
     }

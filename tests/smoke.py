@@ -809,6 +809,75 @@ def signup_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def learn_tests(browser, base):
+    print('\n學生頁：學習分頁')
+    R = 'portal/%s/roster/s1' % TID
+    S1 = 'portal/%s/students/s1' % TID
+    HW = 'portal/%s/students/s1/hw/w1' % TID
+    base_s = {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'package', 'remaining': 3, 'taught': 12, 'tz': 'America/Mexico_City', 'updatedAt': 1760000000000, 'lessons': [],
+              'log': [{'d': '2026-10-03', 'p': '把'}, {'d': '2026-11-02', 'p': '圖片：延長線'}, {'d': '2026-11-05', 'p': '可以'}], 'next': {'d': '2026-11-05', 'n': '比較句'}}
+    graded = hw_doc('graded', result={'got': 5, 'max': 8})
+    graded['review'] = {'hideScore': False, 'gradedAt': 1760000500000, 'items': {'f1': {'got': 1, 'max': 1}, 'o1': {'got': 0, 'max': 1}}}
+    def login(page):
+        page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+        page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    def mk(extra, lg='tc'):
+        ctx, page, errs = new_page(browser, base_state(extra))
+        page.add_init_script("localStorage.setItem('dc.lang','%s');" % lg)
+        return ctx, page, errs
+    M = 'portal/%s/materials/s1' % TID
+    ctx, page, errs = mk({S1: base_s, HW: graded, M: {'v': 1, 'updatedAt': 1, 'files': [
+        {'n': 'L1', 'u': 'https://drive.google.com/file/d/a/view', 't': 1760000000000}, {'n': 'bad', 'u': 'javascript:alert(1)', 't': 5}]}})
+    login(page)
+    check('首頁有「我的學習」', '我的學習' in page.inner_text('#app') and page.locator('#learnGo').count() == 1)
+    page.click('#learnGo'); page.wait_for_timeout(300)
+    txt = page.inner_text('#app')
+    check('上課紀錄：新的在上面、有每堂課的進度', txt.index('可以') < txt.index('圖片：延長線') < txt.index('把') and '共 3 堂紀錄' in txt, txt[:200])
+    check('上課紀錄：有下次預告', '比較句' in txt and '下次預告' in txt)
+    page.click('[data-lt=words]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('已學清單：有語法點和單字', '把字句' in txt and '放' in txt and '單字（' in txt, txt[:200])
+    page.click('[data-lt=review]'); page.wait_for_timeout(100)
+    check('複習：先看到中文，還沒看到意思', page.locator('.rcard .z').count() == 1 and page.inner_text('.rcard .e').strip() == '')
+    z = page.inner_text('.rcard .z')
+    page.click('#revShow'); page.wait_for_timeout(100)
+    check('按「看意思」才出現意思和兩個按鈕', page.locator('#revKnow').count() == 1 and page.locator('#revNotYet').count() == 1)
+    page.click('#revNotYet'); page.wait_for_timeout(100)
+    marks = page.evaluate("JSON.parse(localStorage.getItem('dc.rev.s1')||'{}')")
+    check('標「還不熟」：記在這台裝置', marks.get(z) == 1, marks)
+    page.click('#revNot'); page.wait_for_timeout(100)
+    check('只複習還不熟的：只剩那一個', page.locator('.rcard .z').count() == 1 and page.inner_text('.rcard .z') == z)
+    page.click('#revShow'); page.click('#revKnow'); page.wait_for_timeout(100)
+    check('這一輪結束有提示；標「我記得」會從還不熟拿掉', '複習完了' in page.inner_text('#app') and page.evaluate("JSON.parse(localStorage.getItem('dc.rev.s1')||'{}')") == {})
+    page.click('[data-lt=ability]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('能力：已批改 1 份、各題型答對率、最近作業', '已批改的作業' in txt and '填空' in txt and '100%' in txt and '排序' in txt and '0%' in txt and '63%' in txt, txt[:300])
+    page.click('[data-lt=files]'); page.wait_for_timeout(100)
+    links = page.locator('#app a.btn')
+    check('教材：只列安全的 Drive 連結，新分頁開啟', links.count() == 1 and links.first.get_attribute('href').startswith('https://drive.google.com/') and links.first.get_attribute('target') == '_blank' and 'L1' in page.inner_text('#app'))
+    page.click('#learnBack'); page.wait_for_timeout(100)
+    check('返回首頁', page.locator('#learnGo').count() == 1)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 西文介面、沒資料時的空白提示
+    ctx, page, errs = mk({S1: dict(base_s, log=[], next=None)}, 'es')
+    login(page); page.click('#learnGo'); page.wait_for_timeout(300)
+    check('西文：沒有紀錄時有提示', 'Aún no hay registro de clases' in page.inner_text('#app'))
+    page.click('[data-lt=files]'); page.wait_for_timeout(200)
+    check('西文：沒有教材時有提示', 'Todavía no hay materiales' in page.inner_text('#app'))
+    page.click('[data-lt=ability]'); page.wait_for_timeout(100)
+    check('西文：沒有批改時有提示', 'verás cómo vas' in page.inner_text('#app'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 不顯示分數的作業：不算進答對率
+    hid = dict(graded); hid['review'] = dict(graded['review'], hideScore=True)
+    ctx, page, errs = mk({S1: base_s, HW: hid})
+    login(page); page.click('#learnGo'); page.click('[data-lt=ability]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('老師設成不顯示分數：答對率不出現', '各題型答對率' not in txt and '63%' not in txt and '已批改的作業' in txt)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -823,6 +892,7 @@ with sync_playwright() as p:
     nudge_admin_tests(browser, base)
     admin_tabs_tests(browser, base)
     signup_tests(browser, base)
+    learn_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

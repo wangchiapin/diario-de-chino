@@ -11,6 +11,7 @@ const ctx = vm.createContext({ Date, Intl, Math, Object, Array, String, Number, 
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-core.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-nudge.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-learn.js'), 'utf8'), ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
 
@@ -313,6 +314,49 @@ test('進頁面：沒題庫也沒提醒時只會出激勵句；有的話三種�
   for (let i = 0; i < 100; i++) assert.strictEqual(O({ pool: { words: [], points: [] }, reminders: [], lang: 'tc', vars: {} }, Math.random).kind, 'enc');
   for (let i = 0; i < 300; i++) kinds.add(O({ pool: { words: [{ zh: '好', es: 'bien' }], points: [] }, reminders: [{ kind: 'rem', text: 'x' }], lang: 'tc', vars: {} }, Math.random).kind);
   assert.ok(kinds.has('enc') && kinds.has('rem') && kinds.has('sentWord'));
+});
+
+console.log('\n學習分頁');
+test('三種語言的文字 key 一樣齊全', () => {
+  const I = C('LEARN_I18N'), keys = Object.keys(I.tc).sort();
+  ['es', 'sc'].forEach(l => assert.strictEqual(J(Object.keys(I[l]).sort()), J(keys), l));
+  ['es', 'tc', 'sc'].forEach(l => assert.strictEqual(J(Object.keys(I[l].types).sort()), J(Object.keys(I.tc.types).sort())));
+  assert.strictEqual(C('learnT')('es', 'logCount', { n: 3 }), '3 clases registradas');
+});
+test('簡體文字沒有大陸用語、沒有繁體字殘留', () => {
+  const sc = JSON.stringify(C('LEARN_I18N').sc);
+  assert.ok(!/紀錄|單字|複習|語法|能力這/.test(sc));
+  assert.ok(sc.indexOf('纪录') >= 0 && sc.indexOf('单字') >= 0);
+});
+test('上課紀錄分組：月份新到舊、月內新到舊，壞資料略過', () => {
+  const g = C('learnLogGroups')([{ d: '2026-10-03', p: '把' }, { d: '2026-11-02', p: '可以' }, { d: '2026-10-20', p: '比較句' }, { d: 'bad', p: 'x' }, { d: '2026-10-21', p: '  ' }, null]);
+  assert.strictEqual(J(g.map(x => [x.ym, x.rows.map(r => r.p)])), J([['2026-11', ['可以']], ['2026-10', ['比較句', '把']]]));
+  assert.strictEqual(C('learnLogGroups')(undefined).length, 0);
+});
+test('複習：只還不熟的、同一種子順序固定、不同種子會變', () => {
+  const words = [{ zh: '一' }, { zh: '二' }, { zh: '三' }, { zh: '四' }, { zh: '五' }, { zh: '六' }, { zh: '' }, null];
+  const D = C('learnDeck');
+  assert.strictEqual(D(words, {}, false, 1).length, 6);
+  assert.strictEqual(J(D(words, {}, false, 1)), J(D(words, {}, false, 1)));
+  assert.notStrictEqual(J(D(words, {}, false, 1)), J(D(words, {}, false, 2)));
+  assert.strictEqual(J(D(words, { '三': 1, '五': 1 }, true, 1).map(w => w.zh).sort()), J(['三', '五']));
+  assert.strictEqual(D(words, {}, true, 1).length, 0);
+});
+test('能力：各題型答對率、走向；不顯示分數的作業不算；沒批改的不算', () => {
+  const mk = (title, status, got, max, hide, ts) => ({ title, status, assignedAt: ts, result: status === 'graded' ? { got, max } : undefined,
+    sections: [{ type: 'fill', items: [{ id: 'a' }, { id: 'b' }] }, { type: 'order', items: [{ id: 'c' }] }],
+    review: status === 'graded' ? { hideScore: hide, gradedAt: ts, items: { a: { got: 1, max: 1 }, b: { got: 0, max: 1 }, c: { got: 1, max: 1 } } } : undefined });
+  const r = C('learnAbility')({ x: mk('A', 'graded', 2, 3, false, 100), y: mk('B', 'graded', 3, 3, false, 200), z: mk('C', 'graded', 1, 3, true, 300), w: mk('D', 'submitted', 0, 0, false, 400) });
+  assert.strictEqual(r.graded, 3);
+  assert.strictEqual(J(r.byType), J({ fill: { got: 2, max: 4, pct: 50 }, order: { got: 2, max: 2, pct: 100 } }));
+  assert.strictEqual(J(r.trend.map(t => [t.title, t.pct])), J([['A', 67], ['B', 100]]));
+  assert.strictEqual(C('learnAbility')({}).graded, 0);
+});
+test('教材：只收 Google Drive／Docs 的 https 連結，新的在上面', () => {
+  const f = C('learnFiles')({ files: [{ n: 'a.pdf', u: 'https://drive.google.com/file/d/1/view', t: 1 }, { n: '', u: 'https://docs.google.com/x', t: 5 },
+    { n: 'bad', u: 'http://drive.google.com/x', t: 9 }, { n: 'evil', u: 'javascript:alert(1)', t: 9 }, { n: 'o', u: 'https://evil.com/drive.google.com/', t: 9 }, null] });
+  assert.strictEqual(J(f.map(x => [x.n, x.t])), J([['教材', 5], ['a.pdf', 1]]));
+  assert.strictEqual(C('learnFiles')(null).length, 0);
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
