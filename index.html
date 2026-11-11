@@ -109,6 +109,9 @@ let tzSetting = null;            // 學生自己選的時區（沒選就 null）
 let busyMsg = '', busyErr = '';
 const T = (k, p) => pcT(lang, k, p);
 
+// 老師預覽：?preview=學生代號。用老師後台登入的帳號，唯讀看那位學生登入後會看到的畫面
+const PREVIEW = (function(){ const v = new URLSearchParams(location.search).get('preview'); return v && v.indexOf('/') < 0 && v.length < 200 ? v : null; })();
+
 (function readTeacherId(){
   const q = new URLSearchParams(location.search).get('t');
   if(q && /^[A-Za-z0-9]{20,40}$/.test(q)){ LS.set('dc.t', q); tid = q; history.replaceState(null, '', location.pathname); }
@@ -140,10 +143,20 @@ function setLang(l){
 }
 document.querySelectorAll('#langBar button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
 
+function renderPreview(root, user){
+  if(!authReady){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(!user){ root.innerHTML = `<div class="card center">老師預覽要先登入老師後台。<br><a href="admin.html">前往老師後台登入</a>，登入後再按學生旁邊的「預覽」。</div>`; return; }
+  if(!docLoaded){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
+  if(docError) return renderError(root);
+  renderHome(root);
+  root.insertAdjacentHTML('afterbegin', `<div class="card center" style="background:#e6dfd0">老師預覽：${esc(studentDoc && studentDoc.name || PREVIEW)}（唯讀，學生看到的就是這個畫面）　<a href="admin.html">回後台</a></div>`);
+}
+
 function render(){
   const root = $('app');
   const user = auth.currentUser;
   $('foot').textContent = '';
+  if(PREVIEW) return renderPreview(root, user);
   if(!tid && !user){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>`; return; }
   if(!authReady){ root.innerHTML = `<div class="card center muted">${esc(T('loading'))}</div>`; return; }
   if(!user) return renderAuth(root);
@@ -155,7 +168,7 @@ function render(){
   renderHome(root);
 }
 
-function logoutBlock(){ return `<div class="center"><button class="link" id="btnLogout">${esc(T('logout'))}</button></div>`; }
+function logoutBlock(){ if(PREVIEW) return ''; return `<div class="center"><button class="link" id="btnLogout">${esc(T('logout'))}</button></div>`; }
 function bindLogout(){ const b = $('btnLogout'); if(b) b.onclick = () => signOut(auth); }
 
 function renderAuth(root){
@@ -221,7 +234,7 @@ function renderNotListed(root, user){
 }
 function renderError(root){
   root.innerHTML = `<div class="card center"><div class="msg err">${esc(docError || T('errOther'))}</div><button class="link" id="btnRetry">${esc(T('retry'))}</button></div>${logoutBlock()}`;
-  bindLogout(); $('btnRetry').onclick = () => startRoster();
+  bindLogout(); $('btnRetry').onclick = () => { if(PREVIEW){ if(unsubDoc){ unsubDoc(); unsubDoc = null; } startPreview(auth.currentUser); } else startRoster(); };
 }
 
 function fmtMs(ms){
@@ -304,7 +317,7 @@ function renderHome(root){
   root.querySelectorAll('.day').forEach(b => b.onclick = () => { selDay = b.dataset.d; calMonth = { y: +selDay.slice(0, 4), m: +selDay.slice(5, 7) }; render(); });
   $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
   $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
-  $('tzSel').onchange = e => { tzSetting = e.target.value; LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
+  $('tzSel').onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
   bindLogout();
 }
 
@@ -333,10 +346,19 @@ async function startRoster(){
   }
 }
 
+function startPreview(user){
+  tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
+  unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
+    s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; render(); },
+    err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
+  render();
+}
+
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
+  if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();
 });
 

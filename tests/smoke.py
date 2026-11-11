@@ -17,6 +17,7 @@ function mkUser(email){ const u = fb().users[email]; const o = { uid: u.uid, ema
   get emailVerified(){ return fb().users[email].emailVerified; },
   async reload(){}, async getIdToken(){ return 't'; } }; return o; }
 function fire(){ cbs.forEach(c => c(auth.currentUser)); }
+if(fb().autoLogin) auth.currentUser = mkUser(fb().autoLogin);
 export function getAuth(){ return auth; }
 export function onAuthStateChanged(a, cb){ cbs.push(cb); setTimeout(() => cb(auth.currentUser), 0); return () => {}; }
 export async function signInWithEmailAndPassword(a, email, pw){
@@ -224,11 +225,46 @@ def admin_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def preview_tests(browser, base):
+    print('\n老師預覽')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': False}}
+    # 沒登入
+    ctx, page, errs = new_page(browser, base_state(None, teacher))
+    page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(300)
+    txt = page.inner_text('#app')
+    check('沒登入：請先登入老師後台，看不到學生資料', '老師後台' in txt and 'Pedro' not in txt, txt)
+    check('沒登入：沒有讀任何資料', page.evaluate('window.__fb.reads.length') == 0 and page.evaluate('window.__fb.subs.length') == 0); ctx.close()
+    # 老師登入（信箱沒驗證也可以）
+    ctx, page, errs = new_page(browser, base_state(None, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(500)
+    txt = page.inner_text('#app')
+    check('老師預覽：看到「老師預覽」橫幅與學生姓名', '老師預覽' in txt and 'Pedro' in txt, txt[:200])
+    check('預覽看到跟學生一樣的內容（剩 3 堂、12 堂、月曆）', '3 clases' in txt and '12 clases' in txt and page.locator('.dot.done').count() >= 1)
+    check('預覽直接讀老師自己路徑下的那位學生（不查對照表）', page.evaluate('window.__fb.reads.length') == 0 and page.evaluate("window.__fb.subs.map(s => s.ref.path)") == ['portal/%s/students/s1' % TID])
+    check('預覽沒有登出按鈕', page.locator('#btnLogout').count() == 0)
+    page.select_option('#tzSel', 'Asia/Taipei'); page.wait_for_timeout(100)
+    check('預覽改時區不會存起來', page.evaluate("localStorage.getItem('dc.tz.%s')" % TID) is None)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+    # 學生代號不存在
+    ctx, page, errs = new_page(browser, base_state(None, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'index.html?preview=nope'); page.wait_for_timeout(500)
+    check('找不到這位學生：顯示沒有資料', 'todavía no ha publicado' in page.inner_text('#app'), page.inner_text('#app')); ctx.close()
+    # 後台有預覽連結
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(500)
+    check('後台每位學生旁有「預覽」連結', page.get_attribute('tr[data-id=s1] a.pv', 'href') == 'index.html?preview=s1'); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
     student_tests(browser, base)
     admin_tests(browser, base)
+    preview_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

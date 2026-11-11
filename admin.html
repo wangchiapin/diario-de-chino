@@ -25,6 +25,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertic
 th{font-size:12px;color:var(--sub);font-weight:600}
 td.em{min-width:210px}
 .small{font-size:12px}
+a.pv{font-size:13px;color:var(--accent);margin-left:6px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hidden{display:none !important}
 ol{margin:6px 0 0 18px;padding:0}
@@ -126,7 +127,7 @@ function render(){
         <td><b>${esc(s.name)}</b></td><td>${esc(payText(s))}</td><td>${s.taught || 0} 堂</td>
         <td class="small">${esc(s.tz || '（沒設定）')}</td><td class="small">${esc(fmtTime(s.updatedAt))}</td>
         <td class="em"><input type="email" class="emIn" value="${esc(drafts[id] != null ? drafts[id] : (r ? r.email : ''))}" placeholder="student@example.com" autocapitalize="off"></td>
-        <td><button class="save">儲存</button><div class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : (r ? '已設定' : ''))}</div></td></tr>`;
+        <td><button class="save">儲存</button> <a class="pv" href="index.html?preview=${encodeURIComponent(id)}" target="_blank" rel="noopener">預覽</a><div class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : (r ? '已設定' : ''))}</div></td></tr>`;
     });
     html += `</tbody></table></div>`;
     if(archived.length) html += `<div class="card"><details><summary class="muted">已停課的學生（${archived.length} 位）</summary><div class="small muted" style="margin-top:6px">${archived.map(id => esc(students[id].name)).join('、')}　（他們看不到任何資料）</div></details></div>`;
