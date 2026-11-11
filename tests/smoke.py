@@ -192,7 +192,11 @@ def student_tests(browser, base):
     page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
     page.fill('#em', 'stranger@example.com'); page.fill('#pw', 'secret3'); page.click('#btnAuth'); page.wait_for_timeout(600)
     txt = page.inner_text('#app')
-    check('不在對照表：請學生告訴老師這個電子郵件，且看不到任何學生資料', 'stranger@example.com' in txt and 'Pedro' not in txt, txt); ctx.close()
+    check('不在對照表：說明已通知老師、顯示他的電子郵件，且看不到任何學生資料', 'stranger@example.com' in txt and 'avisamos' in txt and 'Pedro' not in txt, txt)
+    rq = page.evaluate("window.__fb.store['portal/%s/requests/u_s']" % TID)
+    check('留下一筆新註冊給老師（小寫信箱、自己的 uid、時間）', rq and rq['email'] == 'stranger@example.com' and rq['uid'] == 'u_s' and isinstance(rq['at'], int), rq)
+    check('有「再檢查一次」按鈕，按了不會重複寫入', page.locator('#btnRecheck').count() == 1)
+    ctx.close()
 
     # 7. 已封存
     ctx, page, errs = new_page(browser, base_state({'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': True}}))
@@ -709,7 +713,7 @@ def nudge_admin_tests(browser, base):
     page.goto(base + 'admin.html'); page.wait_for_timeout(300)
     page.fill('#em', 'teacher@example.com'); page.fill('#pw', 'tpass12'); page.click('#go'); page.wait_for_timeout(600)
     tab(page, 'nud')
-    check('每位有電子郵件的學生都有開關；沒填電子郵件的提示先填', page.locator('tr[data-nid=s1]').count() == 1 and '先在上面的表格填電子郵件' in page.inner_text('#app'))
+    check('每位有電子郵件的學生都有開關；沒填電子郵件的提示先到學生分頁', page.locator('tr[data-nid=s1]').count() == 1 and '先到「學生」分頁填電子郵件' in page.inner_text('#app'))
     check('預設是開的', page.locator('tr[data-nid=s1] .nOn').is_checked() and page.locator('tr[data-nid=s1] .nPay').is_checked())
     page.uncheck('tr[data-nid=s1] .nPay'); page.wait_for_timeout(300)
     check('關掉繳費提醒：馬上存起來', page.evaluate("window.__fb.store['%s'].nudge" % R) == {'on': True, 'pay': False} and '已儲存' in page.inner_text('tr[data-nid=s1]'))
@@ -773,6 +777,38 @@ def admin_tabs_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def signup_tests(browser, base):
+    print('\n老師後台：新註冊')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    S = lambda n: {'v': 1, 'name': n, 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []}
+    store = {'portal/%s/students/s1' % TID: S('Pedro'), 'portal/%s/students/s2' % TID: S('Liz'), 'portal/%s/students/s3' % TID: S('Ana'),
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}},
+             'portal/%s/requests/u_new' % TID: {'email': 'new@example.com', 'uid': 'u_new', 'at': 1762840000000},
+             'portal/%s/requests/u_old' % TID: {'email': 'pedro@example.com', 'uid': 'u_old', 'at': 1762840000000},
+             'portal/%s/requests/u_x' % TID: {'email': 'spam@example.com', 'uid': 'u_x', 'at': 1762840100000}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(700)
+    txt = page.inner_text('#app')
+    check('「學生」分頁最上面有新註冊（2）；已經登記過的信箱不重複列', '新註冊（2）' in txt and 'new@example.com' in txt and 'spam@example.com' in txt and 'u_old' not in page.content())
+    check('分頁列「學生」有紅點數字', page.inner_text('#tabbar [data-t=stu] .bd') == '2')
+    opts = page.locator('[data-rq=u_new] .rqSel option').all_inner_texts()
+    check('下拉只列還沒有電子郵件的學生', opts == ['選擇是哪位學生…', 'Ana', 'Liz'], opts)
+    page.click('[data-rq=u_new] .rqOk'); page.wait_for_timeout(200)
+    check('沒選學生就按確認：提醒先選', '請先選一位學生' in page.inner_text('[data-rq=u_new]'))
+    page.select_option('[data-rq=u_new] .rqSel', 's2')
+    page.evaluate("window.__fb.subs.forEach(s => s.fire())"); page.wait_for_timeout(200)
+    check('資料更新、畫面重畫時，選到一半的學生不會不見', page.input_value('[data-rq=u_new] .rqSel') == 's2')
+    page.click('[data-rq=u_new] .rqOk'); page.wait_for_timeout(400)
+    r = page.evaluate("window.__fb.store['portal/%s/roster/s2']" % TID); keys = page.evaluate('Object.keys(window.__fb.store)')
+    check('確認：信箱寫進那位學生的對照表，申請刪掉', r and r['email'] == 'new@example.com' and r['name'] == 'Liz' and ('portal/%s/requests/u_new' % TID) not in keys, r)
+    check('已確認的那筆不再顯示，數字變成 1', '新註冊（1）' in page.inner_text('#app') and page.inner_text('#tabbar [data-t=stu] .bd') == '1')
+    check('對照表那一列也看到這個電子郵件', page.input_value('tr[data-id=s2] .emIn') == 'new@example.com')
+    page.once('dialog', lambda d: d.accept()); page.click('[data-rq=u_x] .rqNo'); page.wait_for_timeout(300)
+    check('忽略：申請刪掉、卡片消失', ('portal/%s/requests/u_x' % TID) not in page.evaluate('Object.keys(window.__fb.store)') and '新註冊' not in page.inner_text('#app'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -786,6 +822,7 @@ with sync_playwright() as p:
     nudge_tests(browser, base)
     nudge_admin_tests(browser, base)
     admin_tabs_tests(browser, base)
+    signup_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

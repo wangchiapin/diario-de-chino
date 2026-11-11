@@ -115,6 +115,7 @@ const auth = getAuth(app), db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+let reqs = {}, reqSel = {}, reqMsg = {};
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
 let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = {};
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
@@ -159,6 +160,54 @@ function pendingHtml(active){
   list.sort((a, b) => (a.d.submittedAt || 0) - (b.d.submittedAt || 0));
   return `<div class="card"><h2>等你批改（${list.length}）</h2>${list.map(x => `<div class="row" style="padding:5px 0"><b>${esc(students[x.sid].name)}</b><span class="muted">${esc(x.d.title || '')}</span><span class="muted small">${esc(fmtTime(x.d.submittedAt))} 交</span><button class="tiny" data-g="${esc(x.sid)}" data-gw="${esc(x.wid)}">批改</button></div>`).join('')}</div>`;
 }
+/* ───────── 新註冊（學生驗證信箱後留下的申請，老師選是哪位學生） ───────── */
+function pendingReqs(){
+  const have = {}; Object.keys(roster).forEach(k => { if(roster[k].email) have[roster[k].email] = 1; });
+  return Object.keys(reqs).filter(k => reqs[k].email && !have[String(reqs[k].email).toLowerCase()]).sort((a, b) => (reqs[a].at || 0) - (reqs[b].at || 0));
+}
+function reqHtml(active){
+  const list = pendingReqs();
+  if(!list.length) return '';
+  const free = active.filter(sid => !roster[sid] || !roster[sid].email);
+  return `<div class="card"><h2>新註冊（${list.length}）</h2>
+    <div class="muted small" style="margin-bottom:6px">這些人已經用學生網址註冊並驗證了信箱。請選出他是哪位學生，按「確認」，他就能看到自己的資料。不認識的人按「忽略」。</div>
+    ${list.map(k => { const r = reqs[k], m = reqMsg[k];
+      return `<div class="hwrow" data-rq="${esc(k)}"><div class="row"><b style="word-break:break-all">${esc(r.email)}</b><span class="muted small">${esc(fmtTime(r.at))}</span></div>
+        <div class="row" style="margin-top:6px"><select class="rqSel" style="font:inherit;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;max-width:100%"><option value="">選擇是哪位學生…</option>${free.map(sid => `<option value="${esc(sid)}" ${reqSel[k] === sid ? 'selected' : ''}>${esc(students[sid].name)}</option>`).join('')}</select>
+        <button class="tiny rqOk">確認</button><button class="tiny quiet rqNo">忽略</button><span class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : '')}</span></div>
+        ${free.length ? '' : '<div class="muted small">每位學生都已經有電子郵件了。如果要換，請先在下面的表格改。</div>'}</div>`; }).join('')}</div>`;
+}
+function bindReq(root){
+  root.querySelectorAll('[data-rq]').forEach(el => {
+    const k = el.dataset.rq;
+    el.querySelector('.rqSel').onchange = e => { reqSel[k] = e.target.value; };
+    el.querySelector('.rqOk').onclick = () => confirmReq(k, el.querySelector('.rqSel').value);
+    el.querySelector('.rqNo').onclick = async () => {
+      if(!confirm('要忽略這個註冊嗎？（對方的帳號不會被刪除，只是不會出現在名單上；他再開頁面時會再通知你一次）')) return;
+      try{ await deleteDoc(doc(db, 'portal', uid, 'requests', k)); delete reqs[k]; delete reqSel[k]; delete reqMsg[k]; }
+      catch(err){ console.error(err); reqMsg[k] = { text: '失敗，請再試一次', ok: false }; }
+      render();
+    };
+  });
+}
+async function confirmReq(k, sid){
+  const r = reqs[k]; if(!r) return;
+  if(!sid){ reqMsg[k] = { text: '請先選一位學生', ok: false }; return render(); }
+  const email = String(r.email || '').toLowerCase();
+  const dup = Object.keys(roster).find(x => x !== sid && roster[x].email === email);
+  if(dup){ reqMsg[k] = { text: `這個電子郵件已經給了 ${students[dup] ? students[dup].name : '另一位學生'}`, ok: false }; return render(); }
+  try{
+    const data = Object.assign({}, roster[sid] || {}, { email, name: students[sid] ? students[sid].name : '', updatedAt: Date.now() });
+    await setDoc(doc(db, 'portal', uid, 'roster', sid), data); roster[sid] = data;
+    await deleteDoc(doc(db, 'portal', uid, 'requests', k)); delete reqs[k]; delete reqSel[k]; delete reqMsg[k];
+    rowMsg[sid] = { text: '✓ 已確認，學生可以登入了', ok: true };
+  }catch(err){
+    console.error(err);
+    reqMsg[k] = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加 requests 那段' : '失敗，請再試一次', ok: false };
+  }
+  render();
+}
+
 /* ───────── 彈跳視窗設定 ───────── */
 const NUD_LABEL = { hwTodo: '作業沒交（{n} 份）', graded: '作業批改好了', classSoon: '快上課了（{day} {time}）', payLow: '課堂快用完（剩 {n} 堂）', paySingle: '單堂付費' };
 function nudDefaults(){
@@ -182,7 +231,7 @@ function nudHtml(active){
           <td><label><input type="checkbox" class="nOn" ${n.on === false ? '' : 'checked'} style="width:auto"> 彈跳視窗</label></td>
           <td><label><input type="checkbox" class="nPay" ${n.pay === false ? '' : 'checked'} style="width:auto"> 繳費提醒</label></td>
           <td class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : '')}</td></tr>`
-      : `<tr><td><b>${esc(students[id].name)}</b></td><td class="muted small" colspan="3">先在上面的表格填電子郵件，才能設定</td></tr>`;
+      : `<tr><td><b>${esc(students[id].name)}</b></td><td class="muted small" colspan="3">先到「學生」分頁填電子郵件，才能設定</td></tr>`;
   });
   const remRows = NUD_REM_KEYS.map(k => `<div class="nudrem" data-rk="${k}"><div class="small">${esc(NUD_LABEL[k])}</div>
       <input class="rTc" value="${esc(cur.rem[k].tc)}" aria-label="繁體"><input class="rSc" value="${esc(cur.rem[k].sc)}" aria-label="簡體"><input class="rEs" value="${esc(cur.rem[k].es)}" aria-label="Español"></div>`).join('');
@@ -627,18 +676,19 @@ function render(){
     if(archived.length) html += `<div class="card"><details><summary class="muted">已停課的學生（${archived.length} 位）</summary><div class="small muted" style="margin-top:6px">${archived.map(id => esc(students[id].name)).join('、')}　（他們看不到任何資料）</div></details></div>`;
   }
   const pend = active.reduce((n, sid) => n + Object.keys(hw[sid] || {}).filter(w => hw[sid][w].status === 'submitted').length, 0);
+  const reqN = pendingReqs().length;
   const TABS = [['stu', '學生'], ['hw', '作業'], ['nud', '彈跳視窗'], ['set', '設定']];
   if(!TABS.some(t => t[0] === adminTab)) adminTab = 'stu';
   const pane = (k, h) => `<section class="tabp ${adminTab === k ? '' : 'hidden'}" data-p="${k}">${h}</section>`;
-  root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}</button>`).join('')}</nav>`
-    + pane('stu', html) + pane('hw', hwHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
+  root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}${t[0] === 'stu' && reqN ? `<span class="bd">${reqN}</span>` : ''}</button>`).join('')}</nav>`
+    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
   root.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => {
     adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
     root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
     root.querySelectorAll('.tabp').forEach(x => x.classList.toggle('hidden', x.dataset.p !== adminTab));
     window.scrollTo(0, 0);
   });
-  bindHw(root, active); bindNud(root);
+  bindHw(root, active); bindNud(root); bindReq(root);
 
   const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };
   root.querySelectorAll('tr[data-id]').forEach(tr => {
@@ -681,13 +731,14 @@ function syncHw(){
       err => console.error(err));
   });
 }
-function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; }
+function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; reqs = {}; }
 function start(){
   stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'students'), snap => { students = {}; snap.forEach(d => students[d.id] = d.data()); studentsLoaded = true; syncHw(); render(); }, onErr));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'hwPool'), snap => { pool = {}; snap.forEach(d => pool[d.id] = d.data()); poolLoaded = true; render(); }, err => { console.error(err); poolLoaded = true; render(); }));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'nudge'), s => { nudCfg = s.exists() ? s.data() : null; render(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'requests'), snap => { reqs = {}; snap.forEach(d => reqs[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'admins'), snap => { admins = {}; snap.forEach(d => admins[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'roster'), snap => { roster = {}; snap.forEach(d => roster[d.id] = d.data()); rosterLoaded = true; render(); }, onErr));
 }

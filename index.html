@@ -273,9 +273,17 @@ function renderVerify(root, user){
   };
 }
 
+/* 還沒登記的學生：驗證過信箱後，留一筆「新註冊」給老師，老師在後台選是哪位學生就會通過 */
+let reqTried = false, reqOk = false;
 function renderNotListed(root, user){
-  root.innerHTML = `<div class="card"><h2>${esc(T('notListedTitle'))}</h2><div>${esc(T('notListedMsg', { email: user.email }))}</div></div>${logoutBlock()}`;
+  root.innerHTML = `<div class="card"><h2>${esc(T('notListedTitle'))}</h2><div>${esc(T(reqOk ? 'notListedSent' : 'notListedMsg', { email: user.email }))}</div>${reqOk ? `<button class="primary" id="btnRecheck">${esc(T('recheck'))}</button>` : ''}</div>${logoutBlock()}`;
   bindLogout();
+  if(reqOk) $('btnRecheck').onclick = () => startRoster();
+  if(!reqTried && !PREVIEW){
+    reqTried = true;
+    setDoc(doc(db, 'portal', tid, 'requests', user.uid), { email: String(user.email).toLowerCase(), uid: user.uid, at: Date.now() })
+      .then(() => { reqOk = true; render(); }).catch(err => console.error(err));
+  }
 }
 function renderError(root){
   root.innerHTML = `<div class="card center"><div class="msg err">${esc(docError || T('errOther'))}</div><button class="link" id="btnRetry">${esc(T('retry'))}</button></div>${logoutBlock()}`;
@@ -721,7 +729,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw(); nudStop();
+  stopHw(); nudStop(); reqTried = false; reqOk = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

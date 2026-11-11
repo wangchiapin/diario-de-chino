@@ -155,6 +155,7 @@ var PC_I18N = {
     hwKey: 'Respuesta correcta', hwSample: 'Respuesta de ejemplo', hwTeacherNote: 'Mensaje de tu profesor', hwRight: 'Correcto', hwWrong: 'Incorrecto', hwHalf: 'Parcial', hwNoAns: '(sin respuesta)', hwMarked: 'Corrección de tu profesor',
     hwWordTitle: 'Hacer la tarea en Word', hwWordHelp: '1) Descarga el Word. 2) Respóndelo en tu computadora o celular. 3) Súbelo aquí (solo .docx, máximo 600 KB) y pulsa Entregar.', hwWordDown: 'Descargar Word', hwWordUp: 'Subir mi Word', hwWordUploaded: 'Subido: {name}', hwWordRemove: 'Quitar', hwWordBig: 'El archivo es muy grande (máximo 600 KB).', hwWordType: 'Solo se aceptan archivos .docx.', hwWordFail: 'No se pudo subir. Inténtalo de nuevo.', hwWordDownFail: 'No se pudo crear el Word. Revisa tu conexión.', hwWordName: 'Nombre', hwWordDate: 'Fecha', hwMatchNote: 'Escribe la letra que corresponde a cada número.', hwWordSent: 'Tu Word ya está subido.', hwWordMarkedTitle: 'Tu Word corregido', hwAnswersTitle: 'Respuestas correctas', hwWordBusy: 'Subiendo…',
     nudQ: 'Practica', nudEnc: 'Ánimo', nudRem: 'Recordatorio', nudClose: 'Cerrar',
+    notListedSent: 'Ya avisamos a tu profesor ({email}). Cuando te confirme, pulsa «Volver a revisar».', recheck: 'Volver a revisar',
     hwT_fill: 'Completa con la palabra correcta', hwT_cloze: 'Completa el texto con la palabra correcta', hwT_order: 'Ordena las palabras para formar una oración',
     hwT_choice: 'Elige la oración correcta', hwT_fix: 'Escribe la oración correcta', hwT_translate: 'Traduce al chino', hwT_zh2es: 'Traduce al español',
     hwT_match: 'Une cada palabra con su significado', hwT_sentence: 'Escribe una oración con la palabra o estructura indicada'
@@ -185,6 +186,7 @@ var PC_I18N = {
     hwKey: '標準答案', hwSample: '示範答案', hwTeacherNote: '老師的話', hwRight: '答對了', hwWrong: '答錯了', hwHalf: '對一半', hwNoAns: '（沒有作答）', hwMarked: '老師批改',
     hwWordTitle: '用 Word 做作業', hwWordHelp: '① 下載 Word　② 在電腦或手機上寫好　③ 回來上傳（只收 .docx，最大 600 KB），再按「交出作業」。', hwWordDown: '下載 Word', hwWordUp: '上傳我寫好的 Word', hwWordUploaded: '已上傳：{name}', hwWordRemove: '移除', hwWordBig: '檔案太大了（最大 600 KB）。', hwWordType: '只收 .docx 檔案。', hwWordFail: '上傳失敗，請再試一次。', hwWordDownFail: '沒辦法產生 Word，請檢查網路。', hwWordName: '姓名', hwWordDate: '日期', hwMatchNote: '請在每個數字後面寫上對應的字母。', hwWordSent: '你的 Word 已經上傳。', hwWordMarkedTitle: '老師批改後的 Word', hwAnswersTitle: '標準答案', hwWordBusy: '上傳中…',
     nudQ: '練習一下', nudEnc: '加油', nudRem: '提醒', nudClose: '關閉',
+    notListedSent: '已經通知老師了（{email}）。等老師確認後，按「再檢查一次」。', recheck: '再檢查一次',
     hwT_fill: '選詞填空：選出正確的詞填入空格', hwT_cloze: '段落填空：選出正確的詞填入空格', hwT_order: '排序：把詞語排成通順的句子',
     hwT_choice: '選擇：選出正確的句子', hwT_fix: '改錯：找出錯誤，寫出正確的句子', hwT_translate: '西翻中：翻成中文', hwT_zh2es: '中翻西：翻成西班牙文',
     hwT_match: '配對：把每個詞語和它的意思連起來', hwT_sentence: '造句：用指定的詞語或句型造句'
@@ -215,6 +217,7 @@ var PC_I18N = {
     hwKey: '标准答案', hwSample: '示范答案', hwTeacherNote: '老师的话', hwRight: '答对了', hwWrong: '答错了', hwHalf: '对一半', hwNoAns: '（没有作答）', hwMarked: '老师批改',
     hwWordTitle: '用 Word 做作业', hwWordHelp: '① 下载 Word　② 在电脑或手机上写好　③ 回来上传（只收 .docx，最大 600 KB），再按「交出作业」。', hwWordDown: '下载 Word', hwWordUp: '上传我写好的 Word', hwWordUploaded: '已上传：{name}', hwWordRemove: '移除', hwWordBig: '档案太大了（最大 600 KB）。', hwWordType: '只收 .docx 档案。', hwWordFail: '上传失败，请再试一次。', hwWordDownFail: '没办法产生 Word，请检查网路。', hwWordName: '姓名', hwWordDate: '日期', hwMatchNote: '请在每个数字后面写上对应的字母。', hwWordSent: '你的 Word 已经上传。', hwWordMarkedTitle: '老师批改后的 Word', hwAnswersTitle: '标准答案', hwWordBusy: '上传中…',
     nudQ: '练习一下', nudEnc: '加油', nudRem: '提醒', nudClose: '关闭',
+    notListedSent: '已经通知老师了（{email}）。等老师确认后，按「再检查一次」。', recheck: '再检查一次',
     hwT_fill: '选词填空：选出正确的词填入空格', hwT_cloze: '段落填空：选出正确的词填入空格', hwT_order: '排序：把词语排成通顺的句子',
     hwT_choice: '选择：选出正确的句子', hwT_fix: '改错：找出错误，写出正确的句子', hwT_translate: '西翻中：翻成中文', hwT_zh2es: '中翻西：翻成西班牙文',
     hwT_match: '配对：把每个词语和它的意思连起来', hwT_sentence: '造句：用指定的词语或句型造句'
