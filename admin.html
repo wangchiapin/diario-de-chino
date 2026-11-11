@@ -19,6 +19,11 @@ button{font:inherit;font-size:14px;padding:8px 14px;border:1px solid var(--accen
 button.quiet{background:transparent;color:var(--accent)}
 button:disabled{opacity:.5}
 .muted{color:var(--sub);font-size:13px}
+details.help{margin:2px 0 8px}
+details.help>summary{display:inline-block;cursor:pointer;font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:1px 10px;list-style:none}
+details.help>summary::-webkit-details-marker{display:none}
+details.help[open]>summary{background:#f1f1f1}
+details.help>.hb{margin-top:6px}
 .err{color:var(--warn)} .ok{color:var(--ok)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
@@ -117,6 +122,9 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 
 let reqs = {}, reqSel = {}, reqMsg = {};
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
+const helpOpen = new Set();
+function helpBox(k, inner){ return `<details class="help" data-hk="${k}" ${helpOpen.has(k) ? 'open' : ''}><summary>說明</summary><div class="hb muted small">${inner}</div></details>`; }
+document.addEventListener('toggle', e => { const d = e.target; if(d && d.classList && d.classList.contains('help')){ if(d.open) helpOpen.add(d.dataset.hk); else helpOpen.delete(d.dataset.hk); } }, true);
 let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = {};
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
@@ -170,7 +178,7 @@ function reqHtml(active){
   if(!list.length) return '';
   const free = active.filter(sid => !roster[sid] || !roster[sid].email);
   return `<div class="card"><h2>新註冊（${list.length}）</h2>
-    <div class="muted small" style="margin-bottom:6px">這些人已經用學生網址註冊並驗證了信箱。請選出他是哪位學生，按「確認」，他就能看到自己的資料。不認識的人按「忽略」。</div>
+    ${helpBox('rq', '這些人已經用學生網址註冊並驗證了信箱。請選出他是哪位學生，按「確認」，他就能看到自己的資料。不認識的人按「忽略」。')}
     ${list.map(k => { const r = reqs[k], m = reqMsg[k];
       return `<div class="hwrow" data-rq="${esc(k)}"><div class="row"><b style="word-break:break-all">${esc(r.email)}</b><span class="muted small">${esc(fmtTime(r.at))}</span></div>
         <div class="row" style="margin-top:6px"><select class="rqSel" style="font:inherit;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;max-width:100%"><option value="">選擇是哪位學生…</option>${free.map(sid => `<option value="${esc(sid)}" ${reqSel[k] === sid ? 'selected' : ''}>${esc(students[sid].name)}</option>`).join('')}</select>
@@ -236,7 +244,7 @@ function nudHtml(active){
   const remRows = NUD_REM_KEYS.map(k => `<div class="nudrem" data-rk="${k}"><div class="small">${esc(NUD_LABEL[k])}</div>
       <input class="rTc" value="${esc(cur.rem[k].tc)}" aria-label="繁體"><input class="rSc" value="${esc(cur.rem[k].sc)}" aria-label="簡體"><input class="rEs" value="${esc(cur.rem[k].es)}" aria-label="Español"></div>`).join('');
   return `<div class="card"><h2>彈跳視窗（學生頁會跳出練習題、鼓勵和提醒）</h2>
-    <div class="muted small">學生一進頁面，會隨機跳出一個（練習題、鼓勵或提醒）；停留在頁面的話，每 5 分鐘再跳一題練習題。練習題來自學生收到的練習單，題庫會隨作業增加而變多。學生只能按右上角 X 關掉。</div>
+    ${helpBox('nd1', '學生一進頁面，會隨機跳出一個（練習題、鼓勵或提醒）；停留在頁面的話，每 5 分鐘再跳一題練習題。練習題來自學生收到的練習單，題庫會隨作業增加而變多。學生只能按右上角 X 關掉。')}
     <table style="margin-top:8px"><tbody>${rows}</tbody></table>
     <details class="nd" id="nudDet" ${nudOpen ? 'open' : ''}><summary>修改「鼓勵的話」和「提醒的話」</summary>
       <div class="muted small" style="margin:8px 0">鼓勵的話：一行一句，三欄請「第幾行對第幾行」。簡體或西文留空的那一行，會用繁體那一句。<br>
@@ -300,7 +308,7 @@ function hwHtml(active){
   let h = pendingHtml(active) + `<div class="card"><h2>作業（從練習單產生器發布）</h2>`;
   const ids = Object.keys(pool).sort((a, b) => (pool[b].upd || pool[b].ts || 0) - (pool[a].upd || pool[a].ts || 0));
   if(!poolLoaded){ h += '<div class="muted">載入中…</div>'; }
-  else if(!ids.length){ h += `<div class="muted small">還沒有作業。到練習單產生器，登入 Google 後按「發布給學生頁」，作業就會出現在這裡。第一次要先在下面「發布帳號」設定。</div>`; }
+  else if(!ids.length){ h += `<div class="muted small">還沒有作業。</div>${helpBox('hw0', '到練習單產生器，登入 Google 後按「發布給學生頁」，作業就會出現在這裡。第一次要先在下面「發布帳號」設定。')}`; }
   ids.forEach(wid => {
     const p = pool[wid], st = poolState(wid) || {}, total = window.hwTotal ? hwTotal(st) : (p.count || 0);
     const rows = active.map(sid => ({ sid, d: (hw[sid] || {})[wid] })).filter(x => x.d);
@@ -323,9 +331,10 @@ function hwHtml(active){
 /* 發布帳號卡片（放在「設定」分頁） */
 function pubHtml(){
   let h = `<div class="card"><h2>發布帳號（讓練習單產生器可以發布作業）</h2>
-    <div class="muted small">老師代號（貼到練習單產生器）：</div>
+    ${helpBox('pub1', '第一次使用：先複製下面的「老師代號」，貼到練習單產生器；再把產生器登入 Google 後顯示的「帳號代碼」貼在這裡，按「允許」，這個帳號才能發布作業。')}
+    <div class="small">老師代號（貼到練習單產生器）：</div>
     <div class="row" style="margin:4px 0 10px"><input id="tidShow" readonly value="${esc(uid)}" style="flex:1;min-width:200px"><button id="tidCopy" class="tiny">複製</button></div>
-    <div class="muted small">練習單產生器登入 Google 後，會顯示「帳號代碼」。把它貼在這裡，這個帳號才能發布作業：</div>
+    <div class="small" style="margin-top:6px">產生器的帳號代碼：</div>
     <div class="row" style="margin:4px 0"><input id="adCode" placeholder="產生器顯示的帳號代碼" value="${esc(adminDraft.code)}" style="flex:1;min-width:200px"><input id="adLabel" placeholder="備註（例如：我的 Google）" value="${esc(adminDraft.label)}" style="flex:1;min-width:140px"><button id="adAdd">允許</button></div>
     <div class="small ${adminMsg && !adminMsg.ok ? 'err' : 'ok'}">${esc(adminMsg ? adminMsg.text : '')}</div>
     ${Object.keys(admins).map(k => `<div class="row small" style="margin-top:4px"><span>${esc(admins[k].label || '（沒有備註）')}</span><span class="muted">${esc(k.slice(0, 6))}…${esc(k.slice(-4))}</span><button class="tiny quiet" data-ad="${esc(k)}">移除</button></div>`).join('')}
@@ -497,7 +506,7 @@ function gradeBottomHtml(d, g){
   return `<div class="card"><h2>給學生的話（選填）</h2><textarea class="gnotebox" id="gNote" placeholder="例如：整體很棒，注意「把」字句的位置。">${esc(g.note)}</textarea>
     <label class="row small" style="margin-top:10px;gap:6px"><input type="checkbox" id="gHide" style="width:auto" ${g.hideScore ? 'checked' : ''}>不顯示分數給學生（還是會顯示每題對錯和標準答案；你這邊仍看得到分數）</label>
     <div class="row" style="margin-top:10px"><button id="gDone">${d.status === 'graded' ? '更新批改' : '完成批改'}</button>${d.status === 'submitted' ? '<button class="quiet" id="gRedo">退回重做</button>' : ''}<span class="gmsg ${gmsg && !gmsg.ok ? 'err' : 'ok'}" id="gMsg">${esc(gmsg ? gmsg.text : '')}</span></div>
-    <div class="muted small" style="margin-top:8px">按「完成批改」後，學生才看得到結果和標準答案。「退回重做」會讓學生重新作答（他原本的答案會保留）。</div></div>`;
+    ${helpBox('gr', '按「完成批改」後，學生才看得到結果和標準答案。「退回重做」會讓學生重新作答（他原本的答案會保留）。')}</div>`;
 }
 function gradeWordRender(){
   const o = gradeOpen, root = $('app'), d = (hw[o.sid] || {})[o.wid], s = students[o.sid] || {}, g = gdraft, r = g.list[0];
@@ -651,18 +660,17 @@ function render(){
   let html = `<div class="card">
     <h2>學生網址</h2>
     <div class="row"><input id="link" readonly value="${esc(studentUrl())}" style="flex:1;min-width:200px"><button id="copy">複製</button></div>
-    <div class="muted small" style="margin-top:8px">把這個網址傳給學生。學生第一次要用自己的電子郵件「建立帳號」並驗證信箱，之後用密碼登入。</div>
-    <ol class="muted small">
+    ${helpBox('url', `把這個網址傳給學生。學生第一次要用自己的電子郵件「建立帳號」並驗證信箱，之後用密碼登入。<ol style="margin:6px 0 0;padding-left:18px">
       <li>在下面的表格，幫每位學生填上他登入用的電子郵件，按「儲存」。</li>
       <li>填了電子郵件的學生，才看得到自己的課表和付費狀況；看不到別人的。</li>
       <li>學生資料來自日誌；日誌開著時，有變動約 1 分鐘內會自動更新。</li>
-    </ol></div>`;
+    </ol>`)}</div>`;
 
   if(!ids.length){
     html += `<div class="card">還沒有學生資料。請先打開「華語教學日誌」，到 ⚙️ 設定 → 🎓 學生頁，按「立即更新學生頁」。</div>`;
   }else{
     html += `<div class="card"><h2>對照表：學生 ↔ 電子郵件（${active.length} 位在學）</h2>
-      ${missingTz ? `<div class="muted small" style="margin-bottom:6px">有 ${missingTz} 位學生還沒設定所在地，學生頁會先用他們裝置的時區；到日誌「課表及學生設定」選好所在地就會自動帶入。</div>` : ''}
+      ${missingTz ? `<div class="muted small" style="margin-bottom:6px">有 ${missingTz} 位學生還沒設定所在地。</div>${helpBox('tz', '學生頁會先用他們裝置的時區；到日誌「課表及學生設定」選好所在地就會自動帶入。')}` : ''}
       <table><thead><tr><th>學生</th><th>付費</th><th>已上</th><th>時區</th><th>日誌更新</th><th>登入用電子郵件</th><th></th></tr></thead><tbody>`;
     active.forEach(id => {
       const s = students[id], r = roster[id], m = rowMsg[id];
