@@ -259,12 +259,59 @@ def preview_tests(browser, base):
     check('後台每位學生旁有「預覽」連結', page.get_attribute('tr[data-id=s1] a.pv', 'href') == 'index.html?preview=s1'); ctx.close()
 
 
+HW_STATE = {'meta': {'title': '把字句', 'grammar': '把字句'}, 'opts': {'cueEs': True}, 'sections': [
+    {'id': 's1', 'type': 'fill', 'enabled': True, 'bank': ['放'], 'items': [{'id': 'f1', 'enabled': True, 'zh': '請你__書放好。', 'answer': '把', 'es': 'Pon el libro.'}]},
+    {'id': 's2', 'type': 'choice', 'enabled': True, 'bank': [], 'items': [{'id': 'c1', 'enabled': True, 'es': 'Elige', 'options': ['我書把放好', '我把書放好', '把我書放好'], 'answer': 1}]},
+    {'id': 's3', 'type': 'sentence', 'enabled': True, 'bank': [], 'items': [{'id': 'se1', 'enabled': True, 'cue': '把', 'es': '', 'answer': '我把書放好。'}]}]}
+
+
+def hw_admin_tests(browser, base):
+    import json
+    print('\n老師後台：作業與發布帳號')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/students/s2' % TID: {'v': 1, 'name': 'Liz', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/hwPool/w1' % TID: {'id': 'w1', 'ts': 1760000000000, 'upd': 1760000000000, 'name': '把字句練習', 'grammar': '把字句', 'count': 3, 'data': json.dumps(HW_STATE)}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    txt = page.inner_text('#app')
+    check('作業清單顯示作業名稱和總分', '把字句練習' in txt and '3 分' in txt, txt[-300:])
+    check('顯示老師代號，給產生器貼上', page.input_value('#tidShow') == TID)
+    page.click('.hwrow[data-wid=w1] [data-a=assign]'); page.wait_for_timeout(100)
+    check('展開後列出在學學生，沒填電子郵件的有提醒', 'Pedro' in page.inner_text('.picks') and '還沒填電子郵件' in page.inner_text('.picks'))
+    page.click('.hwrow[data-wid=w1] [data-a=send]'); page.wait_for_timeout(200)
+    check('沒勾選就按發出：提醒先勾選', '請先勾選' in page.inner_text('#app'))
+    page.check('.picks input[data-sid=s1]'); page.click('.hwrow[data-wid=w1] [data-a=send]'); page.wait_for_timeout(400)
+    path = 'portal/%s/students/s1/hw/w1' % TID
+    keys = page.evaluate('Object.keys(window.__fb.store)')
+    check('發出：只寫進被勾選那位學生的資料夾', path in keys and ('portal/%s/students/s2/hw/w1' % TID) not in keys)
+    doc = page.evaluate("window.__fb.store['%s']" % path)
+    check('學生那份：狀態未交、答案空、沒有標準答案', doc['status'] == 'todo' and doc['answers'] == {} and '"answer"' not in json.dumps(doc, ensure_ascii=False) and doc['total'] == 3, doc)
+    check('發出後顯示已發給 1 位、Pedro 未交', '已發給 1 位' in page.inner_text('#app') and '未交' in page.inner_text('.hwrow'))
+    page.click('.hwrow[data-wid=w1] [data-a=assign]'); page.click('.hwrow[data-wid=w1] [data-a=assign]'); page.wait_for_timeout(100)
+    check('已發過的學生不能重複勾選', page.locator('.picks input[data-sid=s1]').is_disabled())
+    # 發布帳號
+    page.fill('#adCode', 'abc'); page.click('#adAdd'); page.wait_for_timeout(200)
+    check('帳號代碼格式不對會擋下來', '格式不對' in page.inner_text('#app'))
+    page.fill('#adCode', TID); page.click('#adAdd'); page.wait_for_timeout(200)
+    check('填成自己的老師代號：不用另外允許', '不用另外允許' in page.inner_text('#app'))
+    g = 'G' * 28
+    page.fill('#adCode', g); page.fill('#adLabel', '我的 Google'); page.click('#adAdd'); page.wait_for_timeout(300)
+    check('允許新的發布帳號：存起來、清空輸入欄、列在下面', ('portal/%s/admins/%s' % (TID, g)) in page.evaluate('Object.keys(window.__fb.store)') and '我的 Google' in page.inner_text('#app') and page.input_value('#adCode') == '')
+    page.click('[data-ad="%s"]' % g); page.wait_for_timeout(300)
+    check('移除發布帳號', ('portal/%s/admins/%s' % (TID, g)) not in page.evaluate('Object.keys(window.__fb.store)'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
     student_tests(browser, base)
     admin_tests(browser, base)
     preview_tests(browser, base)
+    hw_admin_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

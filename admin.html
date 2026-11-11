@@ -26,6 +26,13 @@ th{font-size:12px;color:var(--sub);font-weight:600}
 td.em{min-width:210px}
 .small{font-size:12px}
 a.pv{font-size:13px;color:var(--accent);margin-left:6px}
+.hwrow{border-top:1px solid var(--line);padding:10px 0}
+.hwrow:first-of-type{border-top:0}
+.chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--accent-soft);margin:2px 4px 2px 0}
+.chip.todo{background:#e8e4db;color:#7b7467}.chip.submitted{background:#f0e2c3;color:#5a4624}.chip.graded{background:#dbe7da;color:#35553a}
+.picks label{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:14px}
+.picks input{width:auto}
+button.tiny{font-size:12px;padding:3px 10px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hidden{display:none !important}
 ol{margin:6px 0 0 18px;padding:0}
@@ -43,6 +50,7 @@ ol{margin:6px 0 0 18px;padding:0}
   <header><h1>老師後台</h1><button class="quiet hidden" id="btnLogout">登出</button></header>
   <div id="app"><div class="card muted">載入中…</div></div>
 </div>
+<script src="portal-hw.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -62,6 +70,9 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
+let pool = {}, poolLoaded = false, admins = {}, hw = {}, hwUnsubs = {};   // hw：學生代號 → { 作業代號 → 文件 }
+let assignOpen = null, assignSel = {}, hwNote = {}, adminDraft = { code: '', label: '' }, adminMsg = null;
+const poolCache = {};
 let rowMsg = {};          // 學生代號 → {text, ok}
 let drafts = {};          // 學生代號 → 還沒儲存的電子郵件
 let authReady = false, loginErr = '';
@@ -78,6 +89,95 @@ function fmtTime(ms){
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function studentUrl(){ return location.href.replace(/admin\.html.*$/, '') + '?t=' + uid; }
+
+function poolState(id){
+  const p = pool[id]; if(!p) return null;
+  const key = id + ':' + (p.upd || p.ts || 0);
+  if(!poolCache[key]){ try{ poolCache[key] = JSON.parse(p.data); }catch(e){ poolCache[key] = {}; } }
+  return poolCache[key];
+}
+function hwChip(d){
+  if(!d) return '';
+  if(d.status === 'graded') return `<span class="chip graded">已批改${d.result ? ' ' + esc(d.result.got) + '/' + esc(d.result.max) : ''}</span>`;
+  if(d.status === 'submitted') return '<span class="chip submitted">已交，待批改</span>';
+  return '<span class="chip todo">未交</span>';
+}
+function hwHtml(active){
+  let h = `<div class="card"><h2>作業（從練習單產生器發布）</h2>`;
+  const ids = Object.keys(pool).sort((a, b) => (pool[b].upd || pool[b].ts || 0) - (pool[a].upd || pool[a].ts || 0));
+  if(!poolLoaded){ h += '<div class="muted">載入中…</div>'; }
+  else if(!ids.length){ h += `<div class="muted small">還沒有作業。到練習單產生器，登入 Google 後按「發布給學生頁」，作業就會出現在這裡。第一次要先在下面「發布帳號」設定。</div>`; }
+  ids.forEach(wid => {
+    const p = pool[wid], st = poolState(wid) || {}, total = window.hwTotal ? hwTotal(st) : (p.count || 0);
+    const rows = active.map(sid => ({ sid, d: (hw[sid] || {})[wid] })).filter(x => x.d);
+    h += `<div class="hwrow" data-wid="${esc(wid)}"><div class="row"><b>${esc(p.name || '（沒有名稱）')}</b><span class="muted small">${total} 分　${esc(fmtTime(p.upd || p.ts))}</span>
+      <button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button></div>`;
+    if(rows.length) h += `<div class="small" style="margin-top:4px">${rows.map(x => `<span class="muted">${esc(students[x.sid].name)}</span> ${hwChip(x.d)}`).join('')}</div>`;
+    if(assignOpen === wid){
+      const sel = assignSel[wid] || {};
+      h += `<div class="picks" style="margin-top:8px">${active.map(sid => {
+        const done = (hw[sid] || {})[wid], noMail = !roster[sid];
+        return `<label><input type="checkbox" data-sid="${esc(sid)}" ${done ? 'disabled' : ''} ${sel[sid] && !done ? 'checked' : ''}>${esc(students[sid].name)}${done ? '（已發過）' : ''}${noMail && !done ? '（還沒填電子郵件）' : ''}</label>`;
+      }).join('')}</div>
+      <div class="row" style="margin-top:6px"><button class="tiny quiet" data-a="all">全選</button><button class="tiny" data-a="send">發出</button><span class="small ${hwNote[wid] && !hwNote[wid].ok ? 'err' : 'ok'}">${esc(hwNote[wid] ? hwNote[wid].text : '')}</span></div>`;
+    }
+    h += '</div>';
+  });
+  h += `</div>`;
+
+  h += `<div class="card"><h2>發布帳號（讓練習單產生器可以發布作業）</h2>
+    <div class="muted small">老師代號（貼到練習單產生器）：</div>
+    <div class="row" style="margin:4px 0 10px"><input id="tidShow" readonly value="${esc(uid)}" style="flex:1;min-width:200px"><button id="tidCopy" class="tiny">複製</button></div>
+    <div class="muted small">練習單產生器登入 Google 後，會顯示「帳號代碼」。把它貼在這裡，這個帳號才能發布作業：</div>
+    <div class="row" style="margin:4px 0"><input id="adCode" placeholder="產生器顯示的帳號代碼" value="${esc(adminDraft.code)}" style="flex:1;min-width:200px"><input id="adLabel" placeholder="備註（例如：我的 Google）" value="${esc(adminDraft.label)}" style="flex:1;min-width:140px"><button id="adAdd">允許</button></div>
+    <div class="small ${adminMsg && !adminMsg.ok ? 'err' : 'ok'}">${esc(adminMsg ? adminMsg.text : '')}</div>
+    ${Object.keys(admins).map(k => `<div class="row small" style="margin-top:4px"><span>${esc(admins[k].label || '（沒有備註）')}</span><span class="muted">${esc(k.slice(0, 6))}…${esc(k.slice(-4))}</span><button class="tiny quiet" data-ad="${esc(k)}">移除</button></div>`).join('')}
+  </div>`;
+  return h;
+}
+function bindHw(root, active){
+  const c = $('tidCopy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(uid); c.textContent = '已複製'; }catch(e){ $('tidShow').select(); } };
+  const ac = $('adCode'), al = $('adLabel');
+  if(ac){ ac.oninput = () => { adminDraft.code = ac.value; }; al.oninput = () => { adminDraft.label = al.value; }; $('adAdd').onclick = addAdmin; }
+  root.querySelectorAll('[data-ad]').forEach(b => b.onclick = async () => {
+    try{ await deleteDoc(doc(db, 'portal', uid, 'admins', b.dataset.ad)); adminMsg = { text: '已移除', ok: true }; }catch(err){ console.error(err); adminMsg = { text: '移除失敗，請再試一次', ok: false }; }
+    render();
+  });
+  root.querySelectorAll('.hwrow').forEach(row => {
+    const wid = row.dataset.wid;
+    row.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if(a === 'assign'){ assignOpen = assignOpen === wid ? null : wid; hwNote[wid] = null; return render(); }
+      if(a === 'all'){ assignSel[wid] = {}; active.forEach(sid => { if(!(hw[sid] || {})[wid]) assignSel[wid][sid] = true; }); return render(); }
+      if(a === 'send') return sendAssign(wid);
+    });
+    row.querySelectorAll('input[data-sid]').forEach(i => i.onchange = () => { (assignSel[wid] = assignSel[wid] || {})[i.dataset.sid] = i.checked; });
+  });
+}
+async function addAdmin(){
+  const code = adminDraft.code.trim(), label = adminDraft.label.trim();
+  if(!/^[A-Za-z0-9]{20,40}$/.test(code)){ adminMsg = { text: '帳號代碼格式不對（要是練習單產生器顯示的那一長串英數字）', ok: false }; return render(); }
+  if(code === uid){ adminMsg = { text: '這是你自己的老師帳號，不用另外允許', ok: false }; return render(); }
+  try{
+    await setDoc(doc(db, 'portal', uid, 'admins', code), { label, createdAt: Date.now() });
+    adminDraft = { code: '', label: '' }; adminMsg = { text: '✓ 已允許，現在可以在練習單產生器發布作業了', ok: true };
+  }catch(err){ console.error(err); adminMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加作業那幾段' : '儲存失敗，請再試一次', ok: false }; }
+  render();
+}
+async function sendAssign(wid){
+  const st = poolState(wid), sel = assignSel[wid] || {};
+  const pick = Object.keys(sel).filter(sid => sel[sid] && students[sid] && !students[sid].archived && !(hw[sid] || {})[wid]);
+  if(!pick.length){ hwNote[wid] = { text: '請先勾選要發給哪些學生', ok: false }; return render(); }
+  if(!st || !st.sections){ hwNote[wid] = { text: '這份作業的內容讀不出來，請回產生器重新發布', ok: false }; return render(); }
+  let okN = 0, failN = 0;
+  for(const sid of pick){
+    try{ await setDoc(doc(db, 'portal', uid, 'students', sid, 'hw', wid), hwAssignDoc(wid, st, Date.now())); okN++; }
+    catch(err){ console.error(err); failN++; }
+  }
+  assignSel[wid] = {};
+  hwNote[wid] = failN ? { text: `發出 ${okN} 位，${failN} 位失敗（可能是規則還沒加）`, ok: false } : { text: `✓ 已發給 ${okN} 位學生`, ok: true };
+  render();
+}
 
 function render(){
   const root = $('app');
@@ -132,7 +232,9 @@ function render(){
     html += `</tbody></table></div>`;
     if(archived.length) html += `<div class="card"><details><summary class="muted">已停課的學生（${archived.length} 位）</summary><div class="small muted" style="margin-top:6px">${archived.map(id => esc(students[id].name)).join('、')}　（他們看不到任何資料）</div></details></div>`;
   }
+  html += hwHtml(active);
   root.innerHTML = html;
+  bindHw(root, active);
 
   const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };
   root.querySelectorAll('tr[data-id]').forEach(tr => {
@@ -164,11 +266,24 @@ async function saveEmail(id, raw){
   render();
 }
 
-function stop(){ unsubs.forEach(u => u()); unsubs = []; }
+// 每位在學的學生各聽一份自己的作業進度
+function syncHw(){
+  const want = Object.keys(students).filter(id => !students[id].archived);
+  Object.keys(hwUnsubs).forEach(id => { if(want.indexOf(id) < 0){ hwUnsubs[id](); delete hwUnsubs[id]; delete hw[id]; } });
+  want.forEach(id => {
+    if(hwUnsubs[id]) return;
+    hwUnsubs[id] = onSnapshot(collection(db, 'portal', uid, 'students', id, 'hw'),
+      snap => { hw[id] = {}; snap.forEach(d => hw[id][d.id] = d.data()); render(); },
+      err => console.error(err));
+  });
+}
+function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; }
 function start(){
   stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
-  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'students'), snap => { students = {}; snap.forEach(d => students[d.id] = d.data()); studentsLoaded = true; render(); }, onErr));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'students'), snap => { students = {}; snap.forEach(d => students[d.id] = d.data()); studentsLoaded = true; syncHw(); render(); }, onErr));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'hwPool'), snap => { pool = {}; snap.forEach(d => pool[d.id] = d.data()); poolLoaded = true; render(); }, err => { console.error(err); poolLoaded = true; render(); }));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'admins'), snap => { admins = {}; snap.forEach(d => admins[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'roster'), snap => { roster = {}; snap.forEach(d => roster[d.id] = d.data()); rosterLoaded = true; render(); }, onErr));
 }
 

@@ -2,8 +2,9 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-11（新增 portal 兩段）
+// 最後更新：2026-11-11 10:52（新增作業三段：admins、hwPool、students/{sid}/hw）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-11 10:52 新增 portal/{tid}/admins、hwPool、students/{sid}/hw（作業，第一步：發布與發給學生）
 //   - 2026-11-11 新增 portal/{tid}/students 與 portal/{tid}/roster
 //
 // 誰能做什麼：
@@ -24,5 +25,30 @@
       allow read: if request.auth != null && (
         request.auth.uid == tid ||
         (request.auth.token.email_verified == true && resource.data.email == request.auth.token.email));
+      allow write: if request.auth != null && request.auth.uid == tid;
+    }
+
+
+// ===================================================================
+// 第二批（作業）：已經貼過上面兩段的話，只要再貼下面這三段，貼在上面兩段的後面，一樣跟其他 match 並排。
+// ===================================================================
+
+    // 發布帳號：老師允許的帳號（例如練習單產生器登入的 Google 帳號）。只有老師本人能增減。
+    match /portal/{tid}/admins/{aid} {
+      allow read, write: if request.auth != null && request.auth.uid == tid;
+    }
+    // 作業原稿（含標準答案）：只有老師，和老師允許的發布帳號可以讀寫。學生完全讀不到。
+    match /portal/{tid}/hwPool/{wid} {
+      allow read, write: if request.auth != null && (
+        request.auth.uid == tid ||
+        exists(/databases/$(database)/documents/portal/$(tid)/admins/$(request.auth.uid)));
+    }
+    // 發給每位學生的那一份（只有題目，沒有答案）：學生只讀自己的；老師全部讀寫。
+    // （學生交作業的寫入規則，下一步做學生作答時再加。）
+    match /portal/{tid}/students/{sid}/hw/{hid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
       allow write: if request.auth != null && request.auth.uid == tid;
     }

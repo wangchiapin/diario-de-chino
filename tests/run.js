@@ -9,6 +9,7 @@ const assert = require('assert');
 const root = path.join(__dirname, '..');
 const ctx = vm.createContext({ Date, Intl, Math, Object, Array, String, Number, JSON, parseInt, isNaN });
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-core.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
 
@@ -116,6 +117,80 @@ test('登入錯誤代碼對應', () => {
   assert.strictEqual(C('pcAuthErrorKey')('auth/invalid-credential'), 'errLogin');
   assert.strictEqual(C('pcAuthErrorKey')('auth/email-already-in-use'), 'errExists');
   assert.strictEqual(C('pcAuthErrorKey')('whatever'), 'errOther');
+});
+
+
+console.log('\n作業（學生版不含答案、自動批改）');
+const SAMPLE = {
+  meta: { title: '把字句', grammar: '把字句' },
+  opts: { cueEs: true },
+  sections: [
+    { id: 's1', type: 'fill', enabled: true, bank: ['放', '拿'], items: [
+      { id: 'f1', enabled: true, zh: '請你__書放在桌上。', answer: '把', es: 'Pon el libro en la mesa.', note: '老師備註' },
+      { id: 'f2', enabled: false, zh: '被停用的題__', answer: '把', es: '' }] },
+    { id: 's2', type: 'cloze', enabled: true, bank: ['把', '被'], items: [{ id: 'c1', enabled: true, text: '我{1}書放好，書{2}我放在桌上。', answers: ['把', '被'], es: 'x' }] },
+    { id: 's3', type: 'order', enabled: true, bank: [], items: [{ id: 'o1', enabled: true, tokens: ['放', '我', '把', '書', '好'], answer: '我把書放好', es: 'Puse el libro.' }] },
+    { id: 's4', type: 'choice', enabled: true, bank: [], items: [{ id: 'ch1', enabled: true, es: 'Elige', options: ['我書把放好', '我把書放好', '把我書放好'], answer: 1 }] },
+    { id: 's5', type: 'fix', enabled: true, bank: [], items: [{ id: 'x1', enabled: true, wrong: '我書把放好', correct: '我把書放好', tip: '提示' }] },
+    { id: 's6', type: 'translate', enabled: true, bank: [], items: [{ id: 't1', enabled: true, es: 'Pon el libro.', vocab: '放', answer: '請把書擺到桌上' }] },
+    { id: 's7', type: 'zh2es', enabled: true, bank: [], items: [{ id: 'z1', enabled: true, zh: '我把書放好', vocab: '', answer: 'Dejé el libro bien puesto' }] },
+    { id: 's8', type: 'match', enabled: true, bank: [], items: [
+      { id: 'm1', enabled: true, zh: '放', es: 'poner' }, { id: 'm2', enabled: true, zh: '拿', es: 'tomar' }, { id: 'm3', enabled: true, zh: '看', es: 'mirar' }, { id: 'm4', enabled: true, zh: '吃', es: 'comer' }] },
+    { id: 's9', type: 'sentence', enabled: true, bank: [], items: [{ id: 'se1', enabled: true, cue: '把', es: '', answer: '我把書放好。' }] }
+  ]
+};
+test('總分：段落填空每個空 1 分，其他每題 1 分，停用的題目不算', () => {
+  assert.strictEqual(C('hwTotal')(SAMPLE), 1 + 2 + 1 + 1 + 1 + 1 + 1 + 4 + 1);
+});
+test('學生版：沒有任何答案欄位，也沒有標準答案的文字', () => {
+  const v = C('hwBuildStudent')(SAMPLE), txt = JSON.stringify(v);
+  ['"answer"', '"answers"', '"correct"', '"tip"', '"note"', '老師備註', '提示', '請把書擺到桌上', 'Dejé el libro'].forEach(k => assert.ok(!txt.includes(k), '不該出現：' + k));
+  assert.strictEqual(v.total, 13);
+  assert.strictEqual(v.sections.length, 9);
+  assert.strictEqual(v.sections[0].items.length, 1);      // 停用的題目不給學生
+});
+test('學生版：選擇題保留原始選項編號，配對題右欄只有西文且已打散', () => {
+  const v = C('hwBuildStudent')(SAMPLE);
+  assert.strictEqual(J(v.sections[3].items[0].options.map(o => o.i)), J([0, 1, 2]));
+  const m = v.sections[7];
+  assert.strictEqual(J(m.items.map(i => i.zh)), J(['放', '拿', '看', '吃']));
+  assert.strictEqual(J(m.rights.slice().sort()), J(['comer', 'mirar', 'poner', 'tomar']));
+  assert.notStrictEqual(J(m.rights), J(['poner', 'tomar', 'mirar', 'comer']));
+});
+test('配對題打散順序是固定的（同一份練習單每次都一樣）', () => {
+  const a = C('hwMatchPerm')(SAMPLE.sections[7].items), b = C('hwMatchPerm')(SAMPLE.sections[7].items);
+  assert.strictEqual(J(a), J(b)); assert.strictEqual(J(a.slice().sort()), J([0, 1, 2, 3]));
+});
+test('全對：自動批改的題目都拿滿分，西翻中／中翻西／造句留給老師', () => {
+  const perm = C('hwMatchPerm')(SAMPLE.sections[7].items);
+  const ans = { f1: '把', c1: ['把', '被'], o1: ['我', '把', '書', '放', '好'], ch1: 1, x1: '我把書放好。', t1: '請把書擺到桌上', z1: 'x', se1: 'y' };
+  const rights = k => perm.indexOf(k);
+  ans.m1 = rights(0); ans.m2 = rights(1); ans.m3 = rights(2); ans.m4 = rights(3);
+  const g = C('hwAutoGrade')(SAMPLE, ans);
+  assert.strictEqual(g.max, 13); assert.strictEqual(g.autoMax, 10); assert.strictEqual(g.autoGot, 10); assert.strictEqual(g.manual, 3);
+  assert.strictEqual(g.items.t1.got, null); assert.strictEqual(g.items.t1.auto, false);
+});
+test('全錯或沒作答：自動題 0 分，不會當掉', () => {
+  const g = C('hwAutoGrade')(SAMPLE, { f1: '被', c1: ['被', '把'], o1: ['書', '我'], ch1: 0, x1: '', m1: 99 });
+  assert.strictEqual(g.autoGot, 0); assert.strictEqual(g.items.c1.blanks.join(), 'false,false');
+  assert.strictEqual(C('hwAutoGrade')(SAMPLE, null).autoGot, 0);
+});
+test('段落填空答對一半拿一半分數；空白不算對', () => {
+  const g = C('hwAutoGrade')(SAMPLE, { c1: ['把', ''] });
+  assert.strictEqual(g.items.c1.got, 1); assert.strictEqual(g.items.c1.ok, false);
+});
+test('比對時忽略標點、空白、大小寫', () => {
+  const g = C('hwAutoGrade')(SAMPLE, { f1: ' 把 ', x1: '我 把 書 放 好！' });
+  assert.strictEqual(g.items.f1.got, 1); assert.strictEqual(g.items.x1.got, 1);
+});
+test('發給學生的文件：狀態是 todo、答案是空的、不含標準答案', () => {
+  const d = C('hwAssignDoc')('w1', SAMPLE, 123);
+  assert.strictEqual(d.status, 'todo'); assert.strictEqual(J(d.answers), '{}'); assert.strictEqual(d.wid, 'w1'); assert.strictEqual(d.total, 13);
+  assert.ok(!JSON.stringify(d).includes('"answer"'));
+});
+test('資料夾裡的 portal-hw.js 用到的 Firestore 文件格式，不含 undefined（Firestore 不接受）', () => {
+  const d = C('hwAssignDoc')('w1', SAMPLE, 123);
+  assert.ok(!/undefined/.test(JSON.stringify(d, (k, v) => v === undefined ? 'undefined' : v)));
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
