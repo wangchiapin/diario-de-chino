@@ -14,6 +14,12 @@
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.55;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .wrap{max-width:560px;margin:0 auto;padding:14px 16px 40px}
+/* 手機版：網頁固定成螢幕高度、不整頁捲動，改由 .wrap 在裡面捲（照「把」遊戲的做法，避開 iPhone Chrome 往下捲後上面被切掉） */
+@media (max-width:859px){
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{height:100vh;height:100dvh;box-sizing:border-box}
+.wrap{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;box-sizing:border-box}
+}
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.02em}
 .lang{display:flex;gap:4px}
@@ -140,6 +146,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
   <main id="app"><div class="card center muted" id="loading"><div class="slowhint"><div class="small" style="margin:10px 0 6px">等很久了嗎？Tarda mucho?</div><button onclick="location.reload()">重新載入 / Recargar</button></div></div></main>
   <div class="foot" id="foot"></div>
 </div>
+<script>function toTop(){window.scrollTo(0,0);var w=document.querySelector('.wrap');if(w)w.scrollTop=0}</script>
 <script src="portal-core.js"></script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
@@ -420,7 +427,7 @@ async function loadMaterials(){
 function learnCardHtml(){
   return `<div class="card"><div class="row"><h2 style="margin:0">${esc(LT('learn'))}</h2><button class="btn" id="learnGo">${esc(LT('learnBtn'))}</button></div></div>`;
 }
-function bindLearnCard(root){ const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; loadMaterials(); render(); window.scrollTo(0, 0); }; }
+function bindLearnCard(root){ const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; loadMaterials(); render(); toTop(); }; }
 function renderLearn(root){
   const pool = nudBuildPool(hwDocs);
   const tabs = ['log', 'words', 'review', 'ability', 'files'], names = { log: 'tLog', words: 'tWords', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
@@ -463,7 +470,7 @@ function renderLearn(root){
   root.innerHTML = `<div class="card"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
     <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}</button>`).join('')}</div>${body}${logoutBlock()}`;
   $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
-  $('learnBack').onclick = () => { learnOpen = false; render(); window.scrollTo(0, 0); };
+  $('learnBack').onclick = () => { learnOpen = false; render(); toTop(); };
   root.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { learnTab = b.dataset.lt; revShown = false; revIdx = 0; revRound = null; render(); });
   const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
   on('revAll', () => { revOnlyNot = false; revRound = null; revIdx = 0; revShown = false; render(); });
@@ -566,7 +573,7 @@ function openHw(id){
     hwOrder[q.id] = used;
   }); });
   hwFile = null; hwFileMsg = ''; hwFileBusy = false; hwLoadFile(id);
-  render(); window.scrollTo(0, 0);
+  render(); toTop();
 }
 async function hwLoadFile(id){
   if(PREVIEW) return;
@@ -744,7 +751,7 @@ function renderHw(root){
   });
   if(!locked) h += `<div class="card" id="hwFoot"><div class="savemsg" id="hwSave"></div><div id="hwAction"></div></div>`;
   root.innerHTML = h;
-  $('hwBack').onclick = () => { clearTimeout(hwTimer); if(hwSaveState === 'saving') hwSave(); hwOpen = null; render(); window.scrollTo(0, 0); };
+  $('hwBack').onclick = () => { clearTimeout(hwTimer); if(hwSaveState === 'saving') hwSave(); hwOpen = null; render(); toTop(); };
   if(locked) return;
   hwWordBind();
   hwShowSave(); hwActionDraw(d);

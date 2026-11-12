@@ -10,6 +10,12 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.55;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .wrap{max-width:900px;margin:0 auto;padding:14px 16px 50px}
+/* 手機版：網頁固定成螢幕高度，內容區自己捲（避開 iPhone Chrome 往下捲後上面被切掉；做法同學生頁、「把」遊戲） */
+@media (max-width:640px){
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{height:100vh;height:100dvh}
+.wrap{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+}
 header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
 h1{font-size:18px;margin:0}
 h2{font-size:14px;margin:0 0 8px;color:var(--sub)}
@@ -101,6 +107,7 @@ details.nd summary{cursor:pointer;font-size:14px}
   <header><h1>老師後台</h1><button class="quiet hidden" id="btnLogout">登出</button></header>
   <div id="app"><div class="card muted">載入中…</div></div>
 </div>
+<script>function toTop(){window.scrollTo(0,0);var w=document.querySelector('.wrap');if(w)w.scrollTop=0}</script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
 <script type="module">
@@ -451,7 +458,7 @@ async function openGrade(sid, wid){
   if(!g){ alert('這份作業的內容讀不出來，請回練習單產生器重新發布。'); return; }
   const restored = gradeLoadLocal(sid, wid, g);
   gradeOpen = { sid, wid, restored }; gdraft = g; gmsg = null;
-  gradeRender(); window.scrollTo(0, 0);
+  gradeRender(); toTop();
 }
 async function openWordGrade(sid, wid, fileDoc, st){
   const d = hw[sid][wid], total = hwTotal(st);
@@ -467,7 +474,7 @@ async function openWordGrade(sid, wid, fileDoc, st){
     note: d.review && d.review.note || '', hideScore: !!(d.review && d.review.hideScore), wordGot: d.result ? d.result.got : null };
   gradeOpen = { sid, wid, restored: false };
   const restored = gradeLoadLocalWord(sid, wid, gdraft); gradeOpen.restored = restored;
-  gmsg = null; gradeRender(); window.scrollTo(0, 0);
+  gmsg = null; gradeRender(); toTop();
 }
 function gradeLoadLocalWord(sid, wid, g){
   try{
@@ -476,7 +483,7 @@ function gradeLoadLocalWord(sid, wid, g){
     g.list[0].mark = sv.mark || g.list[0].mark; g.wordGot = sv.got; g.note = sv.note || ''; g.hideScore = !!sv.hide; return true;
   }catch(e){ return false; }
 }
-function closeGrade(){ gradeSaveLocal(); gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0); }
+function closeGrade(){ gradeSaveLocal(); gradeOpen = null; gdraft = null; gmsg = null; render(); toTop(); }
 function gradeTotal(){ return hwSumReview(Object.fromEntries(gdraft.list.map(r => [r.id, { got: r.got, max: r.max }]))); }
 function gradeNeed(){ return gdraft.list.filter(r => r.got == null).length; }
 
@@ -592,7 +599,7 @@ async function gradeFinishWord(){
   try{
     await updateDoc(doc(db, 'portal', uid, 'students', o.sid, 'hw', o.wid), { status: 'graded', result: res, review: { word: { mark: hwCleanMark(g.list[0].mark), keys: g.keys }, note: (g.note || '').trim(), hideScore: !!g.hideScore, gradedAt: Date.now() } });
     gradeClearLocal(o.sid, o.wid);
-    gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0);
+    gradeOpen = null; gdraft = null; gmsg = null; render(); toTop();
   }catch(err){ console.error(err); btn.disabled = false; setGmsg('送出失敗，請再試一次', false); }
 }
 async function gradeFinish(){
@@ -617,7 +624,7 @@ async function gradeFinish(){
   try{
     await updateDoc(doc(db, 'portal', uid, 'students', o.sid, 'hw', o.wid), { status: 'graded', result: res, review: { items, note: (g.note || '').trim(), hideScore: !!g.hideScore, gradedAt: Date.now() } });
     gradeClearLocal(o.sid, o.wid);
-    gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0);
+    gradeOpen = null; gdraft = null; gmsg = null; render(); toTop();
   }catch(err){ console.error(err); btn.disabled = false; setGmsg('送出失敗，請再試一次', false); }
 }
 async function gradeRedo(){
@@ -626,7 +633,7 @@ async function gradeRedo(){
   try{
     await updateDoc(doc(db, 'portal', uid, 'students', o.sid, 'hw', o.wid), { status: 'todo', submittedAt: deleteField(), result: deleteField(), review: deleteField() });
     gradeClearLocal(o.sid, o.wid);
-    gradeOpen = null; gdraft = null; gmsg = null; render(); window.scrollTo(0, 0);
+    gradeOpen = null; gdraft = null; gmsg = null; render(); toTop();
   }catch(err){ console.error(err); setGmsg('退回失敗，請再試一次', false); }
 }
 
@@ -694,7 +701,7 @@ function render(){
     adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
     root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
     root.querySelectorAll('.tabp').forEach(x => x.classList.toggle('hidden', x.dataset.p !== adminTab));
-    window.scrollTo(0, 0);
+    toTop();
   });
   bindHw(root, active); bindNud(root); bindReq(root);
 
