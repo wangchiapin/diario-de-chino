@@ -1,22 +1,23 @@
 /* =====================================================================
    Diario de chino · 「學習」分頁共用程式（純計算，不碰網頁和 Firebase；tests/run.js 會單獨測）
 
-   五塊內容：
+   內容：
    1. 上課紀錄：日誌每堂課的「課程進度」（studentDoc.log），新的在上面，依月份分組。
-   2. 已學清單：學生收到的練習單裡的單字和語法點（沿用彈跳視窗的 nudBuildPool）。
-   3. 複習：只從學過的單字出卡片；學生自己標「記得／還不熟」，存在這台裝置。
+   2. 單字／語法點總表：練習單自動匯入＋老師在後台補充（portal/{tid}/lists/{sid}），見 learnTotals。
+   3. 複習：卡片（新學的優先，中→西或西→中）、單字總表、語法總表；學生自己標「記得／還不熟」，存在雲端（只有自己和老師看得到）。
    4. 能力：已完成作業數、單字數、語法點數、各題型答對率、最近幾份作業的分數走向。
       老師設成「不顯示分數」的作業，不算進答對率（尊重老師的設定）。
    5. 教材：Drive 裡這位學生資料夾的 PDF（portal/{tid}/materials/{sid}，由老師的 Apps Script 寫入）。
-   需要先載入 portal-nudge.js（用到 nudBuildPool）。
+   需要先載入 portal-nudge.js（用到 nudParseVocab、nudSplitPoints）。
 ===================================================================== */
 
 var LEARN_I18N = {
   es: {
     learn: 'Mi aprendizaje', learnBtn: 'Abrir', learnBack: '‹ Volver',
-    tLog: 'Clases', tWords: 'Lo aprendido', tReview: 'Repasar', tAbility: 'Mi nivel', tFiles: 'Materiales',
+    tLog: 'Clases', tReview: 'Repasar', tAbility: 'Mi nivel', tFiles: 'Materiales',
     logEmpty: 'Aún no hay registro de clases.', nextUp: 'Próxima clase', logCount: '{n} clases registradas',
-    wordsHead: 'Palabras ({n})', pointsHead: 'Gramática ({n})', wordsEmpty: 'Cuando hagas tus tareas, aquí aparecerán las palabras y la gramática que has estudiado.',
+    wordsHead: 'Palabras ({n})', pointsHead: 'Gramática ({n})', rvCards: 'Tarjetas', rvWords: 'Lista de palabras', rvPoints: 'Lista de gramática', dirZE: 'Chino → español', dirEZ: 'Español → chino', speak: 'Escuchar',
+    wordsNone: 'Todavía no hay palabras.', pointsNone: 'Todavía no hay puntos de gramática.', colWord: 'Palabra', colPy: 'Pinyin', colEs: 'Significado',
     revEmpty: 'Aún no hay palabras para repasar. Aparecerán cuando recibas tareas.', revShow: 'Ver significado', revKnow: 'Lo recuerdo', revNot: 'Aún no',
     revOnlyNot: 'Solo las que aún no recuerdo', revAll: 'Todas', revDone: '¡Terminaste este repaso!', revAgain: 'Repasar otra vez', revLeft: 'Quedan {n}',
     revNoNot: 'No tienes palabras marcadas como «Aún no». ¡Muy bien!',
@@ -27,9 +28,10 @@ var LEARN_I18N = {
   },
   tc: {
     learn: '我的學習', learnBtn: '打開', learnBack: '‹ 返回',
-    tLog: '上課紀錄', tWords: '已學清單', tReview: '複習', tAbility: '我的能力', tFiles: '教材',
+    tLog: '上課紀錄', tReview: '複習', tAbility: '我的能力', tFiles: '教材',
     logEmpty: '還沒有上課紀錄。', nextUp: '下次預告', logCount: '共 {n} 堂紀錄',
-    wordsHead: '單字（{n}）', pointsHead: '語法（{n}）', wordsEmpty: '做完作業後，學過的單字和語法會出現在這裡。',
+    wordsHead: '單字（{n}）', pointsHead: '語法（{n}）', rvCards: '卡片', rvWords: '單字總表', rvPoints: '語法總表', dirZE: '中文 → 西文', dirEZ: '西文 → 中文', speak: '聽發音',
+    wordsNone: '還沒有單字。', pointsNone: '還沒有語法點。', colWord: '單字', colPy: '拼音', colEs: '西文意思',
     revEmpty: '還沒有可以複習的單字，收到作業後就會出現。', revShow: '看意思', revKnow: '我記得', revNot: '還不熟',
     revOnlyNot: '只複習還不熟的', revAll: '全部', revDone: '這一輪複習完了！', revAgain: '再複習一次', revLeft: '還剩 {n} 個',
     revNoNot: '沒有標成「還不熟」的單字，太棒了！',
@@ -40,9 +42,10 @@ var LEARN_I18N = {
   },
   sc: {
     learn: '我的学习', learnBtn: '打开', learnBack: '‹ 返回',
-    tLog: '上课纪录', tWords: '已学清单', tReview: '复习', tAbility: '我的能力', tFiles: '教材',
+    tLog: '上课纪录', tReview: '复习', tAbility: '我的能力', tFiles: '教材',
     logEmpty: '还没有上课纪录。', nextUp: '下次预告', logCount: '共 {n} 堂纪录',
-    wordsHead: '单字（{n}）', pointsHead: '语法（{n}）', wordsEmpty: '做完作业后，学过的单字和语法会出现在这里。',
+    wordsHead: '单字（{n}）', pointsHead: '语法（{n}）', rvCards: '卡片', rvWords: '单字总表', rvPoints: '语法总表', dirZE: '中文 → 西文', dirEZ: '西文 → 中文', speak: '听发音',
+    wordsNone: '还没有单字。', pointsNone: '还没有语法点。', colWord: '单字', colPy: '拼音', colEs: '西文意思',
     revEmpty: '还没有可以复习的单字，收到作业后就会出现。', revShow: '看意思', revKnow: '我记得', revNot: '还不熟',
     revOnlyNot: '只复习还不熟的', revAll: '全部', revDone: '这一轮复习完了！', revAgain: '再复习一次', revLeft: '还剩 {n} 个',
     revNoNot: '没有标成「还不熟」的单字，太棒了！',
@@ -82,8 +85,9 @@ function learnLogGroups(log) {
 /* ───────── 3. 複習 ───────── */
 /* marks：{ '做菜': 1 } 表示「還不熟」；沒有記錄的算「還沒標」。
    onlyNot=true 時只留標過「還不熟」的。回傳卡片陣列（照 mode 的洗牌種子打散；同一輪順序固定） */
-function learnDeck(words, marks, onlyNot, seed) {
+function learnDeck(words, marks, onlyNot, seed, dir) {
   var list = (words || []).filter(function (w) { return w && w.zh; });
+  if (dir === 'e2z') list = list.filter(function (w) { return w.es; });   // 西文→中文：沒有西文意思的單字沒辦法出
   if (onlyNot) list = list.filter(function (w) { return marks && marks[w.zh] === 1; });
   function h(s) {   // 簡單雜湊＋最後再攪一次，種子差 1 順序也會明顯不同
     var x = 2166136261; s = String(s);
@@ -91,9 +95,65 @@ function learnDeck(words, marks, onlyNot, seed) {
     x ^= x >>> 15; x = Math.imul(x, 2246822519); x ^= x >>> 13; x = Math.imul(x, 3266489917); x ^= x >>> 16;
     return x >>> 0;
   }
-  return list.map(function (w) { return { w: w, k: h(w.zh + '|' + (seed || 0)) }; })
-    .sort(function (a, b) { return a.k - b.k; })
+  // 新學的優先（t 大的在前）；同一批（t 一樣）才用種子打散
+  return list.map(function (w) { return { w: w, t: +w.t || 0, k: h(w.zh + '|' + (seed || 0)) }; })
+    .sort(function (a, b) { return (b.t - a.t) || (a.k - b.k); })
     .map(function (x) { return x.w; });
+}
+
+/* ───────── 3b. 單字總表／語法總表 ───────── */
+/* hwDocs：學生的作業；list：老師在後台為這位學生存的清單 { words:[{zh,py,es,t}], hideW:[zh], points:[{n,t}], hideP:[n] }
+   練習單的單字、語法點自動匯入（t = 作業派出的時間，同一個只算一次）；老師的清單可以補充、改拼音和意思、或隱藏。
+   回傳 { words:[{zh,py,es,t,src}], points:[{n,t,src}] }，新的在前。src: 'hw' 來自練習單、'tc' 老師自己加的 */
+function learnTotals(hwDocs, list) {
+  list = list || {};
+  var ids = Object.keys(hwDocs || {});
+  function ts(d) { return +(d && (d.assignedAt || d.submittedAt)) || 0; }
+  ids.sort(function (a, b) { return ts(hwDocs[a]) - ts(hwDocs[b]) || (a < b ? -1 : 1); });
+  var W = {}, Wo = [], P = {}, Po = [];
+  function addW(zh, es, t, src) {
+    zh = String(zh || '').trim(); if (!zh) return;
+    var x = W[zh];
+    if (!x) { x = W[zh] = { zh: zh, py: '', es: '', t: t, src: src }; Wo.push(x); }
+    if (!x.es && es) x.es = String(es).trim();
+  }
+  function addP(n, t, src) { n = String(n || '').trim(); if (n && !P[n]) { P[n] = { n: n, t: t, src: src }; Po.push(P[n]); } }
+  ids.forEach(function (id) {
+    var d = hwDocs[id] || {}, t = ts(d);
+    nudSplitPoints(d.grammar).forEach(function (n) { addP(n, t, 'hw'); });
+    (Array.isArray(d.vocab) ? d.vocab : []).forEach(function (v) { if (v) addW(v.zh, v.es, t, 'hw'); });
+    (d.sections || []).forEach(function (sec) {
+      (sec.items || []).forEach(function (it) { if (it && it.vocab) nudParseVocab(it.vocab).forEach(function (v) { addW(v.zh, v.es, t, 'hw'); }); });
+    });
+  });
+  (Array.isArray(list.words) ? list.words : []).forEach(function (e) {
+    if (!e || !String(e.zh || '').trim()) return;
+    var zh = String(e.zh).trim(), had = !!W[zh];
+    addW(zh, '', +e.t || 0, 'tc');
+    var x = W[zh];
+    x.py = String(e.py || '').trim();
+    if (String(e.es || '').trim()) x.es = String(e.es).trim();
+    if (!had) x.t = +e.t || 0;
+  });
+  (Array.isArray(list.points) ? list.points : []).forEach(function (e) { if (e) addP(e.n, +e.t || 0, 'tc'); });
+  var hw = {}, hp = {};
+  (Array.isArray(list.hideW) ? list.hideW : []).forEach(function (z) { hw[z] = 1; });
+  (Array.isArray(list.hideP) ? list.hideP : []).forEach(function (z) { hp[z] = 1; });
+  function byT(a, b) { return (b.t - a.t); }
+  return {
+    words: Wo.filter(function (x) { return !hw[x.zh]; }).map(function (x, i) { x.i = i; return x; }).sort(function (a, b) { return byT(a, b) || (b.i - a.i); }),
+    points: Po.filter(function (x) { return !hp[x.n]; }).map(function (x, i) { x.i = i; return x; }).sort(function (a, b) { return byT(a, b) || (b.i - a.i); })
+  };
+}
+
+/* 「還不熟」的標記：存在雲端的格式是字串陣列 nf（單字本身當欄位名稱不安全，所以不用 map） */
+function learnMarksFromDoc(d) {
+  var m = {};
+  (d && Array.isArray(d.nf) ? d.nf : []).forEach(function (z) { if (typeof z === 'string' && z) m[z] = 1; });
+  return m;
+}
+function learnMarksToDoc(marks, nowMs) {
+  return { v: 1, nf: Object.keys(marks || {}).filter(function (z) { return marks[z] === 1; }).slice(0, 500), updatedAt: nowMs };
 }
 
 /* ───────── 4. 能力 ───────── */

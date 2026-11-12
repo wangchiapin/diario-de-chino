@@ -76,6 +76,7 @@ ol{margin:6px 0 0 18px;padding:0}
 .gblank.y{background:#dbe7da;border-color:#8fb293}.gblank.n{background:#f0d9d3;border-color:#d39b8f}
 .gnotebox{width:100%;min-height:70px;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
 .gmsg{font-size:13px;margin-top:6px}
+.lchip{display:inline-block;background:#ece7dc;border-radius:12px;padding:3px 10px;margin:3px 4px 3px 0;font-size:14px}
 .nudta{width:100%;min-height:150px;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;line-height:1.6}
 .nudcols{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .nudrem{display:grid;grid-template-columns:110px 1fr 1fr 1fr;gap:6px;align-items:center;margin:6px 0}
@@ -108,8 +109,11 @@ details.nd summary{cursor:pointer;font-size:14px}
   <div id="app"><div class="card muted">載入中…</div></div>
 </div>
 <script>function toTop(){window.scrollTo(0,0);var w=document.querySelector('.wrap');if(w)w.scrollTop=0}</script>
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.29.5/dist/index.js"></script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
+<script src="portal-learn.js"></script>
+<script src="portal-pinyin.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -128,6 +132,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let reqs = {}, reqSel = {}, reqMsg = {};
+let lists = {}, marks = {}, vocSid = '', vocDraft = { w: '', p: '' }, vocMsg = null, vocShowHidden = false;   // lists：學生代號 → 老師為他存的單字／語法清單；marks：學生標的「還不熟」
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
 const helpOpen = new Set();
 function helpBox(k, inner){ return `<details class="help" data-hk="${k}" ${helpOpen.has(k) ? 'open' : ''}><summary>說明</summary><div class="hb muted small">${inner}</div></details>`; }
@@ -336,6 +341,125 @@ function hwHtml(active){
   return h;
 }
 /* 發布帳號卡片（放在「設定」分頁） */
+
+/* ───────── 單字（每位學生的單字、語法點；學生頁「複習」的總表） ───────── */
+const VOC_MAX = 1500;
+const vocList = sid => lists[sid] || { v: 1, words: [], hideW: [], points: [], hideP: [] };
+const vocTotals = sid => learnTotals(hw[sid] || {}, vocList(sid));
+// 先查現成的：所有學生的練習單、老師清單裡，同一個字有西文意思就帶出來
+function vocFindEs(zh){
+  for(const sid of Object.keys(students)){
+    const w = learnTotals(hw[sid] || {}, vocList(sid)).words.find(x => x.zh === zh && x.es);
+    if(w) return w.es;
+  }
+  return '';
+}
+const vocPy = zh => { try{ return ptWord(zh); }catch(e){ return ''; } };
+// 輸入一批：一行一個；「中文 西文」或只有中文；全中文的行可用頓號、逗號分開
+function vocParse(txt){
+  const out = [];
+  String(txt || '').split('\n').forEach(line => {
+    line = line.trim(); if(!line) return;
+    if(/^[㐀-鿿、，,\s]+$/.test(line)) line = line.replace(/[、，,]/g, '\n');
+    nudParseVocab(line).forEach(v => out.push(v));
+  });
+  return out;
+}
+async function vocSave(sid, mutate, okText){
+  const cur = JSON.parse(JSON.stringify(vocList(sid)));
+  ['words', 'hideW', 'points', 'hideP'].forEach(k => { if(!Array.isArray(cur[k])) cur[k] = []; });
+  mutate(cur);
+  if(cur.words.length > VOC_MAX || cur.points.length > VOC_MAX){ vocMsg = { text: '太多了，請先刪掉一些', ok: false }; return render(); }
+  cur.v = 1; cur.updatedAt = Date.now();
+  try{ await setDoc(doc(db, 'portal', uid, 'lists', sid), cur); lists[sid] = cur; vocMsg = { text: okText || '✓ 已儲存', ok: true }; }
+  catch(err){ console.error(err); vocMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加第八批（見 README）' : '儲存失敗，請再試一次', ok: false }; }
+  render();
+}
+function vocHtml(active){
+  if(!active.length) return '<div class="card muted">還沒有學生</div>';
+  if(!vocSid || active.indexOf(vocSid) < 0) vocSid = active[0];
+  const sid = vocSid, tot = vocTotals(sid), L = vocList(sid), m = vocMsg;
+  const opts = active.map(id => `<option value="${esc(id)}" ${id === sid ? 'selected' : ''}>${esc(students[id].name)}</option>`).join('');
+  const noPy = tot.words.filter(w => !w.py).length;
+  const rows = tot.words.map(w => `<tr data-z="${esc(w.zh)}"><td><b>${esc(w.zh)}</b><div class="muted small">${w.src === 'tc' ? '自己加的' : '練習單'}</div></td>
+      <td><input class="vPy" value="${esc(w.py)}" placeholder="拼音" aria-label="拼音"></td><td><input class="vEs" value="${esc(w.es)}" placeholder="西文意思" aria-label="西文意思"></td>
+      <td class="vAct"><button class="vSave">存</button> <button class="quiet vHide">${w.src === 'tc' ? '刪除' : '隱藏'}</button></td></tr>`).join('');
+  const ptRows = tot.points.map(x => `<span class="lchip" data-n="${esc(x.n)}">${esc(x.n)} <button class="quiet vpHide" style="padding:0 6px">${x.src === 'tc' ? '×' : '隱藏'}</button></span>`).join('');
+  const hidden = (L.hideW || []).concat((L.hideP || []).map(x => '語法：' + x));
+  const hiddenHtml = hidden.length ? `<details class="help" ${vocShowHidden ? 'open' : ''} id="vocHid"><summary>已隱藏（${hidden.length}）</summary><div class="hb">${(L.hideW || []).map(z => `<span class="lchip">${esc(z)} <button class="quiet vUn" data-k="w" data-z="${esc(z)}" style="padding:0 6px">還原</button></span>`).join('')}${(L.hideP || []).map(z => `<span class="lchip">語法：${esc(z)} <button class="quiet vUn" data-k="p" data-z="${esc(z)}" style="padding:0 6px">還原</button></span>`).join('')}</div></details>` : '';
+  const mk = marks[sid] ? learnMarksFromDoc(marks[sid]) : {}, mkList = Object.keys(mk);
+  const notYet = mkList.length ? `<div class="card"><h2>${esc(students[sid].name)} 標了「還不熟」的字（${mkList.length}）</h2>${mkList.map(z => `<span class="lchip">${esc(z)}</span>`).join('')}<div class="muted small">更新：${esc(marks[sid].updatedAt ? new Date(marks[sid].updatedAt).toLocaleString('zh-TW') : '')}</div></div>` : `<div class="card muted small">${esc(students[sid].name)} 還沒有標「還不熟」的字（學生在複習裡按「還不熟」就會出現在這裡）</div>`;
+  return `<div class="card"><h2>單字與語法點</h2>
+    ${helpBox('vc1', '這裡管理每位學生在學生頁「複習」分頁看到的單字總表和語法總表。練習單裡的單字和語法點會自動進來，你可以補充、修改拼音和西文意思、或隱藏不要的。拼音照 GoodTeacher 讀音自動帶出，西文意思會先查其他練習單裡出現過的同一個字，查不到就請自己填。「存」之後學生重新整理就看得到。')}
+    <select id="vocSel" style="margin-bottom:8px">${opts}</select>
+    <div class="small">新增單字（一行一個；可以只寫中文，也可以「中文 西文」）</div>
+    <textarea id="vocW" class="nudta" placeholder="做菜&#10;電腦 computadora" style="width:100%;min-height:70px">${esc(vocDraft.w)}</textarea>
+    <div class="row" style="margin:6px 0 10px"><button id="vocAdd">加入</button><span class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : '')}</span></div>
+    <div class="small">新增語法點（一行一個，或用「＋」分開）</div>
+    <textarea id="vocP" class="nudta" placeholder="把字句＋可以" style="width:100%;min-height:44px">${esc(vocDraft.p)}</textarea>
+    <div class="row" style="margin:6px 0 4px"><button id="vocAddP">加入語法點</button></div></div>
+    <div class="card"><h2>單字（${tot.words.length}）</h2>
+      ${noPy ? `<div class="row" style="margin-bottom:8px"><button id="vocFill">全部補上拼音（${noPy} 個）</button><span class="muted small">只補還沒有拼音的</span></div>` : ''}
+      ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
+      ${hiddenHtml}</div>
+    <div class="card"><h2>語法點（${tot.points.length}）</h2>${ptRows || '<div class="muted small">還沒有語法點</div>'}</div>
+    ${notYet}`;
+}
+function bindVoc(root){
+  const sel = root.querySelector('#vocSel'); if(!sel) return;
+  const sid = vocSid;
+  sel.onchange = e => { vocSid = e.target.value; vocMsg = null; render(); };
+  const ta = root.querySelector('#vocW'), tp = root.querySelector('#vocP');
+  ta.oninput = e => { vocDraft.w = e.target.value; }; tp.oninput = e => { vocDraft.p = e.target.value; };
+  const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
+  on('vocAdd', () => {
+    const items = vocParse(ta.value);
+    if(!items.length){ vocMsg = { text: '請輸入中文單字', ok: false }; return render(); }
+    const have = {}; vocList(sid).words.forEach(w => { have[w.zh] = w; });
+    const res = items.map(v => ({ zh: v.zh, es: v.es || (have[v.zh] && have[v.zh].es) || vocFindEs(v.zh), py: vocPy(v.zh) }));
+    const noEs = res.filter(r => !r.es).length;
+    vocSave(sid, cur => {
+      let added = 0;
+      res.forEach(r => {
+        const i = cur.words.findIndex(w => w.zh === r.zh);
+        if(i >= 0) cur.words[i] = Object.assign({}, cur.words[i], r);
+        else cur.words.push(Object.assign({}, r, { t: Date.now() + added++ }));
+        const h = cur.hideW.indexOf(r.zh); if(h >= 0) cur.hideW.splice(h, 1);
+      });
+    }, `✓ 已加入 ${res.length} 個${noEs ? `（${noEs} 個查不到西文意思，請在下面自己填）` : ''}`).then(() => { vocDraft.w = ''; });
+  });
+  on('vocAddP', () => {
+    const pts = tp.value.split('\n').reduce((a, l) => a.concat(nudSplitPoints(l)), []);
+    if(!pts.length){ vocMsg = { text: '請輸入語法點', ok: false }; return render(); }
+    const known = {}; vocTotals(sid).points.forEach(x => { known[x.n] = 1; });
+    vocSave(sid, cur => { pts.forEach(n => { if(!known[n] && !cur.points.some(x => x.n === n)) cur.points.push({ n, t: Date.now() }); const h = cur.hideP.indexOf(n); if(h >= 0) cur.hideP.splice(h, 1); }); }, `✓ 已加入語法點`).then(() => { vocDraft.p = ''; });
+  });
+  on('vocFill', () => {
+    const miss = vocTotals(sid).words.filter(w => !w.py);
+    vocSave(sid, cur => { miss.forEach(w => { const py = vocPy(w.zh); if(!py) return; const i = cur.words.findIndex(x => x.zh === w.zh); if(i >= 0) cur.words[i].py = py; else cur.words.push({ zh: w.zh, py, es: '' }); }); }, '✓ 已補上拼音');
+  });
+  root.querySelectorAll('tr[data-z]').forEach(tr => {
+    const zh = tr.dataset.z;
+    tr.querySelector('.vSave').onclick = () => {
+      const py = tr.querySelector('.vPy').value.trim(), es = tr.querySelector('.vEs').value.trim();
+      vocSave(sid, cur => { const i = cur.words.findIndex(w => w.zh === zh); if(i >= 0) Object.assign(cur.words[i], { py, es }); else cur.words.push({ zh, py, es }); });
+    };
+    tr.querySelector('.vHide').onclick = () => {
+      const mine = vocList(sid).words.find(w => w.zh === zh), own = mine && vocTotals(sid).words.find(w => w.zh === zh).src === 'tc';
+      vocSave(sid, cur => { if(own) cur.words = cur.words.filter(w => w.zh !== zh); else if(cur.hideW.indexOf(zh) < 0) cur.hideW.push(zh); }, own ? '✓ 已刪除' : '✓ 已隱藏（學生看不到）');
+    };
+  });
+  root.querySelectorAll('.vpHide').forEach(b => b.onclick = () => {
+    const n = b.parentNode.dataset.n, own = vocTotals(sid).points.find(x => x.n === n).src === 'tc';
+    vocSave(sid, cur => { if(own) cur.points = cur.points.filter(x => x.n !== n); else if(cur.hideP.indexOf(n) < 0) cur.hideP.push(n); }, own ? '✓ 已刪除' : '✓ 已隱藏');
+  });
+  root.querySelectorAll('.vUn').forEach(b => b.onclick = () => {
+    vocShowHidden = true;
+    vocSave(sid, cur => { const k = b.dataset.k === 'w' ? 'hideW' : 'hideP'; cur[k] = cur[k].filter(z => z !== b.dataset.z); }, '✓ 已還原');
+  });
+  const hd = root.querySelector('#vocHid'); if(hd) hd.addEventListener('toggle', () => { vocShowHidden = hd.open; });
+}
+
 function pubHtml(){
   let h = `<div class="card"><h2>發布帳號（讓練習單產生器可以發布作業）</h2>
     ${helpBox('pub1', '第一次使用：先複製下面的「老師代號」，貼到練習單產生器；再把產生器登入 Google 後顯示的「帳號代碼」貼在這裡，按「允許」，這個帳號才能發布作業。')}
@@ -692,18 +816,18 @@ function render(){
   }
   const pend = active.reduce((n, sid) => n + Object.keys(hw[sid] || {}).filter(w => hw[sid][w].status === 'submitted').length, 0);
   const reqN = pendingReqs().length;
-  const TABS = [['stu', '學生'], ['hw', '作業'], ['nud', '彈跳視窗'], ['set', '設定']];
+  const TABS = [['stu', '學生'], ['hw', '作業'], ['voc', '單字'], ['nud', '彈跳視窗'], ['set', '設定']];
   if(!TABS.some(t => t[0] === adminTab)) adminTab = 'stu';
   const pane = (k, h) => `<section class="tabp ${adminTab === k ? '' : 'hidden'}" data-p="${k}">${h}</section>`;
   root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}${t[0] === 'stu' && reqN ? `<span class="bd">${reqN}</span>` : ''}</button>`).join('')}</nav>`
-    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
+    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
   root.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => {
     adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
     root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
     root.querySelectorAll('.tabp').forEach(x => x.classList.toggle('hidden', x.dataset.p !== adminTab));
     toTop();
   });
-  bindHw(root, active); bindNud(root); bindReq(root);
+  bindHw(root, active); bindNud(root); bindReq(root); bindVoc(root);
 
   const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };
   root.querySelectorAll('tr[data-id]').forEach(tr => {
@@ -746,7 +870,7 @@ function syncHw(){
       err => console.error(err));
   });
 }
-function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; reqs = {}; }
+function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; }
 function start(){
   stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
@@ -754,10 +878,13 @@ function start(){
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'hwPool'), snap => { pool = {}; snap.forEach(d => pool[d.id] = d.data()); poolLoaded = true; render(); }, err => { console.error(err); poolLoaded = true; render(); }));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'nudge'), s => { nudCfg = s.exists() ? s.data() : null; render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'requests'), snap => { reqs = {}; snap.forEach(d => reqs[d.id] = d.data()); render(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'lists'), snap => { lists = {}; snap.forEach(d => lists[d.id] = d.data()); render(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'marks'), snap => { marks = {}; snap.forEach(d => marks[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'admins'), snap => { admins = {}; snap.forEach(d => admins[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'roster'), snap => { roster = {}; snap.forEach(d => roster[d.id] = d.data()); rosterLoaded = true; render(); }, onErr));
 }
 
+try{ ptLoad().then(() => render()); }catch(e){}
 $('btnLogout').onclick = () => signOut(auth);
 onAuthStateChanged(auth, user => {
   authReady = true; uid = user ? user.uid : null; loginErr = ''; gradeOpen = null; gdraft = null;

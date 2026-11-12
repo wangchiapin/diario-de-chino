@@ -352,6 +352,33 @@ test('能力：各題型答對率、走向；不顯示分數的作業不算；�
   assert.strictEqual(J(r.trend.map(t => [t.title, t.pct])), J([['A', 67], ['B', 100]]));
   assert.strictEqual(C('learnAbility')({}).graded, 0);
 });
+test('複習：新學的優先（同一批才打散）；西→中只出有西文意思的', () => {
+  const D = C('learnDeck');
+  const words = [{ zh: '舊1', t: 100, es: 'a' }, { zh: '舊2', t: 100, es: 'b' }, { zh: '新', t: 300, es: 'c' }, { zh: '中', t: 200 }];
+  const d = D(words, {}, false, 1).map(w => w.zh);
+  assert.strictEqual(d[0], '新'); assert.strictEqual(d[1], '中'); assert.strictEqual(J(d.slice(2).sort()), J(['舊1', '舊2']));
+  assert.strictEqual(D(words, {}, false, 1, 'e2z').length, 3);
+  assert.ok(!D(words, {}, false, 1, 'e2z').some(w => w.zh === '中'));
+});
+test('單字／語法總表：練習單自動匯入＋老師補充、改、隱藏；新的在前', () => {
+  const hw = { a: { assignedAt: 100, grammar: '把＋可以', vocab: [{ zh: '做菜', es: 'cocinar' }] },
+    b: { assignedAt: 200, sections: [{ items: [{ vocab: '放 poner · 桌子 mesa' }] }] } };
+  const r = C('learnTotals')(hw, { words: [{ zh: '做菜', py: 'zuò cài' }, { zh: '電腦', py: 'diàn nǎo', es: 'computadora', t: 300 }, { zh: '放', py: 'fàng', es: 'colocar' }],
+    hideW: ['桌子'], points: [{ n: '比較句', t: 50 }], hideP: ['可以'] });
+  assert.strictEqual(J(r.words.map(w => w.zh)), J(['電腦', '放', '做菜']));
+  const z = r.words.find(w => w.zh === '做菜'); assert.strictEqual(z.py, 'zuò cài'); assert.strictEqual(z.es, 'cocinar');   // 老師只補拼音，西文沿用練習單
+  assert.strictEqual(r.words.find(w => w.zh === '放').es, 'colocar');                                                         // 老師改過的意思優先
+  assert.strictEqual(J(r.points.map(p => p.n)), J(['把', '比較句']));
+  assert.strictEqual(C('learnTotals')(null, null).words.length, 0);
+  // 壞資料不會讓它出錯
+  assert.strictEqual(C('learnTotals')({ x: null }, { words: [null, { zh: '' }, { zh: ' 好 ' }], points: [null, {}] }).words.length, 1);
+});
+test('「還不熟」標記：雲端格式（字串陣列）來回轉換、壞資料略過', () => {
+  const d = C('learnMarksToDoc')({ '做菜': 1, '放': 1, '好': 0 }, 123);
+  assert.strictEqual(J(d), J({ v: 1, nf: ['做菜', '放'], updatedAt: 123 }));
+  assert.strictEqual(J(C('learnMarksFromDoc')({ nf: ['做菜', 5, '', null, '放'] })), J({ '做菜': 1, '放': 1 }));
+  assert.strictEqual(J(C('learnMarksFromDoc')(null)), '{}');
+});
 test('教材：只收 Google Drive／Docs 的 https 連結，新的在上面', () => {
   const f = C('learnFiles')({ files: [{ n: 'a.pdf', u: 'https://drive.google.com/file/d/1/view', t: 1 }, { n: '', u: 'https://docs.google.com/x', t: 5 },
     { n: 'bad', u: 'http://drive.google.com/x', t: 9 }, { n: 'evil', u: 'javascript:alert(1)', t: 9 }, { n: 'o', u: 'https://evil.com/drive.google.com/', t: 9 }, null] });

@@ -86,6 +86,15 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .rcard{text-align:center;padding:26px 10px}
 .rcard .z{font-size:34px;font-weight:600}
 .rcard .e{font-size:18px;color:var(--sub);margin-top:10px;min-height:26px}
+.rcard .z.es{font-size:24px}
+.rcard .p{font-size:18px;color:var(--accent);margin-top:6px}
+.rcard .back{min-height:84px}
+.spk{font-size:18px;padding:2px 8px;border:1px solid var(--line);background:transparent;border-radius:14px;cursor:pointer;vertical-align:middle}
+.wrow{display:grid;grid-template-columns:1.1fr 1.2fr 1.4fr;gap:8px;padding:8px 0;border-top:1px solid var(--line);align-items:center}
+.wrow:first-of-type{border-top:0}
+.wrow .wz{font-size:18px;font-weight:600}
+.wrow .wp{color:var(--accent);font-size:14px}
+.wrow .we{color:var(--sub);font-size:14px}
 .lbar{height:10px;background:#ece7dc;border-radius:6px;overflow:hidden;margin:4px 0 10px}
 .lbar i{display:block;height:100%;background:var(--accent)}
 .lgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
@@ -414,23 +423,45 @@ function renderHome(root){
 }
 
 /* ───────── 學習分頁：上課紀錄、已學清單、複習、能力、教材 ───────── */
-let learnOpen = false, learnTab = 'log', revShown = false, revOnlyNot = false, revSeed = 1, revIdx = 0, revRound = null, matDoc = null, matLoaded = false, matTried = false;
+let learnOpen = false, learnTab = 'log', revSub = 'cards', revDir = 'z2e', revShown = false, revOnlyNot = false, revSeed = 1, revIdx = 0, revRound = null, matDoc = null, matLoaded = false, matTried = false;
+let listDoc = null, cloudMarks = null, learnDataTried = false;   // listDoc：老師為這位學生存的單字／語法清單；cloudMarks：雲端的「還不熟」（讀不到時為 null，就只用這台裝置的）
 const LT = (k, p) => learnT(lang, k, p);
-const revDeck = pool => { if(!revRound) revRound = learnDeck(pool.words, revMarks(), revOnlyNot, revSeed).map(w => w.zh); return revRound.map(zh => pool.words.find(w => w.zh === zh)).filter(Boolean); };   // 一輪開始時固定牌組，標「我記得」才不會讓下一張被跳過
-const revMarks = () => { try{ return JSON.parse(LS.get('dc.rev.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
-const revMark = (zh, v) => { if(PREVIEW) return; const m = revMarks(); if(v) m[zh] = 1; else delete m[zh]; LS.set('dc.rev.' + studentId, JSON.stringify(m)); };
+const revDeck = tot => { if(!revRound) revRound = learnDeck(tot.words, revMarks(), revOnlyNot, revSeed, revDir).map(w => w.zh); return revRound.map(zh => tot.words.find(w => w.zh === zh)).filter(Boolean); };   // 一輪開始時固定牌組，標「我記得」才不會讓下一張被跳過
+const revLocal = () => { try{ return JSON.parse(LS.get('dc.rev.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
+const revMarks = () => cloudMarks || revLocal();
+const revMark = (zh, v) => {
+  if(PREVIEW) return;
+  const m = Object.assign({}, revMarks()); if(v) m[zh] = 1; else delete m[zh];
+  LS.set('dc.rev.' + studentId, JSON.stringify(m));
+  if(cloudMarks){ cloudMarks = m; setDoc(doc(db, 'portal', tid, 'marks', studentId), learnMarksToDoc(m, Date.now())).catch(() => {}); }
+};
 async function loadMaterials(){
   if(matTried) return; matTried = true;
   try{ const s = await getDoc(doc(db, 'portal', tid, 'materials', studentId)); matDoc = s.exists() ? s.data() : null; }catch(e){ matDoc = null; }
   matLoaded = true; if(learnOpen) render();
 }
+async function loadLearnData(){
+  if(learnDataTried) return; learnDataTried = true;
+  try{ const s = await getDoc(doc(db, 'portal', tid, 'lists', studentId)); listDoc = s.exists() ? s.data() : null; }catch(e){ listDoc = null; }
+  try{
+    const s = await getDoc(doc(db, 'portal', tid, 'marks', studentId));
+    if(s.exists()) cloudMarks = learnMarksFromDoc(s.data());
+    else{   // 雲端還沒有：把這台裝置原本標的搬上去
+      const loc = revLocal(); cloudMarks = loc;
+      if(Object.keys(loc).length && !PREVIEW) setDoc(doc(db, 'portal', tid, 'marks', studentId), learnMarksToDoc(loc, Date.now())).catch(() => {});
+    }
+  }catch(e){ cloudMarks = null; }
+  revRound = null; if(learnOpen) render();
+}
+function speakZh(t){ try{ const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 0.85; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }
+const canSpeak = () => typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
 function learnCardHtml(){
   return `<div class="card"><div class="row"><h2 style="margin:0">${esc(LT('learn'))}</h2><button class="btn" id="learnGo">${esc(LT('learnBtn'))}</button></div></div>`;
 }
-function bindLearnCard(root){ const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; loadMaterials(); render(); toTop(); }; }
+function bindLearnCard(root){ const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; revSub = 'cards'; loadMaterials(); loadLearnData(); render(); toTop(); }; }
 function renderLearn(root){
-  const pool = nudBuildPool(hwDocs);
-  const tabs = ['log', 'words', 'review', 'ability', 'files'], names = { log: 'tLog', words: 'tWords', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
+  const tot = learnTotals(hwDocs, listDoc);
+  const tabs = ['log', 'review', 'ability', 'files'], names = { log: 'tLog', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
   let body = '';
   if(learnTab === 'log'){
     const groups = learnLogGroups(studentDoc.log), n = groups.reduce((a, g) => a + g.rows.length, 0);
@@ -438,24 +469,32 @@ function renderLearn(root){
     body = nx + (n ? `<div class="card"><h2>${esc(LT('logCount', { n }))}</h2>` + groups.map(g => `<div class="lym">${esc(pcFmtDate(g.ym + '-01', lang, { year: 'numeric', month: 'long' }))}</div>` +
       g.rows.map(r => `<div class="lrow"><span class="d">${esc(pcFmtDate(r.d, lang, { month: 'numeric', day: 'numeric' }))}</span><span>${esc(r.p)}</span></div>`).join('')).join('') + '</div>'
       : `<div class="card center muted">${esc(LT('logEmpty'))}</div>`);
-  }else if(learnTab === 'words'){
-    if(!pool.words.length && !pool.points.length) body = `<div class="card center muted">${esc(LT('wordsEmpty'))}</div>`;
-    else body = (pool.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: pool.points.length }))}</h2>${pool.points.map(x => `<span class="lchip">${esc(x)}</span>`).join('')}</div>` : '') +
-      (pool.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: pool.words.length }))}</h2>${pool.words.map(w => `<span class="lchip">${esc(w.zh)}${w.es ? ` <small>${esc(w.es)}</small>` : ''}</span>`).join('')}</div>` : '');
   }else if(learnTab === 'review'){
-    const deck = revDeck(pool);
-    const tog = `<div class="lt"><button id="revAll" class="${revOnlyNot ? '' : 'on'}">${esc(LT('revAll'))}</button><button id="revNot" class="${revOnlyNot ? 'on' : ''}">${esc(LT('revOnlyNot'))}</button></div>`;
-    if(!pool.words.length) body = `<div class="card center muted">${esc(LT('revEmpty'))}</div>`;
-    else if(!deck.length) body = tog + `<div class="card center muted">${esc(LT('revNoNot'))}</div>`;
-    else if(revIdx >= deck.length) body = tog + `<div class="card center"><div class="big">${esc(LT('revDone'))}</div><div style="margin-top:12px"><button class="btn" id="revAgain">${esc(LT('revAgain'))}</button></div></div>`;
-    else{
-      const w = deck[revIdx];
-      body = tog + `<div class="card rcard"><div class="muted">${esc(LT('revLeft', { n: deck.length - revIdx }))}</div><div class="z">${esc(w.zh)}</div><div class="e">${revShown ? esc(w.es || '—') : ''}</div>
-        <div style="margin-top:14px">${revShown ? `<button class="btn" id="revKnow">${esc(LT('revKnow'))}</button> <button class="btn quiet" id="revNotYet">${esc(LT('revNot'))}</button>` : `<button class="btn" id="revShow">${esc(LT('revShow'))}</button>`}</div></div>`;
+    const subs = [['cards', 'rvCards'], ['words', 'rvWords'], ['points', 'rvPoints']];
+    const subBar = `<div class="lt">${subs.map(x => `<button data-rs="${x[0]}" class="${revSub === x[0] ? 'on' : ''}">${esc(LT(x[1]))}</button>`).join('')}</div>`;
+    const spk = z => canSpeak() ? `<button class="spk" data-say="${esc(z)}" aria-label="${esc(LT('speak'))}">🔊</button>` : '';
+    if(revSub === 'words'){
+      body = subBar + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2>${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
+    }else if(revSub === 'points'){
+      body = subBar + (tot.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: tot.points.length }))}</h2>${tot.points.map(x => `<span class="lchip">${esc(x.n)}</span>`).join('')}</div>` : `<div class="card center muted">${esc(LT('pointsNone'))}</div>`);
+    }else{
+      const deck = revDeck(tot);
+      const tog = subBar + `<div class="lt"><button id="dirZE" class="${revDir === 'z2e' ? 'on' : ''}">${esc(LT('dirZE'))}</button><button id="dirEZ" class="${revDir === 'e2z' ? 'on' : ''}">${esc(LT('dirEZ'))}</button></div>
+        <div class="lt"><button id="revAll" class="${revOnlyNot ? '' : 'on'}">${esc(LT('revAll'))}</button><button id="revNot" class="${revOnlyNot ? 'on' : ''}">${esc(LT('revOnlyNot'))}</button></div>`;
+      if(!tot.words.length) body = subBar + `<div class="card center muted">${esc(LT('revEmpty'))}</div>`;
+      else if(!deck.length) body = tog + `<div class="card center muted">${esc(revOnlyNot ? LT('revNoNot') : LT('wordsNone'))}</div>`;
+      else if(revIdx >= deck.length) body = tog + `<div class="card center"><div class="big">${esc(LT('revDone'))}</div><div style="margin-top:12px"><button class="btn" id="revAgain">${esc(LT('revAgain'))}</button></div></div>`;
+      else{
+        const w = deck[revIdx], e2z = revDir === 'e2z';
+        const front = e2z ? `<div class="z es">${esc(w.es)}</div>` : `<div class="z">${esc(w.zh)} ${spk(w.zh)}</div>`;
+        const back = !revShown ? '' : e2z ? `<div class="z">${esc(w.zh)} ${spk(w.zh)}</div><div class="e">${esc(w.py)}</div>` : `<div class="p">${esc(w.py)}</div><div class="e">${esc(w.es || '—')}</div>`;
+        body = tog + `<div class="card rcard"><div class="muted">${esc(LT('revLeft', { n: deck.length - revIdx }))}</div>${front}<div class="back">${back}</div>
+          <div style="margin-top:14px">${revShown ? `<button class="btn" id="revKnow">${esc(LT('revKnow'))}</button> <button class="btn quiet" id="revNotYet">${esc(LT('revNot'))}</button>` : `<button class="btn" id="revShow">${esc(LT('revShow'))}</button>`}</div></div>`;
+      }
     }
   }else if(learnTab === 'ability'){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
-    body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${pool.words.length}</b><span>${esc(LT('abWords'))}</span></div><div><b>${pool.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
     if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
     else{
       if(types.length) body += `<div class="card"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
@@ -473,11 +512,15 @@ function renderLearn(root){
   $('learnBack').onclick = () => { learnOpen = false; render(); toTop(); };
   root.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { learnTab = b.dataset.lt; revShown = false; revIdx = 0; revRound = null; render(); });
   const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
+  root.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => { revSub = b.dataset.rs; revShown = false; revIdx = 0; revRound = null; render(); });
+  root.querySelectorAll('[data-say]').forEach(b => b.onclick = () => speakZh(b.dataset.say));
+  on('dirZE', () => { revDir = 'z2e'; revRound = null; revIdx = 0; revShown = false; render(); });
+  on('dirEZ', () => { revDir = 'e2z'; revRound = null; revIdx = 0; revShown = false; render(); });
   on('revAll', () => { revOnlyNot = false; revRound = null; revIdx = 0; revShown = false; render(); });
   on('revNot', () => { revOnlyNot = true; revRound = null; revIdx = 0; revShown = false; render(); });
   on('revAgain', () => { revIdx = 0; revShown = false; revSeed++; revRound = null; render(); });
   on('revShow', () => { revShown = true; render(); });
-  const cur = () => revDeck(pool)[revIdx];
+  const cur = () => revDeck(tot)[revIdx];
   on('revKnow', () => { const w = cur(); if(w) revMark(w.zh, false); revIdx++; revShown = false; render(); });
   on('revNotYet', () => { const w = cur(); if(w) revMark(w.zh, true); revIdx++; revShown = false; render(); });
   bindLogout();
@@ -834,7 +877,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw(); nudStop(); reqTried = false; reqOk = false; learnOpen = false; matDoc = null; matLoaded = false; matTried = false;
+  stopHw(); nudStop(); reqTried = false; reqOk = false; learnOpen = false; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

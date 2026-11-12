@@ -2,11 +2,11 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-11 21:29（新增 portal/{tid}/materials：Drive 學生資料夾的教材 PDF 連結）
+// 最後更新：2026-11-12 16:07（新增 portal/{tid}/lists 和 portal/{tid}/marks：複習的單字／語法清單、學生標的「還不熟」）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-12 16:07 新增 portal/{tid}/lists/{sid}（老師為學生存的單字、語法點；老師寫、該位學生讀）和 portal/{tid}/marks/{sid}（學生標的「還不熟」；學生只能寫自己的，欄位和大小有限制）
 //   - 2026-11-11 21:29 新增 portal/{tid}/materials/{sid}（教材 PDF 連結；老師的 Apps Script 寫入，學生只能讀自己那一份）
 //   - 2026-11-11 19:50 新增 portal/{tid}/requests（學生只能寫「自己的」一筆，信箱要是自己驗證過的；老師讀寫）
-//   - 2026-11-11 18:57 新增 portal/{tid}/config（老師在後台改的彈跳視窗文字；老師寫，驗證過信箱的學生可讀）
 //
 // 誰能做什麼：
 //   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
@@ -142,4 +142,34 @@
         (request.auth.token.email_verified == true &&
          get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
       allow write: if request.auth != null && request.auth.uid == tid;
+    }
+
+
+// ===================================================================
+// 第八批（複習：單字／語法清單、「還不熟」標記）：只要「新增」下面這兩段，貼在其他 match 旁邊（並排）。不用動前面的任何一段。
+// lists：老師在後台為每位學生補充、修改、隱藏的單字和語法點（練習單的單字會自動匯入，不存在這裡）。
+// marks：學生在複習裡標的「還不熟」，存成字串陣列 nf，老師在後台看得到。
+// ===================================================================
+
+    // 單字／語法清單：老師寫；老師和「信箱已驗證、而且就是這位學生」的人可讀
+    match /portal/{tid}/lists/{sid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
+      allow write: if request.auth != null && request.auth.uid == tid;
+    }
+    // 「還不熟」標記：學生只能讀寫自己那一份；欄位只能是 v、nf、updatedAt，nf 是清單、最多 500 個。老師可讀寫。
+    match /portal/{tid}/marks/{sid} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email));
+      allow create, update: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email &&
+         request.resource.data.keys().hasOnly(['v', 'nf', 'updatedAt']) &&
+         request.resource.data.nf is list && request.resource.data.nf.size() <= 500));
+      allow delete: if request.auth != null && request.auth.uid == tid;
     }

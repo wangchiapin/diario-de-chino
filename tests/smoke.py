@@ -99,6 +99,9 @@ def day(offset):
     return (tw_today() + datetime.timedelta(days=offset)).isoformat()
 
 
+FAKE_PINYIN = "window.pinyinPro={pinyin:function(t){return Array.from(t).map(function(c){return {origin:c,isZh:/[\\u4e00-\\u9fff]/.test(c),result:'pīn'}})},customPinyin:function(){}};"
+
+
 def new_page(browser, init):
     ctx = browser.new_context(viewport={'width': 390, 'height': 800}, locale='es-MX')
     page = ctx.new_page()
@@ -106,6 +109,7 @@ def new_page(browser, init):
         name = route.request.url.split('/')[-1]
         route.fulfill(status=200, content_type='application/javascript', body=STUBS[name])
     page.route('**/www.gstatic.com/**', handle)
+    page.route('**/cdn.jsdelivr.net/npm/pinyin-pro**', lambda r: r.fulfill(status=200, content_type='application/javascript', body=FAKE_PINYIN))
     page.add_init_script('window.__fb = %s;' % init)
     errs = []
     page.on('pageerror', lambda e: errs.append(str(e)))
@@ -756,7 +760,7 @@ def admin_tabs_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(700)
-    check('四個分頁：學生、作業、彈跳視窗、設定', page.inner_text('#tabbar').replace('\n', '').startswith('學生作業') and page.locator('#tabbar button').count() == 4)
+    check('五個分頁：學生、作業、單字、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 5, page.inner_text('#tabbar'))
     check('預設在「學生」：看得到對照表，看不到作業和發布帳號', page.is_visible('tr[data-id=s1]') and not page.is_visible('.hwrow') and not page.is_visible('#tidShow'))
     check('作業分頁有紅點數字（1 份等批改）', page.inner_text('#tabbar [data-t=hw] .bd') == '1')
     box = page.locator('#tabbar').bounding_box()
@@ -826,7 +830,10 @@ def learn_tests(browser, base):
         page.add_init_script("localStorage.setItem('dc.lang','%s');" % lg)
         return ctx, page, errs
     M = 'portal/%s/materials/s1' % TID
-    ctx, page, errs = mk({S1: base_s, HW: graded, M: {'v': 1, 'updatedAt': 1, 'files': [
+    LST = 'portal/%s/lists/s1' % TID
+    MK = 'portal/%s/marks/s1' % TID
+    lst = {'v': 1, 'words': [{'zh': '電腦', 'py': 'diàn nǎo', 'es': 'computadora', 't': 1770000000000}, {'zh': '放', 'py': 'fàng', 'es': 'poner'}], 'hideW': [], 'points': [{'n': '比較句', 't': 5}], 'hideP': []}
+    ctx, page, errs = mk({S1: base_s, HW: graded, LST: lst, M: {'v': 1, 'updatedAt': 1, 'files': [
         {'n': 'L1', 'u': 'https://drive.google.com/file/d/a/view', 't': 1760000000000}, {'n': 'bad', 'u': 'javascript:alert(1)', 't': 5}]}})
     login(page)
     check('首頁有「我的學習」', '我的學習' in page.inner_text('#app') and page.locator('#learnGo').count() == 1)
@@ -834,21 +841,32 @@ def learn_tests(browser, base):
     txt = page.inner_text('#app')
     check('上課紀錄：新的在上面、有每堂課的進度', txt.index('可以') < txt.index('圖片：延長線') < txt.index('把') and '共 3 堂紀錄' in txt, txt[:200])
     check('上課紀錄：有下次預告', '比較句' in txt and '下次預告' in txt)
-    page.click('[data-lt=words]'); page.wait_for_timeout(100)
-    txt = page.inner_text('#app')
-    check('已學清單：有語法點和單字', '把字句' in txt and '放' in txt and '單字（' in txt, txt[:200])
-    page.click('[data-lt=review]'); page.wait_for_timeout(100)
-    check('複習：先看到中文，還沒看到意思', page.locator('.rcard .z').count() == 1 and page.inner_text('.rcard .e').strip() == '')
-    z = page.inner_text('.rcard .z')
+    check('只有四個分頁（沒有已學清單）', page.locator('[data-lt]').count() == 4 and page.locator('[data-lt=words]').count() == 0)
+    page.click('[data-lt=review]'); page.wait_for_timeout(300)
+    check('複習有三個切換：卡片、單字總表、語法總表', page.locator('[data-rs]').count() == 3)
+    check('卡片：新學的優先（老師加的電腦在最前）、先只看到中文', page.inner_text('.rcard .z').replace('🔊', '').strip() == '電腦' and page.inner_text('.rcard .back').strip() == '')
     page.click('#revShow'); page.wait_for_timeout(100)
-    check('按「看意思」才出現意思和兩個按鈕', page.locator('#revKnow').count() == 1 and page.locator('#revNotYet').count() == 1)
-    page.click('#revNotYet'); page.wait_for_timeout(100)
+    bt = page.inner_text('.rcard .back')
+    check('按「看意思」才出現拼音、意思和兩個按鈕', 'diàn nǎo' in bt and 'computadora' in bt and page.locator('#revKnow').count() == 1 and page.locator('#revNotYet').count() == 1, bt)
+    page.click('#revNotYet'); page.wait_for_timeout(200)
     marks = page.evaluate("JSON.parse(localStorage.getItem('dc.rev.s1')||'{}')")
-    check('標「還不熟」：記在這台裝置', marks.get(z) == 1, marks)
+    cloud = page.evaluate("window.__fb.store[%r]" % MK)
+    check('標「還不熟」：記在這台裝置，也存到雲端', marks.get('電腦') == 1 and cloud and cloud['nf'] == ['電腦'] and cloud['v'] == 1, (marks, cloud))
     page.click('#revNot'); page.wait_for_timeout(100)
-    check('只複習還不熟的：只剩那一個', page.locator('.rcard .z').count() == 1 and page.inner_text('.rcard .z') == z)
-    page.click('#revShow'); page.click('#revKnow'); page.wait_for_timeout(100)
-    check('這一輪結束有提示；標「我記得」會從還不熟拿掉', '複習完了' in page.inner_text('#app') and page.evaluate("JSON.parse(localStorage.getItem('dc.rev.s1')||'{}')") == {})
+    check('只複習還不熟的：只剩電腦', page.locator('.rcard .z').count() == 1 and '電腦' in page.inner_text('.rcard .z'))
+    page.click('#revShow'); page.click('#revKnow'); page.wait_for_timeout(200)
+    check('這一輪結束有提示；標「我記得」會從還不熟拿掉（雲端也是）', '複習完了' in page.inner_text('#app') and page.evaluate("JSON.parse(localStorage.getItem('dc.rev.s1')||'{}')") == {} and page.evaluate("window.__fb.store[%r]['nf']" % MK) == [])
+    page.click('#revAll'); page.click('#dirEZ'); page.wait_for_timeout(200)
+    check('西文→中文：先看到西文，看答案才出現中文和拼音', 'computadora' in page.inner_text('.rcard .z') and '電腦' not in page.inner_text('.rcard'))
+    page.click('#revShow'); page.wait_for_timeout(100)
+    check('西文→中文：看答案後有中文和拼音', '電腦' in page.inner_text('.rcard .back') and 'diàn nǎo' in page.inner_text('.rcard .back'))
+    page.click('[data-rs=words]'); page.wait_for_timeout(100)
+    rows = page.locator('.wrow')
+    t0 = page.inner_text('.wrow >> nth=0')
+    check('單字總表：新的在前、有拼音和西文；練習單的單字也在（老師補的意思優先）', rows.count() == 2 and '電腦' in t0 and 'diàn nǎo' in t0 and 'computadora' in t0 and 'fàng' in page.inner_text('.wrow >> nth=1') and 'poner' in page.inner_text('.wrow >> nth=1'), page.inner_text('#app')[:300])
+    page.click('[data-rs=points]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('語法總表：練習單的語法點和老師加的都在', '把字句' in txt and '比較句' in txt and '語法（2）' in txt, txt[:200])
     page.click('[data-lt=ability]'); page.wait_for_timeout(100)
     txt = page.inner_text('#app')
     check('能力：已批改 1 份、各題型答對率、最近作業', '已批改的作業' in txt and '填空' in txt and '100%' in txt and '排序' in txt and '0%' in txt and '63%' in txt, txt[:300])
@@ -878,6 +896,50 @@ def learn_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def voc_admin_tests(browser, base):
+    import json
+    print('\n老師後台：單字')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/students/s2' % TID: {'v': 1, 'name': 'Ana', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             'portal/%s/roster/s1' % TID: {'email': 'pedro@example.com', 'name': 'Pedro'},
+             'portal/%s/students/s1/hw/w1' % TID: hw_doc('graded', result={'got': 1, 'max': 2}),
+             'portal/%s/marks/s1' % TID: {'v': 1, 'nf': ['做菜', '放'], 'updatedAt': 1760000000000},
+             'portal/%s/lists/s2' % TID: {'v': 1, 'words': [{'zh': '電腦', 'py': 'diàn nǎo', 'es': 'computadora', 't': 5}], 'hideW': [], 'points': [], 'hideP': []}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(800)
+    page.click('#tabbar [data-t=voc]'); page.wait_for_timeout(200)
+    page.select_option('#vocSel', 's1'); page.wait_for_timeout(200)
+    L1 = 'portal/%s/lists/s1' % TID
+    check('單字分頁：選學生、練習單的單字自動在表裡（來源「練習單」）', page.is_visible('#vocSel') and page.locator('tr[data-z=放]').count() == 1 and '練習單' in page.inner_text('tr[data-z=放]'))
+    check('看到學生標的「還不熟」', '做菜' in page.inner_text('#app') and '還不熟' in page.inner_text('#app'))
+    page.fill('#vocW', '做菜\n電腦 computadora'); page.click('#vocAdd'); page.wait_for_timeout(300)
+    lst = page.evaluate("window.__fb.store[%r]" % L1)
+    ws = {w['zh']: w for w in lst['words']}
+    check('加入單字：自動帶拼音；有寫西文就用', ws['做菜']['py'] and ws['電腦']['es'] == 'computadora' and ws['電腦']['py'], lst)
+    check('查不到西文的有提醒、單字出現在表裡', '查不到西文意思' in page.inner_text('#app') and page.locator('tr[data-z=做菜]').count() == 1)
+    page.select_option('#vocSel', 's2'); page.wait_for_timeout(200)
+    page.fill('#vocW', '電腦'); page.click('#vocAdd'); page.wait_for_timeout(300)
+    check('同一個字：自動帶出其他學生清單裡的西文意思', page.evaluate("window.__fb.store['portal/%s/lists/s2'].words.find(w => w.zh==='電腦').es" % TID) == 'computadora')
+    page.select_option('#vocSel', 's1'); page.wait_for_timeout(200)
+    page.fill('tr[data-z=做菜] .vEs', 'cocinar'); page.fill('tr[data-z=做菜] .vPy', 'zuò cài'); page.click('tr[data-z=做菜] .vSave'); page.wait_for_timeout(300)
+    w = [x for x in page.evaluate("window.__fb.store[%r].words" % L1) if x['zh'] == '做菜'][0]
+    check('改拼音和意思：存起來', w['py'] == 'zuò cài' and w['es'] == 'cocinar', w)
+    page.click('tr[data-z=放] .vHide'); page.wait_for_timeout(300)
+    check('練習單的字按「隱藏」：進已隱藏，不是刪掉', '放' in page.evaluate("window.__fb.store[%r].hideW" % L1) and page.locator('tr[data-z=放]').count() == 0)
+    page.click('#vocHid summary'); page.click('.vUn'); page.wait_for_timeout(300)
+    check('還原：回到表裡', page.locator('tr[data-z=放]').count() == 1 and page.evaluate("window.__fb.store[%r].hideW" % L1) == [])
+    page.click('tr[data-z=電腦] .vHide'); page.wait_for_timeout(300)
+    check('自己加的字按「刪除」：真的刪掉', page.locator('tr[data-z=電腦]').count() == 0 and not any(x['zh'] == '電腦' for x in page.evaluate("window.__fb.store[%r].words" % L1)))
+    page.fill('#vocP', '比較句＋得字補語\n把字句'); page.click('#vocAddP'); page.wait_for_timeout(300)
+    pts = [x['n'] for x in page.evaluate("window.__fb.store[%r].points" % L1)]
+    check('加入語法點：用＋或換行分開，重複的不加', pts == ['比較句', '得字補語'] and '語法點（3）' in page.inner_text('#app'), pts)
+    page.click('#vocFill'); page.wait_for_timeout(300)
+    check('全部補上拼音', all(x['py'] for x in page.evaluate("window.__fb.store[%r].words" % L1)) and page.locator('#vocFill').count() == 0)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -893,6 +955,7 @@ with sync_playwright() as p:
     admin_tabs_tests(browser, base)
     signup_tests(browser, base)
     learn_tests(browser, base)
+    voc_admin_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)
