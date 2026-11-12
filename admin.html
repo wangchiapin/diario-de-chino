@@ -137,7 +137,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let reqs = {}, reqSel = {}, reqMsg = {};
-let bbPosts = [], bbWall = [], bbDm = [], members = {}, membersLoaded = false, membersErr = false, memSyncing = false, dmSeen = {}, bbTab = 'board', bbSid = '', bbDraft = { board: '', reply: {} }, bbMsg = null;   // 公布欄、公開留言、私訊、學生名單鏡像
+let bbPosts = [], bbWall = [], bbDm = [], members = {}, membersLoaded = false, membersErr = false, memSyncing = false, dmSeen = {}, bbTab = 'board', bbOpened = {}, bbDraft = { board: '', reply: {} }, bbMsg = null;   // 公布欄、公開留言、私訊、學生名單鏡像
 let lists = {}, marks = {}, vocSid = '', vocDraft = { w: '', p: '' }, vocMsg = null, vocShowHidden = false;   // lists：學生代號 → 老師為他存的單字／語法清單；marks：學生標的「還不熟」
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
 const helpOpen = new Set();
@@ -211,7 +211,7 @@ function bindReq(root){
     el.querySelector('.rqNo').onclick = async () => {
       if(!confirm('要忽略這個註冊嗎？（對方的帳號不會被刪除，只是不會出現在名單上；他再開頁面時會再通知你一次）')) return;
       try{ await deleteDoc(doc(db, 'portal', uid, 'requests', k)); delete reqs[k]; delete reqSel[k]; delete reqMsg[k]; }
-      catch(err){ console.error(err); reqMsg[k] = { text: '失敗，請再試一次', ok: false }; }
+      catch(err){ console.error(err); reqMsg[k] = { text: '失敗，請再試一次', ok: false, sid }; }
       render();
     };
   });
@@ -488,9 +488,9 @@ async function syncMembers(){
   }catch(err){ console.error(err); membersErr = true; }
   memSyncing = false;
 }
-async function bbSave(fn, okText){
-  try{ await fn(); bbMsg = { text: okText || '✓ 完成', ok: true }; }
-  catch(err){ console.error(err); bbMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加第九批（見 README）' : '失敗，請再試一次', ok: false }; }
+async function bbSave(fn, okText, sid){
+  try{ await fn(); bbMsg = { text: okText || '✓ 完成', ok: true, sid }; }
+  catch(err){ console.error(err); bbMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加第九批（見 README）' : '失敗，請再試一次', ok: false, sid }; }
   render();
 }
 function bbHtml(active){
@@ -513,26 +513,21 @@ function bbHtml(active){
       ${helpBox('bb2', '學生在留言板寫的字，所有學生都看得到（只顯示日誌上的名字）。這裡看得到全部，不適合的可以刪掉；不用審核，學生寫了就會出現。')}
       ${msg}${list.length ? list.map(p => `<div class="bbitem"><div class="small"><b>${esc(p.name || '')}</b> <span class="muted">${esc(bbTime(p.ts))}</span> <button class="quiet bbDel" data-k="wall" data-id="${esc(p.id)}" style="padding:0 8px">刪除</button></div><div class="bbtx">${esc(p.text)}</div></div>`).join('') : '<div class="muted small">還沒有留言</div>'}</div>`;
   }else{
-    if(!bbSid || active.indexOf(bbSid) < 0) bbSid = '';
     const last = {}; bbDm.forEach(x => { if(x && x.sid && (!last[x.sid] || x.ts > last[x.sid].ts)) last[x.sid] = x; });
-    const sids = active.filter(id => last[id] || id === bbSid).sort((a, b) => ((last[b] && last[b].ts) || 0) - ((last[a] && last[a].ts) || 0));
-    const pick = `<div class="card"><h2>私訊（只有你和那位學生看得到）</h2>
-      ${helpBox('bb3', '學生在「給老師」寫的字只有你看得到；你回覆的，也只有那位學生看得到。學生寫了新的，這裡會標數字。')}
-      <select id="bbSel" style="margin-bottom:8px"><option value="">選一位學生…</option>${active.map(id => `<option value="${esc(id)}" ${id === bbSid ? 'selected' : ''}>${esc(students[id].name)}${unread[id] ? `（${unread[id]} 則新的）` : last[id] ? '' : '（還沒有對話）'}</option>`).join('')}</select>
-      ${!bbSid ? (sids.length ? sids.map(id => `<div class="bbitem"><button class="quiet bbOpen" data-sid="${esc(id)}" style="padding:2px 10px">${esc(students[id].name)}${unread[id] ? `<span class="bd">${unread[id]}</span>` : ''}</button> <span class="small muted">${esc(bbTime(last[id].ts))}　${esc(String(last[id].text).slice(0, 30))}</span></div>`).join('') : '<div class="muted small">還沒有私訊</div>') : ''}</div>`;
-    let thread = '';
-    if(bbSid){
-      const th = dmThread(bbDm, bbSid);
-      thread = `<div class="card"><h2>${esc(students[bbSid].name)}</h2>${th.length ? th.map(x => `<div class="bbitem ${x.from === 't' ? 'bbme' : ''}"><div class="small muted">${x.from === 't' ? '你' : esc(students[bbSid].name)} · ${esc(bbTime(x.ts))} <button class="quiet bbDel" data-k="dm" data-id="${esc(x.id)}" style="padding:0 8px">刪除</button></div><div class="bbtx">${esc(x.text)}</div></div>`).join('') : '<div class="muted small">還沒有對話</div>'}
-        <textarea id="bbReply" class="nudta" style="width:100%;min-height:70px;margin-top:8px" maxlength="${BOARD_MAX}" placeholder="回覆…">${esc(bbDraft.reply[bbSid] || '')}</textarea>
-        <div class="row" style="margin-top:6px"><button id="bbSend">送出回覆</button>${msg}</div></div>`;
-    }
-    body = pick + thread;
+    const sids = active.filter(id => last[id] || bbOpened[id]).sort((a, b) => ((last[b] && last[b].ts) || 0) - ((last[a] && last[a].ts) || 0));
+    const fresh = active.filter(id => !last[id] && !bbOpened[id]);
+    const card = id => { const th = dmThread(bbDm, id), nm = esc(students[id].name);
+      return `<div class="card"><h2>${nm}</h2>${th.length ? th.map(x => `<div class="bbitem ${x.from === 't' ? 'bbme' : ''}"><div class="small muted">${x.from === 't' ? '你' : nm} · ${esc(bbTime(x.ts))} <button class="quiet bbDel" data-k="dm" data-id="${esc(x.id)}" style="padding:0 8px">刪除</button></div><div class="bbtx">${esc(x.text)}</div></div>`).join('') : '<div class="muted small">還沒有對話</div>'}
+        <textarea class="nudta bbRp" data-sid="${esc(id)}" style="width:100%;min-height:70px;margin-top:8px" maxlength="${BOARD_MAX}" placeholder="回覆${nm}…">${esc(bbDraft.reply[id] || '')}</textarea>
+        <div class="row" style="margin-top:6px"><button class="bbSend" data-sid="${esc(id)}">送出回覆</button>${m && m.sid === id ? msg : ''}</div></div>`; };
+    body = `<div class="card"><h2>私訊（只有你和那位學生看得到）</h2>
+      ${helpBox('bb3', '學生在「給老師」寫的字只有你看得到；你回覆的，也只有那位學生看得到。最近有留言的學生排在最上面。學生寫了新的，「公布」分頁會標數字。')}
+      ${sids.length ? '' : '<div class="muted small">還沒有私訊</div>'}
+      ${fresh.length ? `<div class="small muted" style="margin-top:6px">想主動傳訊息給還沒對話的學生，點名字：</div><div class="row" style="margin-top:6px">${fresh.map(id => `<button class="quiet bbOpen" data-sid="${esc(id)}" style="padding:2px 10px">${esc(students[id].name)}</button>`).join('')}</div>` : ''}</div>` + sids.map(card).join('');
   }
   return sync + `<div class="card" style="padding-bottom:4px"><h2>公布</h2>${sub}</div>` + body;
 }
 function bindBb(root){
-  const sel = root.querySelector('#bbSel');
   root.querySelectorAll('[data-bt]').forEach(b => b.onclick = () => { bbTab = b.dataset.bt; bbMsg = null; render(); });
   const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
   const ta = root.querySelector('#bbText'); if(ta) ta.oninput = e => { bbDraft.board = e.target.value; };
@@ -546,18 +541,16 @@ function bindBb(root){
     if(!confirm('要刪除嗎？')) return;
     bbSave(() => deleteDoc(doc(db, 'portal', uid, b.dataset.k, b.dataset.id)), '✓ 已刪除');
   });
-  const openThread = sid => { bbSid = sid; bbMsg = null; markDmSeen(sid); render(); };
-  if(sel) sel.onchange = e => { if(e.target.value) openThread(e.target.value); else { bbSid = ''; render(); } };
-  root.querySelectorAll('.bbOpen').forEach(b => b.onclick = () => openThread(b.dataset.sid));
-  const rp = root.querySelector('#bbReply'); if(rp) rp.oninput = e => { bbDraft.reply[bbSid] = e.target.value; };
-  on('bbSend', () => {
-    const sid = bbSid, txt = boardClean(bbDraft.reply[sid]);
-    if(txt === null){ bbMsg = { text: `最多 ${BOARD_MAX} 個字`, ok: false }; return render(); }
+  root.querySelectorAll('.bbOpen').forEach(b => b.onclick = () => { bbOpened[b.dataset.sid] = true; bbMsg = null; render(); });
+  root.querySelectorAll('.bbRp').forEach(t => t.oninput = e => { bbDraft.reply[t.dataset.sid] = e.target.value; });
+  root.querySelectorAll('.bbSend').forEach(b => b.onclick = () => {
+    const sid = b.dataset.sid, txt = boardClean(bbDraft.reply[sid]);
+    if(txt === null){ bbMsg = { text: `最多 ${BOARD_MAX} 個字`, ok: false, sid }; return render(); }
     if(!txt) return;
-    bbSave(async () => { await addDoc(collection(db, 'portal', uid, 'dm'), { sid, from: 't', text: txt, ts: Date.now() }); bbDraft.reply[sid] = ''; }, '✓ 已送出');
+    bbSave(async () => { await addDoc(collection(db, 'portal', uid, 'dm'), { sid, from: 't', text: txt, ts: Date.now() }); bbDraft.reply[sid] = ''; }, '✓ 已送出', sid);
   });
-  // 正在看這位學生的對話時，他又寫了新的：也算看過
-  if(bbTab === 'dm' && bbSid && bbUnread()[bbSid]) markDmSeen(bbSid);
+  // 私訊列表正在眼前：學生寫的都算看過
+  if(bbTab === 'dm') Object.keys(bbUnread()).forEach(markDmSeen);
 }
 function markDmSeen(sid){
   const t = boardMaxTs(bbDm, x => x.sid === sid && x.from === 's');
