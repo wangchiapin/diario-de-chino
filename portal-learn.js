@@ -191,3 +191,23 @@ function learnFiles(doc) {
     .map(function (f) { return { n: String(f.n || '').trim() || '教材', u: String(f.u), t: +f.t || 0 }; })
     .sort(function (a, b) { return b.t - a.t || (a.n < b.n ? -1 : 1); });
 }
+
+/* ───────── 6. 「有新內容」紅點用的特徵 ─────────
+   o：{ studentDoc, hwDocs, hwLoaded, tot（learnTotals 的結果）, listReady（老師清單讀完了）, files（教材陣列；還沒讀好給 null）}
+   資料還沒讀好的項目回傳 null（不判斷，免得一載入就亮） */
+function learnSigs(o) {
+  var sd = o.studentDoc || {}, log = learnLogGroups(sd.log), n = 0, latest = '';
+  log.forEach(function (g) { n += g.rows.length; if (!latest) latest = g.rows[0].d; });
+  var graded = 0, lastTs = 0;
+  Object.keys(o.hwDocs || {}).forEach(function (id) {
+    var d = o.hwDocs[id] || {};
+    if (d.status === 'graded') { graded++; var t = +(d.review && d.review.gradedAt) || 0; if (t > lastTs) lastTs = t; }
+  });
+  var files = o.files ? o.files.reduce(function (m, f) { return Math.max(m, f.t || 0); }, 0) : 0;
+  return {
+    log: n + '|' + latest + '|' + (sd.next && sd.next.n || ''),
+    review: o.hwLoaded && o.listReady && o.tot ? o.tot.words.length + '/' + o.tot.points.length : null,
+    ability: o.hwLoaded ? graded + '|' + lastTs : null,
+    files: o.files ? o.files.length + '|' + files : null
+  };
+}

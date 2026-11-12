@@ -83,6 +83,15 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .lym{font-size:13px;color:var(--sub);font-weight:600;margin:10px 0 2px}
 .lchip{display:inline-block;background:#ece7dc;border-radius:12px;padding:3px 10px;margin:3px 4px 3px 0;font-size:14px}
 .lchip small{color:var(--sub)}
+.rdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#c0392b;margin-left:6px;vertical-align:middle}
+.post{padding:10px 0;border-top:1px solid var(--line)}
+.post:first-of-type{border-top:0}
+.post .who{font-size:13px;color:var(--sub);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.post .tx{white-space:pre-wrap;word-break:break-word;margin-top:4px}
+.bub{max-width:86%;padding:8px 12px;border-radius:14px;margin:6px 0;white-space:pre-wrap;word-break:break-word;background:#ece7dc}
+.bub.me{margin-left:auto;background:var(--accent);color:#fff}
+.bub small{display:block;font-size:11px;opacity:.7;margin-top:3px}
+.compose textarea{width:100%;min-height:70px;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:inherit;box-sizing:border-box}
 .rcard{text-align:center;padding:26px 10px}
 .rcard .z{font-size:34px;font-weight:600}
 .rcard .e{font-size:18px;color:var(--sub);margin-top:10px;min-height:26px}
@@ -160,10 +169,11 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
 <script src="portal-learn.js"></script>
+<script src="portal-board.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc, getDoc, setDoc, deleteDoc, addDoc, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* 跟日誌、老師後台用同一個 Firebase 專案 */
 const app = initializeApp({
@@ -351,6 +361,9 @@ function renderHome(root){
 
   if(hwOpen && hwDocs[hwOpen]) return renderHw(root);
   if(learnOpen) return renderLearn(root);
+  if(boardOpen) return renderBoard(root);
+  loadMaterials(); loadLearnData();
+  const HOME_DOTS = dotsNow();
   const tz = effectiveTz(), now = Date.now();
   const groups = pcGroupByLocalDate(studentDoc.lessons || [], tz);
   const next = pcNextLesson(studentDoc.lessons || [], tz, now);
@@ -398,7 +411,8 @@ function renderHome(root){
     <div class="card"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
     <div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div>
     ${hwCardHtml()}
-    ${learnCardHtml()}
+    ${boardCardHtml(HOME_DOTS)}
+    ${learnCardHtml(HOME_DOTS)}
     ${stats}
     <div class="card">
       <h2>${esc(T('calendar'))}</h2>
@@ -438,7 +452,7 @@ const revMark = (zh, v) => {
 async function loadMaterials(){
   if(matTried) return; matTried = true;
   try{ const s = await getDoc(doc(db, 'portal', tid, 'materials', studentId)); matDoc = s.exists() ? s.data() : null; }catch(e){ matDoc = null; }
-  matLoaded = true; if(learnOpen) render();
+  matLoaded = true; renderSoft();
 }
 async function loadLearnData(){
   if(learnDataTried) return; learnDataTried = true;
@@ -451,15 +465,17 @@ async function loadLearnData(){
       if(Object.keys(loc).length && !PREVIEW) setDoc(doc(db, 'portal', tid, 'marks', studentId), learnMarksToDoc(loc, Date.now())).catch(() => {});
     }
   }catch(e){ cloudMarks = null; }
-  revRound = null; if(learnOpen) render();
+  learnDataDone = true; revRound = null; renderSoft();
 }
 function speakZh(t){ try{ const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 0.85; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }
 const canSpeak = () => typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
-function learnCardHtml(){
-  return `<div class="card"><div class="row"><h2 style="margin:0">${esc(LT('learn'))}</h2><button class="btn" id="learnGo">${esc(LT('learnBtn'))}</button></div></div>`;
+function learnCardHtml(dots){
+  const d = dots && (dots.log || dots.review || dots.ability || dots.files);
+  return `<div class="card"><div class="row"><h2 style="margin:0">${esc(LT('learn'))}${dotHtml(d)}</h2><button class="btn" id="learnGo">${esc(LT('learnBtn'))}</button></div></div>`;
 }
-function bindLearnCard(root){ const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; revSub = 'cards'; loadMaterials(); loadLearnData(); render(); toTop(); }; }
+function bindLearnCard(root){ bindBoardCard(root); const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; revSub = 'cards'; loadMaterials(); loadLearnData(); render(); toTop(); }; }
 function renderLearn(root){
+  const dots = dotsNow(); markNew(learnTab); dots[learnTab] = false;
   const tot = learnTotals(hwDocs, listDoc);
   const tabs = ['log', 'review', 'ability', 'files'], names = { log: 'tLog', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
   let body = '';
@@ -507,7 +523,7 @@ function renderLearn(root){
       : `<div class="card center muted">${esc(LT('fEmpty'))}</div>`;
   }
   root.innerHTML = `<div class="card"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
-    <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}</button>`).join('')}</div>${body}${logoutBlock()}`;
+    <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}${dotHtml(dots[k])}</button>`).join('')}</div>${body}${logoutBlock()}`;
   $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
   $('learnBack').onclick = () => { learnOpen = false; render(); toTop(); };
   root.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { learnTab = b.dataset.lt; revShown = false; revIdx = 0; revRound = null; render(); });
@@ -527,6 +543,107 @@ function renderLearn(root){
 }
 
 /* ───────── 彈跳視窗：練習題、激勵句、提醒（只有右上角 X 可以關） ───────── */
+
+/* ───────── 「有新內容」紅點 ───────── */
+let learnDataDone = false;
+const newKey = () => 'dc.new.' + studentId;
+const newSeen = () => { try{ return JSON.parse(LS.get(newKey()) || '{}') || {}; }catch(e){ return {}; } };
+function allSigs(){
+  const tot = learnTotals(hwDocs, listDoc);
+  const sg = learnSigs({ studentDoc, hwDocs, hwLoaded, tot, listReady: learnDataDone, files: matLoaded ? learnFiles(matDoc) : null });
+  sg.board = bOk.board ? String(boardMaxTs(boardPosts)) : null;
+  sg.wall = bOk.wall ? String(boardMaxTs(wallPosts, p => p.sid !== studentId)) : null;
+  sg.dm = bOk.dm ? String(boardMaxTs(dmMsgs, m => m.from === 't')) : null;
+  return sg;
+}
+function dotsNow(){
+  const r = newDots(newSeen(), allSigs());
+  if(Object.keys(r.seed).length && !PREVIEW) LS.set(newKey(), JSON.stringify(Object.assign(newSeen(), r.seed)));
+  return r.dot;
+}
+function markNew(k){
+  if(PREVIEW) return;
+  const sig = allSigs()[k]; if(sig == null) return;
+  const s = newSeen(); if(s[k] !== String(sig)){ s[k] = String(sig); LS.set(newKey(), JSON.stringify(s)); }
+}
+const dotHtml = on => on ? '<span class="rdot"></span>' : '';
+
+/* ───────── 公布欄／留言板／私訊 ───────── */
+let boardOpen = false, boardTab = 'board', wallDraft = '', dmDraft = '', boardMsg = '', boardBusy = false, boardTimer = null;
+let boardPosts = [], wallPosts = [], dmMsgs = [], bOk = { board: false, wall: false, dm: false }, unsubBoard = [];
+const BT = (k, p) => boardT(lang, k, p);
+function startBoard(sid){
+  stopBoard();
+  const col = c => collection(db, 'portal', tid, c);
+  const sub = (key, q, set) => unsubBoard.push(onSnapshot(q, snap => { set(snap.docs.map(d => Object.assign({ id: d.id }, d.data()))); bOk[key] = true; renderSoft(); }, e => { console.error(e); bOk[key] = false; }));
+  sub('board', query(col('board'), orderBy('ts', 'desc'), limit(30)), a => { boardPosts = a; });
+  sub('wall', query(col('wall'), orderBy('ts', 'desc'), limit(50)), a => { wallPosts = a; });
+  sub('dm', query(col('dm'), where('sid', '==', sid)), a => { dmMsgs = a; });
+}
+function stopBoard(){ unsubBoard.forEach(u => u()); unsubBoard = []; boardPosts = []; wallPosts = []; dmMsgs = []; bOk = { board: false, wall: false, dm: false }; boardOpen = false; clearTimeout(boardTimer); }
+// 別人的留言進來時，如果學生正在打字，先不重畫（不然輸入框會被洗掉）；等他離開輸入框再畫
+function renderSoft(){
+  if(hwOpen) return;   // 正在寫作業：背景更新一律不重畫
+  const a = document.activeElement;
+  if(a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;
+  render();
+}
+const boardTime = ts => { try{ return new Date(ts).toLocaleString(lang === 'es' ? 'es' : 'zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }catch(e){ return ''; } };
+function boardCardHtml(dots){
+  if(PREVIEW || !(bOk.board || bOk.wall || bOk.dm)) return '';
+  const d = dots.board || dots.wall || dots.dm;
+  return `<div class="card"><div class="row"><h2 style="margin:0">${esc(BT('bTitle'))}${dotHtml(d)}</h2><button class="btn" id="boardGo">${esc(BT('bBtn'))}</button></div></div>`;
+}
+function bindBoardCard(root){ const b = root.querySelector('#boardGo'); if(b) b.onclick = () => { boardOpen = true; boardTab = 'board'; boardMsg = ''; render(); toTop(); }; }
+function renderBoard(root){
+  const dots = dotsNow(); markNew(boardTab); dots[boardTab] = false;
+  const tabs = [['board', 'tBoard'], ['wall', 'tWall'], ['dm', 'tDm']];
+  let body = '';
+  const compose = (id, ph, val) => `<div class="card compose"><textarea id="${id}" maxlength="${BOARD_MAX}" placeholder="${esc(ph)}">${esc(val)}</textarea><div class="row" style="margin-top:8px"><button class="btn" id="${id}Send" ${boardBusy ? 'disabled' : ''}>${esc(boardBusy ? BT('sending') : BT('send'))}</button><span class="muted small" style="color:#c0392b">${esc(boardMsg)}</span></div></div>`;
+  if(boardTab === 'board'){
+    const list = boardSortDesc(boardPosts);
+    body = list.length ? `<div class="card">${list.map(p => `<div class="post"><div class="who">${esc(boardTime(p.ts))}</div><div class="tx">${esc(p.text)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(BT('boardEmpty'))}</div>`;
+  }else if(boardTab === 'wall'){
+    const list = boardSortDesc(wallPosts);
+    body = `<div class="muted small" style="margin-bottom:8px">${esc(BT('wallHint'))}</div>` + compose('wallTx', BT('wallPh'), wallDraft) +
+      (list.length ? `<div class="card">${list.map(p => `<div class="post"><div class="who"><b>${esc(p.name || '')}</b><span>${esc(boardTime(p.ts))}</span>${p.sid === studentId ? `<button class="link" data-wdel="${esc(p.id)}">${esc(BT('del'))}</button>` : ''}</div><div class="tx">${esc(p.text)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(BT('wallEmpty'))}</div>`);
+  }else{
+    const th = dmThread(dmMsgs, studentId).slice(-50);
+    body = `<div class="muted small" style="margin-bottom:8px">${esc(BT('dmHint'))}</div>` +
+      (th.length ? `<div class="card">${th.map(m => `<div class="bub ${m.from === 's' ? 'me' : ''}">${esc(m.text)}<small>${m.from === 't' ? esc(BT('teacher')) + ' · ' : ''}${esc(boardTime(m.ts))}</small></div>`).join('')}</div>` : `<div class="card center muted">${esc(BT('dmEmpty'))}</div>`) +
+      compose('dmTx', BT('dmPh'), dmDraft);
+  }
+  root.innerHTML = `<div class="card"><button class="btn quiet" id="boardBack">${esc(BT('bBack'))}</button> <b style="margin-left:6px">${esc(BT('bTitle'))}</b></div>
+    <div class="lt">${tabs.map(x => `<button data-bt="${x[0]}" class="${boardTab === x[0] ? 'on' : ''}">${esc(BT(x[1]))}${dotHtml(dots[x[0]])}</button>`).join('')}</div>${body}${logoutBlock()}`;
+  bindLogout(); bindBoard(root);
+}
+function bindBoard(root){
+  const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
+  on('boardBack', () => { boardOpen = false; render(); toTop(); });
+  root.querySelectorAll('[data-bt]').forEach(b => b.onclick = () => { boardTab = b.dataset.bt; boardMsg = ''; render(); toTop(); });
+  const bindTx = (id, setDraft) => { const t = root.querySelector('#' + id); if(!t) return; t.oninput = () => setDraft(t.value); t.onblur = () => { clearTimeout(boardTimer); boardTimer = setTimeout(() => { if(boardOpen) render(); }, 500); }; t.onfocus = () => clearTimeout(boardTimer); };
+  bindTx('wallTx', v => { wallDraft = v; }); bindTx('dmTx', v => { dmDraft = v; });
+  on('wallTxSend', () => sendBoard('wall'));
+  on('dmTxSend', () => sendBoard('dm'));
+  root.querySelectorAll('[data-wdel]').forEach(b => b.onclick = async () => {
+    if(!confirm(BT('confirmDel'))) return;
+    try{ await deleteDoc(doc(db, 'portal', tid, 'wall', b.dataset.wdel)); }catch(e){ console.error(e); boardMsg = BT('sendErr'); render(); }
+  });
+}
+async function sendBoard(kind){
+  if(boardBusy || PREVIEW) return;
+  const txt = boardClean(kind === 'wall' ? wallDraft : dmDraft);
+  if(txt === null){ boardMsg = BT('tooLong', { n: BOARD_MAX }); return render(); }
+  if(!txt) return;
+  boardBusy = true; boardMsg = ''; render();
+  try{
+    const data = kind === 'wall' ? { sid: studentId, name: String(studentDoc.name || ''), text: txt, ts: Date.now() } : { sid: studentId, from: 's', text: txt, ts: Date.now() };
+    await addDoc(collection(db, 'portal', tid, kind), data);
+    if(kind === 'wall') wallDraft = ''; else dmDraft = '';
+  }catch(e){ console.error(e); boardMsg = BT('sendErr'); }
+  boardBusy = false; render();
+}
+
 let rosterData = null, rosterReady = false, nudCfg = null, nudCfgTried = false, nudEntered = false, nudTimer = null, nudBox = null;
 const nudOn = () => !!(studentDoc && !studentDoc.archived && !(rosterData && rosterData.nudge && rosterData.nudge.on === false));
 const nudSeen = () => { try{ return JSON.parse(LS.get('dc.seen.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
@@ -853,7 +970,7 @@ async function startRoster(){
     rosterState = 'ok';
     tzSetting = LS.get('dc.tz.' + tid) || null;
     if(unsubDoc) unsubDoc();
-    startHw(studentId);
+    startHw(studentId); startBoard(studentId);
     unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', studentId),
       s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
       err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
@@ -877,7 +994,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw(); nudStop(); reqTried = false; reqOk = false; learnOpen = false; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
+  stopHw(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

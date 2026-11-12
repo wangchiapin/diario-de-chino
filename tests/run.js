@@ -12,6 +12,7 @@ vm.runInContext(fs.readFileSync(path.join(root, 'portal-core.js'), 'utf8'), ctx)
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-nudge.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-learn.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-board.js'), 'utf8'), ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
 
@@ -351,6 +352,51 @@ test('能力：各題型答對率、走向；不顯示分數的作業不算；�
   assert.strictEqual(J(r.byType), J({ fill: { got: 2, max: 4, pct: 50 }, order: { got: 2, max: 2, pct: 100 } }));
   assert.strictEqual(J(r.trend.map(t => [t.title, t.pct])), J([['A', 67], ['B', 100]]));
   assert.strictEqual(C('learnAbility')({}).graded, 0);
+});
+test('公布欄：輸入整理（空白、換行、長度上限）', () => {
+  const B = C('boardClean');
+  assert.strictEqual(B('  hola  \r\n\r\n\r\n\r\nmundo \n'), 'hola\n\nmundo');
+  assert.strictEqual(B('   \n '), ''); assert.strictEqual(B(null), '');
+  assert.strictEqual(B('a'.repeat(500)).length, 500); assert.strictEqual(B('a'.repeat(501)), null);
+  assert.strictEqual(B('你'.repeat(500)).length, 500);
+});
+test('公布欄：排序（新的在前）、壞資料略過；私訊只收這位學生、舊的在前', () => {
+  const S = C('boardSortDesc');
+  assert.strictEqual(J(S([{ id: 'a', text: 'x', ts: 1 }, { id: 'b', text: 'y', ts: 3 }, { id: 'c', text: '', ts: 9 }, null, { id: 'd', text: 'z', ts: 3 }]).map(x => x.id)), J(['b', 'd', 'a']));
+  const m = [{ id: '1', sid: 's1', from: 's', text: 'hi', ts: 5 }, { id: '2', sid: 's2', from: 's', text: 'no', ts: 6 }, { id: '3', sid: 's1', from: 't', text: 'yo', ts: 7 }, { id: '4', sid: 's1', from: 'x', text: 'bad', ts: 8 }];
+  assert.strictEqual(J(C('dmThread')(m, 's1').map(x => x.id)), J(['1', '3']));
+  assert.strictEqual(C('boardMaxTs')(m, x => x.from === 't'), 7); assert.strictEqual(C('boardMaxTs')([], null), 0);
+});
+test('私訊未讀：老師每位學生各自算（只算學生寫的、比老師看到的時間新的）', () => {
+  const m = [{ sid: 's1', from: 's', ts: 10 }, { sid: 's1', from: 's', ts: 20 }, { sid: 's1', from: 't', ts: 30 }, { sid: 's2', from: 's', ts: 5 }];
+  assert.strictEqual(J(C('dmUnreadBySid')(m, { s1: 10 })), J({ s1: 1, s2: 1 }));
+  assert.strictEqual(J(C('dmUnreadBySid')(m, { s1: 20, s2: 5 })), '{}');
+  assert.strictEqual(J(C('dmUnreadBySid')(null, null)), '{}');
+});
+test('紅點：第一次不亮（記下現在的）；之後特徵變了才亮；資料沒載入不判斷', () => {
+  const N = C('newDots');
+  let r = N({}, { log: '3|a', files: null });
+  assert.strictEqual(J(r), J({ dot: { log: false, files: false }, seed: { log: '3|a' } }));
+  r = N({ log: '3|a' }, { log: '3|a', files: '1|5' });
+  assert.strictEqual(J(r.dot), J({ log: false, files: false })); assert.strictEqual(J(r.seed), J({ files: '1|5' }));
+  r = N({ log: '3|a', files: '1|5' }, { log: '4|b', files: '1|5' });
+  assert.strictEqual(J(r.dot), J({ log: true, files: false }));
+});
+test('學習分頁的紅點特徵：沒載入好的是 null；內容變了特徵就變', () => {
+  const L = C('learnSigs'), tot = { words: [1, 2], points: [1] };
+  const base = { studentDoc: { log: [{ d: '2026-11-10', p: '把' }], next: { n: '可以' } }, hwDocs: {}, hwLoaded: true, tot, listReady: true, files: [] };
+  const a = L(base);
+  assert.strictEqual(a.log, '1|2026-11-10|可以'); assert.strictEqual(a.review, '2/1'); assert.strictEqual(a.files, '0|0');
+  assert.strictEqual(L(Object.assign({}, base, { files: null })).files, null);
+  assert.strictEqual(L(Object.assign({}, base, { listReady: false })).review, null);
+  assert.strictEqual(L(Object.assign({}, base, { hwLoaded: false })).ability, null);
+  const b = L(Object.assign({}, base, { files: [{ t: 9 }], hwDocs: { w: { status: 'graded', review: { gradedAt: 7 } } } }));
+  assert.strictEqual(b.files, '1|9'); assert.strictEqual(b.ability, '1|7');
+});
+test('公布欄文字：三種語言的項目一樣多、都有字', () => {
+  const k = Object.keys(C('BOARD_I18N').tc).sort();
+  ['es', 'sc'].forEach(l => assert.strictEqual(J(Object.keys(C('BOARD_I18N')[l]).sort()), J(k), l));
+  k.forEach(x => ['es', 'tc', 'sc'].forEach(l => assert.ok(String(C('BOARD_I18N')[l][x]).length > 0, l + x)));
 });
 test('複習：新學的優先（同一批才打散）；西→中只出有西文意思的', () => {
   const D = C('learnDeck');

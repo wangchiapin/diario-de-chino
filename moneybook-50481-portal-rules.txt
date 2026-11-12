@@ -2,11 +2,11 @@
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
-// 最後更新：2026-11-12 16:07（新增 portal/{tid}/lists 和 portal/{tid}/marks：複習的單字／語法清單、學生標的「還不熟」）
+// 最後更新：2026-11-12 19:14（新增 portal/{tid}/members、board、wall、dm：公布欄、公開留言、私訊、學生名單鏡像）
 // 變更紀錄（只留最新 3 筆，新的放最上面；每次改規則都要寫日期＋時間）：
+//   - 2026-11-12 19:14 新增 portal/{tid}/members（學生名單鏡像，老師寫）、board（公布欄，老師寫、學生讀）、wall（公開留言，學生只能用自己的名字寫）、dm（私訊，只有老師和該位學生讀寫）
 //   - 2026-11-12 16:07 新增 portal/{tid}/lists/{sid}（老師為學生存的單字、語法點；老師寫、該位學生讀）和 portal/{tid}/marks/{sid}（學生標的「還不熟」；學生只能寫自己的，欄位和大小有限制）
 //   - 2026-11-11 21:29 新增 portal/{tid}/materials/{sid}（教材 PDF 連結；老師的 Apps Script 寫入，學生只能讀自己那一份）
-//   - 2026-11-11 19:50 新增 portal/{tid}/requests（學生只能寫「自己的」一筆，信箱要是自己驗證過的；老師讀寫）
 //
 // 誰能做什麼：
 //   - 路徑裡的 {tid} 就是老師（你）的 uid。只有老師自己能寫、能讀底下全部。
@@ -171,5 +171,68 @@
          get(/databases/$(database)/documents/portal/$(tid)/roster/$(sid)).data.email == request.auth.token.email &&
          request.resource.data.keys().hasOnly(['v', 'nf', 'updatedAt']) &&
          request.resource.data.nf is list && request.resource.data.nf.size() <= 500));
+      allow delete: if request.auth != null && request.auth.uid == tid;
+    }
+
+
+// ===================================================================
+// 第九批（公布欄、公開留言板、私訊）：只要「新增」下面這幾段，貼在其他 match 旁邊（並排）。不用動前面的任何一段。
+// members：學生名單鏡像（文件代號＝學生電子郵件）。老師在後台確認學生信箱時自動寫入；規則用它判斷「這個人是不是老師的學生」。
+// board：公布欄，老師寫、學生讀。 wall：公開留言，學生寫（只能用自己的名字和代號）、所有學生讀，自己的可以自己刪。
+// dm：私訊，只有老師和那位學生讀；學生只能寫 from=='s'、老師寫 from=='t'；寫了不能改。
+// 文字長度：網頁限制 500 字，規則放寬到 1000，避免不同字元計算方式造成誤擋。
+// ===================================================================
+
+    // 學生名單鏡像：只有老師能讀寫（學生不需要讀它，規則內部用 exists／get 查）
+    match /portal/{tid}/members/{email} {
+      allow read, write: if request.auth != null && request.auth.uid == tid;
+    }
+    // 公布欄
+    match /portal/{tid}/board/{id} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email))));
+      allow write: if request.auth != null && request.auth.uid == tid;
+    }
+    // 公開留言板
+    match /portal/{tid}/wall/{id} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email))));
+      allow create: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)) &&
+         request.resource.data.keys().hasOnly(['sid', 'name', 'text', 'ts']) &&
+         request.resource.data.sid == get(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)).data.sid &&
+         request.resource.data.name == get(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)).data.name &&
+         request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000 &&
+         request.resource.data.ts is number));
+      allow delete: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)) &&
+         resource.data.sid == get(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)).data.sid));
+      allow update: if false;
+    }
+    // 私訊
+    match /portal/{tid}/dm/{id} {
+      allow read: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)) &&
+         resource.data.sid == get(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)).data.sid));
+      allow create: if request.auth != null && (
+        request.auth.uid == tid ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)) &&
+         request.resource.data.keys().hasOnly(['sid', 'from', 'text', 'ts']) &&
+         request.resource.data.sid == get(/databases/$(database)/documents/portal/$(tid)/members/$(request.auth.token.email)).data.sid &&
+         request.resource.data.from == 's' &&
+         request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000 &&
+         request.resource.data.ts is number));
+      allow update: if false;
       allow delete: if request.auth != null && request.auth.uid == tid;
     }

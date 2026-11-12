@@ -40,26 +40,38 @@ const key = segs => segs.join('/');
 export function getFirestore(){ return {}; }
 export function doc(db, ...segs){ return { path: key(segs), id: segs[segs.length - 1] }; }
 export function collection(db, ...segs){ return { path: key(segs), col: true }; }
-export function where(field, op, val){ return { field, op, val }; }
-export function query(col, w){ return { col, w }; }
+export function where(field, op, val){ return { k: 'where', field, op, val }; }
+export function orderBy(field, dir){ return { k: 'order', field, dir: dir || 'asc' }; }
+export function limit(n){ return { k: 'limit', n }; }
+export function query(col, ...cons){ return { q: true, col, cons }; }
 const snapDoc = (path) => ({ id: path.split('/').pop(), exists: () => path in fb().store, data: () => fb().store[path] });
 function listCol(path){ return Object.keys(fb().store).filter(p => p.startsWith(path + '/') && p.slice(path.length + 1).indexOf('/') < 0); }
 function colSnap(paths){ const docs = paths.map(snapDoc); return { empty: docs.length === 0, docs, forEach: f => docs.forEach(f) }; }
-export async function getDocs(q){
-  const col = q.col || q; let paths = listCol(col.path);
-  if(q.w) paths = paths.filter(p => fb().store[p][q.w.field] === q.w.val);
-  fb().reads.push(col.path); return colSnap(paths);
+function resolvePaths(ref){
+  const col = ref.q ? ref.col : ref; let paths = listCol(col.path);
+  (ref.cons || []).forEach(c => { if(c.k === 'where') paths = paths.filter(p => fb().store[p][c.field] === c.val); });
+  (ref.cons || []).forEach(c => { if(c.k === 'order') paths.sort((x, y) => { const a = fb().store[x][c.field], b = fb().store[y][c.field]; return (a < b ? -1 : a > b ? 1 : 0) * (c.dir === 'desc' ? -1 : 1); }); });
+  (ref.cons || []).forEach(c => { if(c.k === 'limit') paths = paths.slice(0, c.n); });
+  return paths;
 }
+export async function getDocs(q){ fb().reads.push((q.q ? q.col : q).path); return colSnap(resolvePaths(q)); }
 export function onSnapshot(ref, cb, err){
   const sub = { ref, cb };
   fb().subs.push(sub);
-  const fire = () => ref.col ? cb(colSnap(listCol(ref.path))) : cb(snapDoc(ref.path));
+  const isCol = ref.q || ref.col;
+  const fire = () => {
+    const path = (ref.q ? ref.col : ref).path;
+    if(fb().denyRead && fb().denyRead.some(d => path.indexOf(d) >= 0)){ if(err){ const e = new Error('denied'); e.code = 'permission-denied'; err(e); } return; }
+    isCol ? cb(colSnap(resolvePaths(ref))) : cb(snapDoc(ref.path));
+  };
   sub.fire = fire; setTimeout(fire, 0); return () => { fb().subs = fb().subs.filter(s => s !== sub); };
 }
 export async function getDoc(ref){ return snapDoc(ref.path); }
 export async function setDoc(ref, data){ fb().store[ref.path] = data; fb().subs.forEach(s => s.fire()); }
 export async function updateDoc(ref, data){ if(window.__fb.failUpdate){ const e = new Error('x'); e.code = 'unavailable'; throw e; } const nd = Object.assign({}, fb().store[ref.path], data); Object.keys(nd).forEach(k => { if(nd[k] && nd[k].__del) delete nd[k]; }); fb().store[ref.path] = nd; fb().subs.forEach(s => s.fire()); }
 export function deleteField(){ return { __del: true }; }
+let __n = 0;
+export async function addDoc(col, data){ const id = 'auto' + (++__n) + '_' + Date.now(); fb().store[col.path + '/' + id] = data; fb().subs.forEach(s => s.fire()); return { id }; }
 export async function deleteDoc(ref){ delete fb().store[ref.path]; fb().subs.forEach(s => s.fire()); }
 """
 STUBS = {
@@ -760,7 +772,7 @@ def admin_tabs_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(700)
-    check('五個分頁：學生、作業、單字、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 5, page.inner_text('#tabbar'))
+    check('六個分頁：學生、作業、單字、公布、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '公布', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 6, page.inner_text('#tabbar'))
     check('預設在「學生」：看得到對照表，看不到作業和發布帳號', page.is_visible('tr[data-id=s1]') and not page.is_visible('.hwrow') and not page.is_visible('#tidShow'))
     check('作業分頁有紅點數字（1 份等批改）', page.inner_text('#tabbar [data-t=hw] .bd') == '1')
     box = page.locator('#tabbar').bounding_box()
@@ -940,6 +952,125 @@ def voc_admin_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def board_tests(browser, base):
+    print('\n學生頁：公布欄／留言板／私訊、紅點')
+    P = 'portal/%s/' % TID
+    def login(page):
+        page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+        page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(700)
+    def fire(page, setjs):
+        page.evaluate("(() => { %s; window.__fb.subs.forEach(s => s.fire()); })()" % setjs); page.wait_for_timeout(200)
+    store = {
+        P + 'board/b1': {'text': '11/20 沒有課', 'ts': 1000}, P + 'board/b2': {'text': 'Nueva tarea', 'ts': 2000},
+        P + 'wall/w1': {'sid': 's2', 'name': 'Ana', 'text': 'Hola a todos', 'ts': 1500}, P + 'wall/w2': {'sid': 's1', 'name': 'Pedro', 'text': 'Mi mensaje', 'ts': 1600},
+        P + 'dm/d1': {'sid': 's1', 'from': 's', 'text': 'Profe, una pregunta', 'ts': 1700}, P + 'dm/d2': {'sid': 's1', 'from': 't', 'text': '請說', 'ts': 1800},
+        P + 'dm/d3': {'sid': 's2', 'from': 's', 'text': 'SECRET-ANA', 'ts': 1900},
+    }
+    ctx, page, errs = new_page(browser, base_state(store))
+    page.add_init_script("localStorage.setItem('dc.lang','tc');")
+    login(page)
+    check('首頁有公布欄卡片；第一次來不亮紅點', page.locator('#boardGo').count() == 1 and page.locator('.rdot').count() == 0, page.inner_text('#app')[:200])
+    page.click('#boardGo'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('公布欄：新的在前', txt.index('Nueva tarea') < txt.index('11/20 沒有課'), txt[:300])
+    page.click('[data-bt=wall]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('留言板：看得到別人和自己的留言和名字；只有自己的有刪除', 'Ana' in txt and 'Hola a todos' in txt and 'Mi mensaje' in txt and page.locator('[data-wdel]').count() == 1)
+    page.fill('#wallTx', '  Hola  profe  '); page.click('#wallTxSend'); page.wait_for_timeout(300)
+    posts = [v for k, v in page.evaluate("window.__fb.store").items() if k.startswith(P + 'wall/auto')]
+    check('送出留言：用自己的名字和代號、整理過空白、輸入框清空', len(posts) == 1 and posts[0]['sid'] == 's1' and posts[0]['name'] == 'Pedro' and posts[0]['text'] == 'Hola  profe' and page.input_value('#wallTx') == '', posts)
+    check('新留言出現在畫面上', 'Hola  profe' in page.inner_text('#app'))
+    page.once('dialog', lambda d: d.accept())
+    page.click('[data-wdel=w2]'); page.wait_for_timeout(300)
+    check('刪除自己的留言', P + 'wall/w2' not in page.evaluate("Object.keys(window.__fb.store)") and 'Mi mensaje' not in page.inner_text('#app'))
+    page.click('[data-bt=dm]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('私訊：只看到自己的對話，看不到別的學生的', 'Profe, una pregunta' in txt and '請說' in txt and 'SECRET-ANA' not in txt)
+    page.fill('#dmTx', 'Gracias'); page.click('#dmTxSend'); page.wait_for_timeout(300)
+    dms = [v for k, v in page.evaluate("window.__fb.store").items() if k.startswith(P + 'dm/auto')]
+    check('送出私訊：from 是學生（s）', len(dms) == 1 and dms[0]['from'] == 's' and dms[0]['sid'] == 's1' and dms[0]['text'] == 'Gracias', dms)
+    page.fill('#dmTx', 'x' * 501); page.evaluate("document.querySelector('#dmTx').removeAttribute('maxlength')"); page.fill('#dmTx', 'x' * 501); page.click('#dmTxSend'); page.wait_for_timeout(200)
+    check('太長不送出：有提示', '最多 500' in page.inner_text('#app') and len([k for k in page.evaluate("Object.keys(window.__fb.store)") if k.startswith(P + 'dm/auto')]) == 1)
+    page.click('#boardBack'); page.wait_for_timeout(100)
+    check('看過之後沒有紅點', page.locator('.rdot').count() == 0)
+    fire(page, "window.__fb.store['%s'] = {text: '新公告', ts: 5000}" % (P + 'board/b3'))
+    check('老師貼新公告：公布欄卡片亮紅點', page.locator('.rdot').count() == 1)
+    page.click('#boardGo'); page.wait_for_timeout(100)
+    fire(page, "window.__fb.store['%s'] = {sid: 's2', name: 'Ana', text: 'otro', ts: 6000}" % (P + 'wall/w9'))
+    check('別人的新留言：留言板分頁亮紅點、公布欄分頁沒有', page.locator('[data-bt=wall] .rdot').count() == 1 and page.locator('[data-bt=board] .rdot').count() == 0)
+    page.click('[data-bt=wall]'); page.wait_for_timeout(100)
+    check('點進去就消失', page.locator('.rdot').count() == 0)
+    fire(page, "window.__fb.store['%s'] = {sid: 's1', from: 't', text: '回覆', ts: 7000}" % (P + 'dm/d9'))
+    check('老師回覆私訊：「給老師」分頁亮紅點', page.locator('[data-bt=dm] .rdot').count() == 1)
+    page.click('#boardBack'); page.wait_for_timeout(100)
+    check('回首頁：公布欄卡片還亮（私訊還沒看）', page.locator('.rdot').count() == 1)
+    fire(page, "window.__fb.store['%s'].log = [{d: '2026-11-10', p: '把'}]" % (P + 'students/s1'))
+    check('日誌有新進度：我的學習卡片亮紅點', page.locator('.rdot').count() == 2)
+    page.click('#learnGo'); page.wait_for_timeout(200)
+    check('進去：上課紀錄分頁本身不亮', page.locator('[data-lt=log] .rdot').count() == 0)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    ctx, page, errs = new_page(browser, base_state(store))
+    page.add_init_script("localStorage.setItem('dc.lang','tc'); window.__fb.denyRead = ['/board', '/wall', '/dm'];")
+    login(page)
+    check('規則還沒貼（讀不到）：不顯示公布欄卡片，其他照常', page.locator('#boardGo').count() == 0 and page.locator('#learnGo').count() == 1)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    ctx, page, errs = new_page(browser, base_state(store))
+    page.add_init_script("localStorage.setItem('dc.lang','es');")
+    login(page); page.click('#boardGo'); page.wait_for_timeout(100)
+    check('西文：標題和分頁', 'Tablón y mensajes' in page.inner_text('#app') and 'Para el profesor' in page.inner_text('#app'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
+def bb_admin_tests(browser, base):
+    print('\n老師後台：公布')
+    P = 'portal/%s/' % TID
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    store = {P + 'students/s1': {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             P + 'students/s2': {'v': 1, 'name': 'Ana', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []},
+             P + 'roster/s1': {'email': 'pedro@example.com', 'name': 'Pedro'},
+             P + 'members/old@example.com': {'sid': 's9', 'name': 'Gone'},
+             P + 'wall/w1': {'sid': 's1', 'name': 'Pedro', 'text': 'Hola todos', 'ts': 1000},
+             P + 'dm/d1': {'sid': 's1', 'from': 's', 'text': 'Profe, duda', 'ts': 2000},
+             P + 'dm/d2': {'sid': 's2', 'from': 's', 'text': 'Hola profe', 'ts': 3000}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(1000)
+    st = page.evaluate("window.__fb.store")
+    mem = {k: v for k, v in st.items() if k.startswith(P + 'members/')}
+    check('學生名單鏡像：以電子郵件為代號，內容是學生代號和名字', list(mem.keys()) == [P + 'members/pedro@example.com'] and mem[P + 'members/pedro@example.com']['sid'] == 's1' and mem[P + 'members/pedro@example.com']['name'] == 'Pedro', mem)
+    check('公布分頁的標籤有未讀數字 2', page.locator('#tabbar [data-t=pub] .bd').count() == 1 and page.inner_text('#tabbar [data-t=pub] .bd') == '2')
+    page.click('#tabbar [data-t=pub]'); page.wait_for_timeout(200)
+    page.fill('#bbText', '  11/20 沒有課  '); page.click('#bbPost'); page.wait_for_timeout(300)
+    posts = [v for k, v in page.evaluate("window.__fb.store").items() if k.startswith(P + 'board/auto')]
+    check('貼公告：整理過空白、有時間', len(posts) == 1 and posts[0]['text'] == '11/20 沒有課' and posts[0]['ts'] > 0, posts)
+    check('公告出現在清單，輸入框清空', '11/20 沒有課' in page.inner_text('#app') and page.input_value('#bbText') == '')
+    page.click('[data-bt=wall]'); page.wait_for_timeout(100)
+    check('留言板：看得到學生留言', 'Hola todos' in page.inner_text('#app') and 'Pedro' in page.inner_text('#app'))
+    page.once('dialog', lambda d: d.accept())
+    page.click('.bbDel'); page.wait_for_timeout(300)
+    check('刪除不適合的留言', P + 'wall/w1' not in page.evaluate("Object.keys(window.__fb.store)"))
+    page.click('[data-bt=dm]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('私訊：選單標出有幾則新的', 'Pedro（1 則新的）' in txt and 'Ana（1 則新的）' in txt, txt[:300])
+    page.select_option('#bbSel', 's1'); page.wait_for_timeout(300)
+    check('打開對話：看得到學生寫的、只看到這位的', 'Profe, duda' in page.inner_text('#app') and 'Hola profe' not in page.inner_text('#app'))
+    seen = page.evaluate("window.__fb.store[%r]" % (P + 'config/dmSeen'))
+    check('打開就記成已讀（存在雲端，換裝置也一樣）；標籤數字剩 1', seen and seen.get('s1') == 2000 and page.inner_text('#tabbar [data-t=pub] .bd') == '1', seen)
+    page.fill('#bbReply', '請說'); page.click('#bbSend'); page.wait_for_timeout(300)
+    dms = [v for k, v in page.evaluate("window.__fb.store").items() if k.startswith(P + 'dm/auto')]
+    check('回覆：from 是老師（t）、記在這位學生的代號下', len(dms) == 1 and dms[0]['from'] == 't' and dms[0]['sid'] == 's1' and dms[0]['text'] == '請說', dms)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    ctx, page, errs = new_page(browser, base_state({P + 'students/s1': {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []}, P + 'roster/s1': {'email': 'pedro@example.com', 'name': 'Pedro'}}, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com'; window.__fb.denyRead = ['/members'];")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(800)
+    page.click('#tabbar [data-t=pub]'); page.wait_for_timeout(200)
+    check('規則還沒貼：提醒要加第九批，其他照常', '第九批' in page.inner_text('#app') and page.is_visible('#bbPost'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -956,6 +1087,8 @@ with sync_playwright() as p:
     signup_tests(browser, base)
     learn_tests(browser, base)
     voc_admin_tests(browser, base)
+    board_tests(browser, base)
+    bb_admin_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)
