@@ -432,5 +432,55 @@ test('教材：只收 Google Drive／Docs 的 https 連結，新的在上面', (
   assert.strictEqual(C('learnFiles')(null).length, 0);
 });
 
+console.log('\n單字量對照');
+test('覆蓋率、連續達標 75%、單字太少不評估', () => {
+  const data = { t: { 我: 1, 你: 1, 他: 1, 好: 1, 學: 2, 校: 2 }, h: { 我: 1 }, ts: [4, 2, 5, 5, 5, 5], hs: [1, 1, 1, 1, 1, 1, 1] };
+  const ws = ['我', '你', '他', '學', '校', '沒有'].map(zh => ({ zh }));
+  const few = C('learnLevels')(ws, data);
+  assert.strictEqual(few.tocfl.enough, false);
+  assert.strictEqual(few.tocfl.reached, 0);
+  const many = C('learnLevels')(ws, data, 0.75, 3);
+  assert.strictEqual(many.tocfl.matched, 5);
+  assert.strictEqual(many.tocfl.levels[0].pct, 75);
+  assert.strictEqual(many.tocfl.reached, 2);
+  assert.strictEqual(many.tocfl.learning, 3);
+  assert.strictEqual(many.cefr.levels[1].lv, 'A2');
+  assert.strictEqual(C('learnLevels')(ws, null).tocfl, null);
+});
+test('老師設起點 B1：B1 以下算已會，單字少也能評估', () => {
+  const data = { t: { 我: 1 }, h: { 我: 1 }, ts: [4, 2, 5, 5, 5, 5], hs: [1, 1, 1, 1, 1, 1, 1] };
+  const r = C('learnLevels')([{ zh: '我' }], data, 0.75, 30, { cefr: 'B1' });
+  assert.strictEqual(r.tocfl.enough, true);
+  assert.strictEqual(r.tocfl.reached, 3);
+  assert.strictEqual(r.tocfl.learning, 4);
+  assert.strictEqual(r.tocfl.levels[2].pct, 100);
+  assert.strictEqual(r.tocfl.levels[3].pct, 0);
+  assert.strictEqual(r.hsk.reached, 3);
+  assert.strictEqual(r.start, 'B1');
+  assert.strictEqual(C('learnLevels')([{ zh: '我' }], data, 0.75, 30, { cefr: '' }).tocfl.enough, false);
+});
+test('語法點對照：標題一樣自動分冊，對不上的列出來，手動分過就記住', () => {
+  const map = { books: { 1: 'A1–A2', 2: 'A2–B1', 3: 'B1' }, titles: { 把字句: 1, 比較句: 2, 得字補語: 3, 嗎: 1 } };
+  const pts = ['把字句', '「比較句」', '怪文法', '得字補語'].map(n => ({ n }));
+  const g = C('learnGrammar')(pts, map, {});
+  assert.strictEqual(g.matched, 3);
+  assert.strictEqual(g.unmatched.join(), '怪文法');
+  assert.strictEqual(g.cefr, 'B1');   // 沒有任何一冊有 3 個，取最高的第 3 冊
+  const g2 = C('learnGrammar')(pts, map, { 怪文法: 1 });
+  assert.strictEqual(g2.unmatched.length, 0);
+  assert.strictEqual(g2.matched, 4);
+  assert.strictEqual(C('learnGrammar')(pts, map, { 怪文法: 0 }).unmatched.length, 0);
+  assert.strictEqual(C('learnGrammar')(pts, null, {}).cefr, '');
+});
+test('真實對照表：載入後 我／你好 等基本字在第 1 級', () => {
+  const c2 = vm.createContext({ window: {} });
+  vm.runInContext(fs.readFileSync(path.join(root, 'levels-data.js'), 'utf8'), c2);
+  const D = c2.window.LEVELS_DATA;
+  assert.ok(D.t['你好'] === 1 || D.t['你'] === 1);
+  assert.strictEqual(D.h['謝謝'], 1);
+  assert.strictEqual(D.ts.length, 6);
+  assert.strictEqual(D.hs.length, 7);
+});
+
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);

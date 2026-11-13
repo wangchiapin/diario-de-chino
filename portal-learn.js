@@ -23,6 +23,9 @@ var LEARN_I18N = {
     revNoNot: 'No tienes palabras marcadas como «Aún no». ¡Muy bien!',
     abHw: 'Tareas corregidas', abWords: 'Palabras', abPoints: 'Puntos de gramática', abClasses: 'Clases', abByType: 'Aciertos por tipo de ejercicio', abTrend: 'Tus últimas tareas',
     abEmpty: 'Cuando tu profesor corrija tus tareas, aquí verás cómo vas.', abNote: 'No se cuentan las tareas cuyo puntaje el profesor decidió no mostrar.',
+    abGLearned: 'Aprendidos', abGCefr: 'Nivel aproximado', abGFew: 'Aún no hay suficientes puntos para estimar el nivel.',
+    abStart: 'Punto de partida fijado por tu profesor: {l}.',
+    abLv: 'Nivel según tu vocabulario', abReached: 'Alcanzado', abLearning: 'Estudiando', abFew: 'Aún hay pocas palabras para estimar tu nivel.', abNone: 'todavía ninguno', abRef: 'Es solo una referencia basada en las palabras que has estudiado, no el resultado de un examen.', abLvName: 'Nivel {n}', abOf: '{a} de {b}',
     fEmpty: 'Todavía no hay materiales.', fOpen: 'Abrir',
     types: { fill: 'Completar', cloze: 'Párrafo', order: 'Ordenar', choice: 'Opción múltiple', fix: 'Corregir', translate: 'Traducir al español', zh2es: 'Traducir al chino', match: 'Unir', sentence: 'Crear frases' }
   },
@@ -37,6 +40,9 @@ var LEARN_I18N = {
     revNoNot: '沒有標成「還不熟」的單字，太棒了！',
     abHw: '已批改的作業', abWords: '單字', abPoints: '語法點', abClasses: '上課堂數', abByType: '各題型答對率', abTrend: '最近幾份作業',
     abEmpty: '老師批改作業後，這裡會看到你的進步。', abNote: '老師設成「不顯示分數」的作業，不會算進來。',
+    abGLearned: '學過', abGCefr: '約', abGFew: '學過的語法點還太少，先不評估。',
+    abStart: '起點由老師設定：{l}。',
+    abLv: '單字量對照等級', abReached: '已達到', abLearning: '正在學', abFew: '學過的單字還太少，先不評估。', abNone: '還沒有', abRef: '這只是依你學過的單字做的參考，不是考試成績。', abLvName: '第{n}級', abOf: '{a}／{b}',
     fEmpty: '還沒有教材。', fOpen: '打開',
     types: { fill: '填空', cloze: '段落填空', order: '排序', choice: '選擇', fix: '改錯', translate: '西翻中', zh2es: '中翻西', match: '配對', sentence: '造句' }
   },
@@ -51,6 +57,9 @@ var LEARN_I18N = {
     revNoNot: '没有标成「还不熟」的单字，太棒了！',
     abHw: '已批改的作业', abWords: '单字', abPoints: '语法点', abClasses: '上课堂数', abByType: '各题型答对率', abTrend: '最近几份作业',
     abEmpty: '老师批改作业后，这里会看到你的进步。', abNote: '老师设成「不显示分数」的作业，不会算进来。',
+    abGLearned: '学过', abGCefr: '约', abGFew: '学过的语法点还太少，先不评估。',
+    abStart: '起点由老师设定：{l}。',
+    abLv: '单字量对照等级', abReached: '已达到', abLearning: '正在学', abFew: '学过的单字还太少，先不评估。', abNone: '还没有', abRef: '这只是依你学过的单字做的参考，不是考试成绩。', abLvName: '第{n}级', abOf: '{a}／{b}',
     fEmpty: '还没有教材。', fOpen: '打开',
     types: { fill: '填空', cloze: '段落填空', order: '排序', choice: '选择', fix: '改错', translate: '西翻中', zh2es: '中翻西', match: '配对', sentence: '造句' }
   }
@@ -144,6 +153,63 @@ function learnTotals(hwDocs, list) {
     words: Wo.filter(function (x) { return !hw[x.zh]; }).map(function (x, i) { x.i = i; return x; }).sort(function (a, b) { return byT(a, b) || (b.i - a.i); }),
     points: Po.filter(function (x) { return !hp[x.n]; }).map(function (x, i) { x.i = i; return x; }).sort(function (a, b) { return byT(a, b) || (b.i - a.i); })
   };
+}
+
+/* ───────── 3c. 單字量對照（TOCFL 八千詞／HSK 3.0）─────────
+   data = window.LEVELS_DATA：{ t:{詞:級}, h:{詞:級}, ts:[各級總字數], hs:[…] }
+   每一級的「覆蓋率」＝學過屬於那一級的單字數 ÷ 那一級的總字數。
+   從第 1 級連續往上，覆蓋率都 ≥ 75% 才算「已達到」，下一級就是「正在學」。
+   對到的單字少於 30 個就不評估（回傳 enough:false）。 */
+var LEARN_CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+function learnLevels(words, data, threshold, minWords, start) {
+  threshold = threshold || 0.75; minWords = minWords || 30;
+  var out = { tocfl: null, hsk: null };
+  if (!data) return out;
+  function forms(zh) {
+    var a = [String(zh || '').trim()];
+    String(zh || '').split(/[\/／、,，;；\s]+/).forEach(function (x) { x = x.replace(/[()（）]/g, ''); if (x) a.push(x); });
+    return a;
+  }
+  var base = Math.max(0, LEARN_CEFR.indexOf(start && start.cefr) + 1);   // 老師設的起點：這一級以下都算已會
+  function calc(map, sizes) {
+    var cnt = sizes.map(function () { return 0; }), seen = {}, matched = 0;
+    (words || []).forEach(function (w) {
+      var f = forms(w.zh), lv = 0;
+      for (var i = 0; i < f.length; i++) { if (map[f[i]]) { lv = map[f[i]]; break; } }
+      if (lv && !seen[lv + ':' + f[0]]) { seen[lv + ':' + f[0]] = 1; cnt[lv - 1]++; matched++; }
+    });
+    var levels = sizes.map(function (n, i) { return i < base ? { lv: i + 1, n: n, of: n, pct: 100, fixed: true } : { lv: i + 1, n: cnt[i], of: n, pct: Math.min(100, Math.round(cnt[i] / n * 100)) }; });
+    var enough = matched >= minWords || base > 0, reached = Math.min(base, sizes.length);
+    if (enough) { while (reached < sizes.length && cnt[reached] / sizes[reached] >= threshold) reached++; }
+    return { levels: levels, matched: matched, enough: enough, reached: reached, learning: reached < sizes.length ? reached + 1 : 0 };
+  }
+  out.tocfl = calc(data.t || {}, data.ts || []);
+  out.hsk = calc(data.h || {}, data.hs || []);
+  out.start = base ? start.cefr : '';
+  out.cefr = { reached: out.tocfl.reached, learning: out.tocfl.learning, enough: out.tocfl.enough,
+    levels: out.tocfl.levels.map(function (l, i) { return { lv: LEARN_CEFR[i], n: l.n, of: l.of, pct: l.pct }; }) };
+  return out;
+}
+
+/* ───────── 3d. 語法點對照（約 CEFR）─────────
+   map = window.GRAMMAR_MAP：{ books:{冊:'A1–A2'}, titles:{標題:冊} }；manual：老師手動分的 { 標題:冊 }（0 ＝不分類）。
+   「約 CEFR」＝學過 3 個以上語法點的最高那一冊的範圍（不到 3 個就只看最高的一冊）。 */
+function learnGramNorm(s) { return String(s || '').replace(/[\s「」『』"“”'’、，。]/g, '').toLowerCase(); }
+function learnGrammar(points, map, manual) {
+  var out = { matched: 0, unmatched: [], cefr: '', byBook: {} };
+  if (!map) return out;
+  manual = manual || {};
+  (points || []).forEach(function (p) {
+    var n = String(p.n || p || ''), k = learnGramNorm(n);
+    var b = map.titles[k] || manual[n] || 0;
+    if (b) { out.byBook[b] = (out.byBook[b] || 0) + 1; out.matched++; }
+    else if (!(n in manual)) out.unmatched.push(n);
+  });
+  var books = Object.keys(out.byBook).map(Number).sort(function (a, b) { return a - b; }), pick = 0;
+  books.forEach(function (b) { if (out.byBook[b] >= 3) pick = b; });
+  if (!pick && books.length) pick = books[books.length - 1];
+  if (out.matched >= 1 && pick) out.cefr = map.books[pick] || '';
+  return out;
 }
 
 /* 「還不熟」的標記：存在雲端的格式是字串陣列 nf（單字本身當欄位名稱不安全，所以不用 map） */

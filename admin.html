@@ -117,6 +117,7 @@ details.nd summary{cursor:pointer;font-size:14px}
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
 <script src="portal-learn.js"></script>
+<script src="grammar-map.js"></script>
 <script src="portal-pinyin.js"></script>
 <script src="portal-board.js"></script>
 <script type="module">
@@ -138,6 +139,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 
 let reqs = {}, reqSel = {}, reqMsg = {};
 let bbPosts = [], bbWall = [], bbDm = [], members = {}, membersLoaded = false, membersErr = false, memSyncing = false, dmSeen = {}, bbTab = 'board', bbOpened = {}, bbDraft = { board: '', reply: {} }, bbMsg = null;   // 公布欄、公開留言、私訊、學生名單鏡像
+let gmap = {};   // 老師手動分的語法點冊別：標題 → 冊（0＝不分類），存在 config/gmap
 let lists = {}, marks = {}, vocSid = '', vocDraft = { w: '', p: '' }, vocMsg = null, vocShowHidden = false;   // lists：學生代號 → 老師為他存的單字／語法清單；marks：學生標的「還不熟」
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
 const helpOpen = new Set();
@@ -381,6 +383,17 @@ async function vocSave(sid, mutate, okText){
   catch(err){ console.error(err); vocMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加第八批（見 README）' : '儲存失敗，請再試一次', ok: false }; }
   render();
 }
+function gramCardHtml(active){
+  const seen = {}, un = [];
+  active.forEach(id => learnGrammar(vocTotals(id).points, window.GRAMMAR_MAP, gmap).unmatched.forEach(n => { if(!seen[n]){ seen[n] = 1; un.push(n); } }));
+  const done = Object.keys(gmap).filter(n => gmap[n]);
+  const bk = window.GRAMMAR_MAP ? window.GRAMMAR_MAP.books : {};
+  const opt = cur => `<option value="">請選…</option>` + Object.keys(bk).map(b => `<option value="${b}" ${+cur === +b ? 'selected' : ''}>第 ${b} 冊（${esc(bk[b])}）</option>`).join('') + `<option value="0">不分類</option>`;
+  return `<div class="card"><h2>語法點分冊（${un.length} 個還沒分）</h2>
+    ${helpBox('vc3', '學生頁會用語法點的標題，對照文法速查表算出「約 CEFR」。標題跟速查表一樣的會自動分好；這裡是對不上的，請選它大概屬於第幾冊（選一次就記住，所有學生都適用）。選「不分類」就不列入。')}
+    ${un.length ? un.map(n => `<div class="row" style="gap:8px;margin:4px 0"><span style="flex:1">${esc(n)}</span><select class="gmSel" data-n="${esc(n)}">${opt('')}</select></div>`).join('') : '<div class="muted small">都分好了</div>'}
+    ${done.length ? `<details class="help"><summary>已手動分好的（${done.length}）</summary><div class="hb">${done.map(n => `<div class="row" style="gap:8px;margin:4px 0"><span style="flex:1">${esc(n)}</span><select class="gmSel" data-n="${esc(n)}">${opt(gmap[n])}</select></div>`).join('')}</div></details>` : ''}</div>`;
+}
 function vocHtml(active){
   if(!active.length) return '<div class="card muted">還沒有學生</div>';
   if(!vocSid || active.indexOf(vocSid) < 0) vocSid = active[0];
@@ -404,11 +417,19 @@ function vocHtml(active){
     <div class="small">新增語法點（一行一個，或用「＋」分開）</div>
     <textarea id="vocP" class="nudta" placeholder="把字句＋可以" style="width:100%;min-height:44px">${esc(vocDraft.p)}</textarea>
     <div class="row" style="margin:6px 0 4px"><button id="vocAddP">加入語法點</button></div></div>
+    <div class="card"><h2>起始程度（${esc(students[sid].name)}）</h2>
+      ${helpBox('vc2', '給原本程度就不錯的學生用，全部可以不填。選了起點等級，學生頁「我的能力」裡 TOCFL、HSK、CEFR 這個等級以下都算已會；之後在你這裡學的單字，再往上累加。起始單字量填了，學生頁的單字數就是「起始單字量＋新學的」。備註只有你看得到。')}
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin:6px 0">
+        <select id="stCefr" aria-label="起點等級"><option value="">從零開始</option>${['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map(c => `<option ${((L.start || {}).cefr === c) ? 'selected' : ''}>${c}</option>`).join('')}</select>
+        <input id="stWords" type="number" min="0" max="20000" placeholder="起始單字量（選填）" value="${esc((L.start || {}).words || '')}" style="width:170px">
+        <input id="stNote" placeholder="備註（只有你看得到）" value="${esc((L.start || {}).note || '')}" style="flex:1;min-width:160px">
+        <button id="stSave">存</button></div></div>
     <div class="card"><h2>單字（${tot.words.length}）</h2>
       ${noPy ? `<div class="row" style="margin-bottom:8px"><button id="vocFill">全部補上拼音（${noPy} 個）</button><span class="muted small">只補還沒有拼音的</span></div>` : ''}
       ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
       ${hiddenHtml}</div>
     <div class="card"><h2>語法點（${tot.points.length}）</h2>${ptRows || '<div class="muted small">還沒有語法點</div>'}</div>
+    ${gramCardHtml(active)}
     ${notYet}`;
 }
 function bindVoc(root){
@@ -434,6 +455,17 @@ function bindVoc(root){
       });
     }, `✓ 已加入 ${res.length} 個${noEs ? `（${noEs} 個查不到西文意思，請在下面自己填）` : ''}`).then(() => { vocDraft.w = ''; });
   });
+  on('stSave', () => {
+    const cefr = root.querySelector('#stCefr').value, w = Math.max(0, Math.min(20000, parseInt(root.querySelector('#stWords').value, 10) || 0)), note = root.querySelector('#stNote').value.trim().slice(0, 200);
+    vocSave(sid, cur => { if(!cefr && !w && !note) delete cur.start; else cur.start = { cefr, words: w, note }; }, '✓ 起始程度已儲存');
+  });
+  root.querySelectorAll('.gmSel').forEach(el => { el.onchange = async () => {
+    if(el.value === '') return;
+    const m = Object.assign({}, gmap); m[el.dataset.n] = +el.value;
+    try{ await setDoc(doc(db, 'portal', uid, 'config', 'gmap'), { map: m, updatedAt: Date.now() }); gmap = m; vocMsg = { text: '✓ 已記住', ok: true }; }
+    catch(err){ console.error(err); vocMsg = { text: '儲存失敗，請再試一次', ok: false }; }
+    render();
+  }; });
   on('vocAddP', () => {
     const pts = tp.value.split('\n').reduce((a, l) => a.concat(nudSplitPoints(l)), []);
     if(!pts.length){ vocMsg = { text: '請輸入語法點', ok: false }; return render(); }
@@ -983,6 +1015,7 @@ function start(){
   unsubs.push(onSnapshot(query(collection(db, 'portal', uid, 'dm'), orderBy('ts', 'desc'), limit(500)), snap => { bbDm = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); renderSoftA(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'members'), snap => { members = {}; snap.forEach(d => members[d.id] = d.data()); membersLoaded = true; syncMembers(); }, err => { console.error(err); membersErr = true; render(); }));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'dmSeen'), s => { dmSeen = s.exists() ? s.data() : {}; renderSoftA(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'gmap'), d => { gmap = d.exists() ? (d.data().map || {}) : {}; render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'lists'), snap => { lists = {}; snap.forEach(d => lists[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'marks'), snap => { marks = {}; snap.forEach(d => marks[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'admins'), snap => { admins = {}; snap.forEach(d => admins[d.id] = d.data()); render(); }, err => console.error(err)));

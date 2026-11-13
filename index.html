@@ -457,6 +457,7 @@ async function loadMaterials(){
 async function loadLearnData(){
   if(learnDataTried) return; learnDataTried = true;
   try{ const s = await getDoc(doc(db, 'portal', tid, 'lists', studentId)); listDoc = s.exists() ? s.data() : null; }catch(e){ listDoc = null; }
+  try{ const s = await getDoc(doc(db, 'portal', tid, 'config', 'gmap')); gmapManual = s.exists() ? (s.data().map || {}) : {}; }catch(e){ gmapManual = {}; }
   try{
     const s = await getDoc(doc(db, 'portal', tid, 'marks', studentId));
     if(s.exists()) cloudMarks = learnMarksFromDoc(s.data());
@@ -474,6 +475,26 @@ function learnCardHtml(dots){
   return `<div class="card"><div class="row"><h2 style="margin:0">${esc(LT('learn'))}${dotHtml(d)}</h2><button class="btn" id="learnGo">${esc(LT('learnBtn'))}</button></div></div>`;
 }
 function bindLearnCard(root){ bindBoardCard(root); const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; revSub = 'cards'; loadMaterials(); loadLearnData(); render(); toTop(); }; }
+/* 單字量對照：TOCFL／HSK／CEFR 三組進度條（參考用）。對照表很大，第一次打開「能力」才讀 */
+let levelsTried = false, gmapManual = {};
+function levelsHtml(tot){
+  if(!window.LEVELS_DATA){
+    if(!levelsTried){ levelsTried = true; const sc = document.createElement('script'); sc.src = 'levels-data.js'; sc.onload = () => { const g = document.createElement('script'); g.src = 'grammar-map.js'; g.onload = g.onerror = () => { if(learnOpen) render(); }; document.head.appendChild(g); }; document.head.appendChild(sc); }
+    return `<div class="card center muted">${esc(T('loading'))}</div>`;
+  }
+  const L = learnLevels(tot.words, window.LEVELS_DATA, 0.75, 30, listDoc && listDoc.start);
+  const sets = [['TOCFL', L.tocfl, i => LT('abLvName', { n: i })], ['HSK 3.0（2021）', L.hsk, i => LT('abLvName', { n: i === 7 ? '7-9' : i })], ['CEFR', L.cefr, i => i]];
+  return sets.map(([name, r, nm]) => {
+    const lv = r.levels, top = r.reached ? esc(nm(r.reached === undefined ? 0 : (name === 'CEFR' ? lv[r.reached - 1].lv : r.reached))) : esc(LT('abNone'));
+    const head = !r.enough ? `<div class="muted">${esc(LT('abFew'))}</div>` : `<div class="row"><span>${esc(LT('abReached'))}</span><b>${top}</b></div>${r.learning ? `<div class="row"><span>${esc(LT('abLearning'))}</span><b>${esc(nm(name === 'CEFR' ? lv[r.learning - 1].lv : r.learning))}</b></div>` : ''}`;
+    const bars = lv.map(x => `<div class="row"><span>${esc(name === 'CEFR' ? x.lv : nm(x.lv))}</span><b>${x.pct}%</b></div><div class="lbar"><i style="width:${x.pct}%"></i></div>`).join('');
+    return `<div class="card"><h2>${esc(name)}</h2>${head}${bars}</div>`;
+  }).join('') + gramHtml(tot) + `<div class="muted" style="margin-bottom:10px">${L.start ? esc(LT('abStart', { l: L.start })) + ' ' : ''}${esc(LT('abRef'))}</div>`;
+}
+function gramHtml(tot){
+  const g = learnGrammar(tot.points, window.GRAMMAR_MAP, gmapManual);
+  return `<div class="card"><h2>${esc(LT('abPoints'))}</h2><div class="row"><span>${esc(LT('abGLearned'))}</span><b>${tot.points.length}</b></div>${g.cefr ? `<div class="row"><span>${esc(LT('abGCefr'))}</span><b>CEFR ${esc(g.cefr)}</b></div>` : `<div class="muted">${esc(LT('abGFew'))}</div>`}</div>`;
+}
 function renderLearn(root){
   const dots = dotsNow(); markNew(learnTab); dots[learnTab] = false;
   const tot = learnTotals(hwDocs, listDoc);
@@ -510,7 +531,8 @@ function renderLearn(root){
     }
   }else if(learnTab === 'ability'){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
-    body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    body += levelsHtml(tot);
     if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
     else{
       if(types.length) body += `<div class="card"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
