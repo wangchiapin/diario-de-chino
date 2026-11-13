@@ -18,6 +18,18 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,Bli
 <div class="wrap"><div class="brand">Diario de chino · 每天一分鐘</div><div id="app"></div></div>
 <script src="placement-bank.js"></script>
 <script src="placement.js"></script>
-<script>plRender(document.getElementById('app'), {});</script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+/* 結果存到老師的 portal/{老師代號}/placements；老師代號在連結的 ?t= 後面（後台「能力分級測驗連結」會帶好） */
+const tid = new URLSearchParams(location.search).get('t') || '';
+const db = getFirestore(initializeApp({
+  apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0", authDomain: "moneybook-50481.firebaseapp.com", projectId: "moneybook-50481",
+  storageBucket: "moneybook-50481.firebasestorage.app", messagingSenderId: "549256761796", appId: "1:549256761796:web:254332f109e7b8ad871491"
+}));
+const app = document.getElementById('app');
+if(!tid){ app.innerHTML = '<div style="padding:20px;text-align:center">Enlace incompleto. Pide a tu profesor el enlace correcto.</div>'; }
+else plRender(app, { needName: true, onDone: rec => addDoc(collection(db, 'portal', tid, 'placements'), Object.assign({ src: 'web' }, rec)) });
+</script>
 </body>
 </html>

@@ -485,9 +485,24 @@ function loadPlacement(){
   placeP = ld('placement-bank.js').then(() => ld('placement.js')).catch(e => { placeP = null; throw e; });
   return placeP;
 }
-function placeSend(text){
+let placeHist = null;   // 這位學生自己的測驗紀錄（新的在前）；還沒讀好是 null
+async function placeLoad(){
+  if(placeHist !== null || PREVIEW) return;
+  placeHist = [];
+  try{
+    const snap = await getDocs(query(collection(db, 'portal', tid, 'placements'), where('sid', '==', studentId)));
+    placeHist = snap.docs.map(d => d.data()).sort((a, b) => b.ts - a.ts);
+  }catch(e){ placeHist = []; }
+  if(learnOpen && learnTab === 'ability') render();
+}
+function placeSave(rec){
+  const data = Object.assign({ src: 'portal', sid: studentId }, rec, { name: String(studentDoc.name || '').slice(0, 40) || 'student' });
   if(PREVIEW) return Promise.resolve();
-  return addDoc(collection(db, 'portal', tid, 'dm'), { sid: studentId, from: 's', text: String(text).slice(0, BOARD_MAX), ts: Date.now() });
+  return addDoc(collection(db, 'portal', tid, 'placements'), data).then(() => { placeHist = [data].concat(placeHist || []); });
+}
+function placeHistHtml(){
+  if(!placeHist || !placeHist.length) return '';
+  return `<div class="card"><h2>${esc(LT('abTestHist'))}</h2>${placeHist.map(r => `<div class="row"><span>${esc(fmtMs(r.ts))}</span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div><div class="muted" style="margin-bottom:8px">TOCFL ${esc(r.tocfl)} · ${r.right}/${r.total}</div>`).join('')}</div>`;
 }
 function renderPlacement(root){
   if(root.querySelector('#plBox')) return;   // 測驗進行中：背景更新不要把它重畫
@@ -495,7 +510,7 @@ function renderPlacement(root){
   loadPlacement().then(() => {
     const box = root.querySelector('#plBox'); if(!box) return;
     box.className = ''; box.textContent = '';
-    plRender(box, { onSend: placeSend, onExit: () => { placeOpen = false; render(); toTop(); } });
+    plRender(box, { name: String(studentDoc.name || ''), onDone: placeSave, onExit: () => { placeOpen = false; render(); toTop(); } });
   }).catch(() => { placeOpen = false; render(); });
 }
 function levelsHtml(tot){
@@ -554,6 +569,7 @@ function renderLearn(root){
   }else if(learnTab === 'ability'){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
     body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    placeLoad(); body += placeHistHtml();
     body += `<div class="card"><h2>${esc(LT('abTestH'))}</h2><div class="muted" style="margin-bottom:8px">${esc(LT('abTestD'))}</div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
     body += levelsHtml(tot);
     if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
@@ -1040,7 +1056,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
+  stopHw(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; placeOpen = false; placeHist = null; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();

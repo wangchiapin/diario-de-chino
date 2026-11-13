@@ -139,6 +139,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 
 let reqs = {}, reqSel = {}, reqMsg = {};
 let bbPosts = [], bbWall = [], bbDm = [], members = {}, membersLoaded = false, membersErr = false, memSyncing = false, dmSeen = {}, bbTab = 'board', bbOpened = {}, bbDraft = { board: '', reply: {} }, bbMsg = null;   // 公布欄、公開留言、私訊、學生名單鏡像
+let placements = [], notes = {}, noteDraft = {}, noteMsg = '';   // placements：能力分級測驗結果；notes：老師專用的學生備註（學生讀不到）
 let gmap = {};   // 老師手動分的語法點冊別：標題 → 冊（0＝不分類），存在 config/gmap
 let lists = {}, marks = {}, vocSid = '', vocDraft = { w: '', p: '' }, vocMsg = null, vocShowHidden = false;   // lists：學生代號 → 老師為他存的單字／語法清單；marks：學生標的「還不熟」
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
@@ -394,6 +395,26 @@ function gramCardHtml(active){
     ${un.length ? un.map(n => `<div class="row" style="gap:8px;margin:4px 0"><span style="flex:1">${esc(n)}</span><select class="gmSel" data-n="${esc(n)}">${opt('')}</select></div>`).join('') : '<div class="muted small">都分好了</div>'}
     ${done.length ? `<details class="help"><summary>已手動分好的（${done.length}）</summary><div class="hb">${done.map(n => `<div class="row" style="gap:8px;margin:4px 0"><span style="flex:1">${esc(n)}</span><select class="gmSel" data-n="${esc(n)}">${opt(gmap[n])}</select></div>`).join('')}</div></details>` : ''}</div>`;
 }
+function notesCardHtml(sid){
+  const cur = noteDraft[sid] != null ? noteDraft[sid] : ((notes[sid] || {}).text || '');
+  const last = placements.filter(x => x.sid === sid).sort((a, b) => b.ts - a.ts)[0];
+  return `<div class="card"><h2>備註（${esc(students[sid].name)}）</h2>
+    <div class="muted small" style="margin-bottom:6px">只有你看得到，學生讀不到。想記什麼都可以，例如原本的程度、備考目標、上課的提醒。</div>
+    ${last ? `<div class="muted small" style="margin-bottom:6px">最近一次能力測驗：${esc(new Date(last.ts).toLocaleString('zh-TW'))}　${esc(last.reached ? last.cefr : '<A1')}（${last.right}/${last.total}）</div>` : ''}
+    <textarea id="noteTx" class="nudta" style="width:100%;min-height:90px" maxlength="2000">${esc(cur)}</textarea>
+    <div class="row" style="margin:6px 0 0"><button id="noteSave">存備註</button><span class="small ${noteMsg.startsWith('✓') ? 'ok' : 'err'}">${esc(noteMsg)}</span></div></div>`;
+}
+const fmtPl = r => `${new Date(r.ts).toLocaleString('zh-TW')}`;
+function plcHtml(active){
+  const nm = sid => (students[sid] || {}).name;
+  const rows = placements.slice().sort((a, b) => b.ts - a.ts).map(r => `<tr data-pid="${esc(r.id)}"><td>${esc(fmtPl(r))}</td><td><b>${esc(r.name)}</b>${r.sid ? `<div class="muted small">學生：${esc(nm(r.sid) || r.sid)}</div>` : '<div class="muted small">獨立網頁</div>'}</td>
+    <td><b>${esc(r.reached ? r.cefr : '<A1')}</b><div class="muted small">TOCFL ${esc(r.tocfl)}</div></td><td>${r.right}/${r.total}<div class="muted small">${r.mode === 'quick' ? '快速' : '完整'}${r.py ? '・有開拼音' : ''}</div></td>
+    <td>${Object.keys(r.by || {}).sort().map(l => `<span class="lchip">${['A1', 'A2', 'B1', 'B2', 'C1', 'C2'][l - 1]} ${r.by[l].c}/${r.by[l].n}</span>`).join('')}</td>
+    <td><button class="quiet plDel">刪除</button></td></tr>`).join('');
+  return `<div class="card"><h2>能力分級測驗結果（${placements.length}）</h2>
+    <div class="muted small" style="margin-bottom:8px">學生頁和獨立網頁測完都會自動存在這裡，新的在前。這只是參考，不是考試成績。</div>
+    ${placements.length ? `<table><thead><tr><th>時間</th><th>名字</th><th>程度</th><th>答對</th><th>各級答對</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有人做過測驗</div>'}</div>`;
+}
 function vocHtml(active){
   if(!active.length) return '<div class="card muted">還沒有學生</div>';
   if(!vocSid || active.indexOf(vocSid) < 0) vocSid = active[0];
@@ -418,24 +439,33 @@ function vocHtml(active){
     <textarea id="vocP" class="nudta" placeholder="把字句＋可以" style="width:100%;min-height:44px">${esc(vocDraft.p)}</textarea>
     <div class="row" style="margin:6px 0 4px"><button id="vocAddP">加入語法點</button></div></div>
     <div class="card"><h2>起始程度（${esc(students[sid].name)}）</h2>
-      ${helpBox('vc2', '給原本程度就不錯的學生用，全部可以不填。選了起點等級，學生頁「我的能力」裡 TOCFL、HSK、CEFR 這個等級以下都算已會；之後在你這裡學的單字，再往上累加。起始單字量填了，學生頁的單字數就是「起始單字量＋新學的」。備註只有你看得到。')}
+      ${helpBox('vc2', '給原本程度就不錯的學生用，全部可以不填。選了起點等級，學生頁「我的能力」裡 TOCFL、HSK、CEFR 這個等級以下都算已會；之後在你這裡學的單字，再往上累加。起始單字量填了，學生頁的單字數就是「起始單字量＋新學的」。')}
       <div class="row" style="gap:8px;flex-wrap:wrap;margin:6px 0">
         <select id="stCefr" aria-label="起點等級"><option value="">從零開始</option>${['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map(c => `<option ${((L.start || {}).cefr === c) ? 'selected' : ''}>${c}</option>`).join('')}</select>
         <input id="stWords" type="number" min="0" max="20000" placeholder="起始單字量（選填）" value="${esc((L.start || {}).words || '')}" style="width:170px">
-        <input id="stNote" placeholder="備註（只有你看得到）" value="${esc((L.start || {}).note || '')}" style="flex:1;min-width:160px">
         <button id="stSave">存</button></div></div>
     <div class="card"><h2>單字（${tot.words.length}）</h2>
       ${noPy ? `<div class="row" style="margin-bottom:8px"><button id="vocFill">全部補上拼音（${noPy} 個）</button><span class="muted small">只補還沒有拼音的</span></div>` : ''}
       ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
       ${hiddenHtml}</div>
     <div class="card"><h2>語法點（${tot.points.length}）</h2>${ptRows || '<div class="muted small">還沒有語法點</div>'}</div>
+    ${notesCardHtml(sid)}
     ${gramCardHtml(active)}
     ${notYet}`;
 }
 function bindVoc(root){
   const sel = root.querySelector('#vocSel'); if(!sel) return;
   const sid = vocSid;
-  sel.onchange = e => { vocSid = e.target.value; vocMsg = null; render(); };
+  sel.onchange = e => { vocSid = e.target.value; vocMsg = null; noteMsg = ''; render(); };
+  const nt = root.querySelector('#noteTx'); if(nt) nt.oninput = e => { noteDraft[sid] = e.target.value; };
+  const ns = root.querySelector('#noteSave'); if(ns) ns.onclick = async () => {
+    const text = (root.querySelector('#noteTx').value || '').trim().slice(0, 2000);
+    try{
+      if(text) await setDoc(doc(db, 'portal', uid, 'notes', sid), { text, updatedAt: Date.now() }); else await deleteDoc(doc(db, 'portal', uid, 'notes', sid));
+      noteMsg = '✓ 已儲存'; delete noteDraft[sid];
+    }catch(err){ console.error(err); noteMsg = err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加第十批（見 README）' : '儲存失敗，請再試一次'; }
+    render();
+  };
   const ta = root.querySelector('#vocW'), tp = root.querySelector('#vocP');
   ta.oninput = e => { vocDraft.w = e.target.value; }; tp.oninput = e => { vocDraft.p = e.target.value; };
   const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
@@ -456,8 +486,8 @@ function bindVoc(root){
     }, `✓ 已加入 ${res.length} 個${noEs ? `（${noEs} 個查不到西文意思，請在下面自己填）` : ''}`).then(() => { vocDraft.w = ''; });
   });
   on('stSave', () => {
-    const cefr = root.querySelector('#stCefr').value, w = Math.max(0, Math.min(20000, parseInt(root.querySelector('#stWords').value, 10) || 0)), note = root.querySelector('#stNote').value.trim().slice(0, 200);
-    vocSave(sid, cur => { if(!cefr && !w && !note) delete cur.start; else cur.start = { cefr, words: w, note }; }, '✓ 起始程度已儲存');
+    const cefr = root.querySelector('#stCefr').value, w = Math.max(0, Math.min(20000, parseInt(root.querySelector('#stWords').value, 10) || 0));
+    vocSave(sid, cur => { if(!cefr && !w) delete cur.start; else cur.start = { cefr, words: w }; }, '✓ 起始程度已儲存');
   });
   root.querySelectorAll('.gmSel').forEach(el => { el.onchange = async () => {
     if(el.value === '') return;
@@ -892,7 +922,7 @@ async function gradeRedo(){
   }catch(err){ console.error(err); setGmsg('退回失敗，請再試一次', false); }
 }
 
-const placementUrl = () => location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, '') + 'placement.html';
+const placementUrl = () => location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, '') + 'placement.html' + (uid ? '?t=' + uid : '');
 function render(){
   const root = $('app');
   if(uid && gradeOpen && gdraft && authReady){ $('btnLogout').classList.remove('hidden'); return; }   // 批改中：不要被資料更新洗掉畫面
@@ -952,11 +982,11 @@ function render(){
   const pend = active.reduce((n, sid) => n + Object.keys(hw[sid] || {}).filter(w => hw[sid][w].status === 'submitted').length, 0);
   const reqN = pendingReqs().length;
   const bbUnreadTotal = (() => { const u = bbUnread(); return Object.keys(u).reduce((n, k) => n + u[k], 0); })();
-  const TABS = [['stu', '學生'], ['hw', '作業'], ['voc', '單字'], ['pub', '公布'], ['nud', '彈跳視窗'], ['set', '設定']];
+  const TABS = [['stu', '學生'], ['hw', '作業'], ['voc', '單字'], ['plc', '測驗'], ['pub', '公布'], ['nud', '彈跳視窗'], ['set', '設定']];
   if(!TABS.some(t => t[0] === adminTab)) adminTab = 'stu';
   const pane = (k, h) => `<section class="tabp ${adminTab === k ? '' : 'hidden'}" data-p="${k}">${h}</section>`;
   root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'pub' && bbUnreadTotal ? `<span class="bd">${bbUnreadTotal}</span>` : ''}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}${t[0] === 'stu' && reqN ? `<span class="bd">${reqN}</span>` : ''}</button>`).join('')}</nav>`
-    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('pub', bbHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
+    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('plc', plcHtml(active)) + pane('pub', bbHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
   root.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => {
     adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
     root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
@@ -964,6 +994,11 @@ function render(){
     toTop();
   });
   bindHw(root, active); bindNud(root); bindReq(root); bindVoc(root); bindBb(root);
+  root.querySelectorAll('tr[data-pid] .plDel').forEach(b => b.onclick = async () => {
+    const id = b.closest('tr').dataset.pid;
+    if(!confirm('刪除這筆測驗結果？')) return;
+    try{ await deleteDoc(doc(db, 'portal', uid, 'placements', id)); }catch(err){ console.error(err); alert('刪除失敗'); }
+  });
 
   const pc = $('plCopy'); if(pc) pc.onclick = async () => { try{ await navigator.clipboard.writeText(placementUrl()); pc.textContent = '已複製'; }catch(e){ $('plLink').select(); } };
   const c = $('copy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(studentUrl()); c.textContent = '已複製'; }catch(e){ $('link').select(); } };
@@ -1007,7 +1042,7 @@ function syncHw(){
       err => console.error(err));
   });
 }
-function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; bbPosts = []; bbWall = []; bbDm = []; members = {}; membersLoaded = false; membersErr = false; dmSeen = {}; }
+function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; bbPosts = []; bbWall = []; bbDm = []; placements = []; notes = {}; noteDraft = {}; members = {}; membersLoaded = false; membersErr = false; dmSeen = {}; }
 function start(){
   stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
@@ -1020,6 +1055,8 @@ function start(){
   unsubs.push(onSnapshot(query(collection(db, 'portal', uid, 'dm'), orderBy('ts', 'desc'), limit(500)), snap => { bbDm = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); renderSoftA(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'members'), snap => { members = {}; snap.forEach(d => members[d.id] = d.data()); membersLoaded = true; syncMembers(); }, err => { console.error(err); membersErr = true; render(); }));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'dmSeen'), s => { dmSeen = s.exists() ? s.data() : {}; renderSoftA(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'placements'), snap => { placements = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'notes'), snap => { notes = {}; snap.forEach(d => notes[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'gmap'), d => { gmap = d.exists() ? (d.data().map || {}) : {}; render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'lists'), snap => { lists = {}; snap.forEach(d => lists[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'marks'), snap => { marks = {}; snap.forEach(d => marks[d.id] = d.data()); render(); }, err => console.error(err)));

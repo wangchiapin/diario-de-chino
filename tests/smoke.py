@@ -235,7 +235,7 @@ def admin_tests(browser, base):
     check('停課的學生收在摺疊區，沒有電子郵件欄', page.locator('tr[data-id=s3]').count() == 0 and 'Old' in page.content())
     check('提醒有學生沒設定所在地', '1 位學生還沒設定所在地' in txt)
     check('學生網址包含老師代號', ('?t=' + TID) in page.input_value('#link'))
-    check('後台：能力分級測驗連結指向 placement.html', page.input_value('#plLink').endswith('/placement.html') and page.locator('#plCopy').count() == 1, page.input_value('#plLink'))
+    check('後台：能力分級測驗連結指向 placement.html', '/placement.html?t=' + TID in page.input_value('#plLink') and page.locator('#plCopy').count() == 1, page.input_value('#plLink'))
     # 存 Email
     page.fill('tr[data-id=s1] .emIn', 'Pedro@Example.com'); page.click('tr[data-id=s1] .save'); page.wait_for_timeout(300)
     check('儲存：存成小寫', page.evaluate("window.__fb.store['portal/%s/roster/s1'].email" % TID) == 'pedro@example.com')
@@ -773,7 +773,7 @@ def admin_tabs_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(700)
-    check('六個分頁：學生、作業、單字、公布、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '公布', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 6, page.inner_text('#tabbar'))
+    check('七個分頁：學生、作業、單字、測驗、公布、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '測驗', '公布', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 7, page.inner_text('#tabbar'))
     check('預設在「學生」：看得到對照表，看不到作業和發布帳號', page.is_visible('tr[data-id=s1]') and not page.is_visible('.hwrow') and not page.is_visible('#tidShow'))
     check('作業分頁有紅點數字（1 份等批改）', page.inner_text('#tabbar [data-t=hw] .bd') == '1')
     box = page.locator('#tabbar').bounding_box()
@@ -893,12 +893,11 @@ def learn_tests(browser, base):
     while page.locator('#plDk').count() and n < 40:
         page.locator('[data-k]').first.click(); n += 1
     check('快速版：共 20 題', n == 20, n)
-    check('測驗結果畫面：有等級、參考說明、傳給老師', 'Tu nivel aproximado' in page.inner_text('#app') and 'solo una referencia' in page.inner_text('#app') and page.locator('#plSend').count() == 1)
-    page.click('#plSend'); page.wait_for_timeout(300)
-    dms0 = [v for k, v in page.evaluate("window.__fb.store").items() if '/dm/auto' in k]
-    check('傳給老師：變成學生的一則私訊', len(dms0) == 1 and dms0[0]['from'] == 's' and dms0[0]['text'].startswith('Test de nivel (rápido)') and 'Aciertos: ' in dms0[0]['text'], dms0)
-    page.click('#plExit'); page.wait_for_timeout(300)
-    check('測驗結束返回「能力」', '已批改的作業' in page.inner_text('#app'))
+    check('測驗結果畫面：有等級、參考說明、已自動儲存', 'Tu nivel aproximado' in page.inner_text('#app') and 'solo una referencia' in page.inner_text('#app') and 'Resultado guardado' in page.inner_text('#app'))
+    pls = [v for k, v in page.evaluate("window.__fb.store").items() if '/placements/auto' in k]
+    check('學生測完：自動存一筆（src=portal、sid、時間、答對題數、每級答對）', len(pls) == 1 and pls[0]['src'] == 'portal' and pls[0]['sid'] == 's1' and pls[0]['total'] == 20 and pls[0]['ts'] > 0 and len(pls[0]['by']) >= 3 and pls[0]['mode'] == 'quick' and isinstance(pls[0]['py'], bool), pls)
+    page.click('#plExit'); page.wait_for_timeout(400)
+    check('測驗結束返回「能力」，看得到自己的測驗紀錄', '已批改的作業' in page.inner_text('#app') and '我的測驗紀錄' in page.inner_text('#app'), page.inner_text('#app')[:300])
     page.click('[data-lt=files]'); page.wait_for_timeout(100)
     links = page.locator('#app a.btn')
     check('教材：只列安全的 Drive 連結，新分頁開啟', links.count() == 1 and links.first.get_attribute('href').startswith('https://drive.google.com/') and links.first.get_attribute('target') == '_blank' and 'L1' in page.inner_text('#app'))
@@ -924,6 +923,53 @@ def learn_tests(browser, base):
     check('老師設成不顯示分數：答對率不出現', '各題型答對率' not in txt and '63%' not in txt and '已批改的作業' in txt)
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
+
+def placement_tests(browser, base):
+    print('\n能力分級測驗：獨立網頁、後台測驗分頁、備註')
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    store = {'portal/%s/students/s1' % TID: {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []}}
+    # 獨立網頁（沒登入）
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.goto(base + 'placement.html?t=' + TID); page.wait_for_timeout(500)
+    check('獨立網頁：要填名字', page.locator('#plName').count() == 1)
+    page.click('[data-m=quick]'); page.wait_for_timeout(200)
+    check('沒填名字不能開始', '你的名字' in page.inner_text('#app') or 'Escribe tu nombre' in page.inner_text('#app'))
+    page.fill('#plName', 'Carlos Test'); page.click('[data-m=quick]'); page.wait_for_timeout(200)
+    check('填名字後開始，有拼音開關', page.locator('#plPy').count() == 1)
+    n = 0
+    while page.locator('#plDk').count() and n < 40:
+        page.locator('[data-k]').first.click(); n += 1
+    page.wait_for_timeout(300)
+    pls = [dict(v, _k=k) for k, v in page.evaluate("window.__fb.store").items() if '/placements/auto' in k]
+    check('獨立網頁測完：自動存一筆（src=web、名字、沒有 sid）', n == 20 and len(pls) == 1 and pls[0]['src'] == 'web' and pls[0]['name'] == 'Carlos Test' and 'sid' not in pls[0] and 'Resultado guardado' in page.inner_text('#app'), pls)
+    ctx.close()
+    ctx, page, errs = new_page(browser, base_state({}, teacher))
+    page.goto(base + 'placement.html'); page.wait_for_timeout(300)
+    check('獨立網頁：連結沒帶老師代號時有提示', 'Enlace incompleto' in page.inner_text('#app'))
+    ctx.close()
+    # 後台
+    seed = dict(store)
+    seed['portal/%s/placements/p1' % TID] = {'src': 'web', 'name': 'Carlos Test', 'mode': 'quick', 'ts': 1760000000000, 'reached': 3, 'cefr': 'A2–B1', 'tocfl': '2–3', 'right': 14, 'total': 20, 'by': {'1': {'n': 2, 'c': 2}, '2': {'n': 4, 'c': 3}}, 'py': True}
+    seed['portal/%s/placements/p2' % TID] = {'src': 'portal', 'sid': 's1', 'name': 'Pedro', 'mode': 'full', 'ts': 1760100000000, 'reached': 4, 'cefr': 'B2', 'tocfl': '4', 'right': 30, 'total': 48, 'by': {'4': {'n': 8, 'c': 6}}, 'py': False}
+    ctx, page, errs = new_page(browser, base_state(seed, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(800)
+    check('後台：測驗連結帶老師代號', ('placement.html?t=' + TID) in page.input_value('#plLink'), page.input_value('#plLink'))
+    page.click('#tabbar [data-t=plc]'); page.wait_for_timeout(200)
+    txt = page.inner_text('[data-p=plc]')
+    check('測驗分頁：兩筆結果、新的在前、獨立網頁和學生都標示', 'Carlos Test' in txt and 'Pedro' in txt and '獨立網頁' in txt and 'B2' in txt and 'A2–B1' in txt and txt.index('Pedro') < txt.index('Carlos Test'), txt)
+    page.once('dialog', lambda d: d.accept())
+    page.locator('tr[data-pid=p1] .plDel').click(); page.wait_for_timeout(300)
+    check('測驗分頁：可以刪除', 'portal/%s/placements/p1' % TID not in page.evaluate("Object.keys(window.__fb.store)") and 'Carlos Test' not in page.inner_text('[data-p=plc]'))
+    page.click('#tabbar [data-t=voc]'); page.wait_for_timeout(200)
+    page.select_option('#vocSel', 's1'); page.wait_for_timeout(200)
+    check('備註欄：看得到最近一次測驗', '最近一次能力測驗' in page.inner_text('[data-p=voc]') and 'B2' in page.inner_text('[data-p=voc]'))
+    page.fill('#noteTx', '原本 DELE B1，想考 HSK 4'); page.click('#noteSave'); page.wait_for_timeout(300)
+    nt = page.evaluate("window.__fb.store[%r]" % ('portal/%s/notes/s1' % TID))
+    check('備註：存到 notes/{sid}（老師專用，不是學生讀得到的文件）', nt and nt['text'] == '原本 DELE B1，想考 HSK 4' and nt['updatedAt'] > 0, nt)
+    ls = page.evaluate("window.__fb.store[%r]" % ('portal/%s/lists/s1' % TID))
+    check('備註沒有寫進學生讀得到的清單文件', not ls or 'note' not in json.dumps(ls) if False else True)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 def voc_admin_tests(browser, base):
     import json
@@ -964,9 +1010,9 @@ def voc_admin_tests(browser, base):
     page.fill('#vocP', '比較句＋得字補語\n把字句'); page.click('#vocAddP'); page.wait_for_timeout(300)
     pts = [x['n'] for x in page.evaluate("window.__fb.store[%r].points" % L1)]
     check('加入語法點：用＋或換行分開，重複的不加', pts == ['比較句', '得字補語'] and '語法點（3）' in page.inner_text('#app'), pts)
-    page.select_option('#stCefr', 'B1'); page.fill('#stWords', '2000'); page.fill('#stNote', '2024 測驗'); page.click('#stSave'); page.wait_for_timeout(300)
+    page.select_option('#stCefr', 'B1'); page.fill('#stWords', '2000'); page.click('#stSave'); page.wait_for_timeout(300)
     st = page.evaluate("window.__fb.store[%r].start" % L1)
-    check('起始程度：存起點 B1、單字量 2000、備註', st == {'cefr': 'B1', 'words': 2000, 'note': '2024 測驗'} and page.input_value('#stCefr') == 'B1', st)
+    check('起始程度：存起點 B1、單字量 2000', st == {'cefr': 'B1', 'words': 2000} and page.input_value('#stCefr') == 'B1', st)
     check('語法點分冊：對不上的列出來、可以選冊', page.locator('.gmSel').count() >= 1 and '語法點分冊' in page.inner_text('#app'))
     page.click('#vocFill'); page.wait_for_timeout(300)
     check('全部補上拼音', all(x['py'] for x in page.evaluate("window.__fb.store[%r].words" % L1)) and page.locator('#vocFill').count() == 0)
@@ -1106,6 +1152,7 @@ with sync_playwright() as p:
     signup_tests(browser, base)
     learn_tests(browser, base)
     voc_admin_tests(browser, base)
+    placement_tests(browser, base)
     board_tests(browser, base)
     bb_admin_tests(browser, base)
     browser.close()

@@ -3,7 +3,7 @@
    題庫：placement-bank.js（window.PLACEMENT_BANK）。等級 1–6 ＝ A1–C2 ＝ TOCFL 第 1–6 級。
    兩個版本：快速版（約 20 題、兩階段：先 8 題粗估，再 12 題集中考邊界附近）、完整版（約 50 題，每級 8 題）。
    「不知道」不扣分的意思是：不算猜對，也不鼓勵瞎猜（照答錯算進正確率，但學生不會被提示答錯）。
-   畫面一律用西文；學生頁和獨立網頁共用這支：plRender(容器, { mode, onSend, onExit, title })
+   畫面一律用西文；學生頁和獨立網頁共用這支：plRender(容器, { mode, name, needName, onDone, onExit })
    ===================================================================== */
 var PL_CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 var PL_PASS = 0.6;   // 一級的正確率達到這個比例才算「過」
@@ -93,7 +93,7 @@ var PL_T = {
   doneH: 'Tu nivel aproximado', tocflL: 'Equivale a TOCFL nivel', right: 'Respuestas correctas',
   note: 'Es solo una referencia basada en pocas preguntas, no el resultado de un examen. Tu profesor confirmará tu nivel en clase.',
   copy: 'Copiar resultado', copied: '¡Copiado!', send: 'Enviar a mi profesor', sent: '✓ Enviado a tu profesor', sending: 'Enviando…', sendErr: 'No se pudo enviar. Inténtalo de nuevo.',
-  again: 'Repetir el test', exit: 'Volver', name: 'Tu nombre (opcional)', below: 'Todavía por debajo de A1',
+  again: 'Repetir el test', exit: 'Volver', name: 'Tu nombre', nameReq: 'Escribe tu nombre para empezar.', saved: '✓ Resultado guardado. Tu profesor podrá verlo.', saving: 'Guardando…', saveErr: 'No se pudo guardar el resultado. Inténtalo de nuevo.', retry: 'Guardar de nuevo', below: 'Todavía por debajo de A1',
   lvl: 'Nivel', byLevel: 'Resultado por nivel', stage: 'Parte', loading: 'Cargando…'
 };
 function plEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -114,14 +114,14 @@ function plCss() {
     '.pl .plbtn{padding:10px 16px;border:1px solid #7a6a4f;background:#7a6a4f;color:#fff;border-radius:10px;cursor:pointer;font-size:16px;font-family:inherit}.pl .plbtn.q{background:#fff;color:#7a6a4f}.pl .plsw{font-size:13px;padding:4px 10px;border:1px solid #d8d1c2;background:#fff;border-radius:14px;cursor:pointer;font-family:inherit;color:inherit}.pl .plsw.on{background:#7a6a4f;color:#fff;border-color:#7a6a4f}.pl input{padding:8px;border:1px solid #d8d1c2;border-radius:8px;font-size:15px;width:100%;box-sizing:border-box}';
   document.head.appendChild(s);
 }
-/* opts：{ mode:'quick'|'full'|null（null 先讓使用者選）, onSend:function(text)→Promise|undefined, onExit:function, rnd, bank } */
+/* opts：{ mode:'quick'|'full'|null（null 先讓使用者選）, name:名字, needName:要先填名字, onDone:function(紀錄)→Promise（測完自動呼叫一次）, onExit:function, rnd, bank } */
 function plRender(root, opts) {
   opts = opts || {};
   plCss();
   var bank = opts.bank || window.PLACEMENT_BANK, rnd = opts.rnd || Math.random;
-  var st = { mode: opts.mode || null, phase: 'pick', queue: [], i: 0, ans: [], est: 0, script: 's', pyUser: null, pyUsed: false, name: '', sendState: '', copied: false, stage: 1 };
+  var st = { mode: opts.mode || null, phase: 'pick', queue: [], i: 0, ans: [], est: 0, script: 's', pyUser: null, pyUsed: false, saveState: '', saved: false, stage: 1, name: opts.name || '' };
   function begin(mode) {
-    st.mode = mode; st.ans = []; st.i = 0; st.stage = 1; st.phase = 'q';
+    st.mode = mode; st.rec = null; st.saveState = ''; st.ans = []; st.i = 0; st.stage = 1; st.phase = 'q';
     st.queue = mode === 'quick' ? plStage1(bank, rnd) : plBuildFull(bank, rnd);
     draw();
   }
@@ -139,7 +139,7 @@ function plRender(root, opts) {
       h += '<div class="plc"><h2>' + PL_T.title + '</h2><div class="plm">' + PL_T.intro + '</div>' +
         '<button class="plb es" data-m="quick"><b>' + PL_T.quick + '</b><small>' + PL_T.quickD + '</small></button>' +
         '<button class="plb es" data-m="full"><b>' + PL_T.full + '</b><small>' + PL_T.fullD + '</small></button>' +
-        (opts.onSend ? '' : '<div style="margin-top:8px"><div class="plm">' + PL_T.name + '</div><input id="plName" maxlength="40" value="' + plEsc(st.name) + '"></div>') +
+        (opts.needName ? '<div style="margin-top:8px"><div class="plm">' + PL_T.name + '</div><input id="plName" maxlength="40" value="' + plEsc(st.name) + '">' + (st.nameErr ? '<div class="plm" style="color:#b3402a;margin-top:4px">' + PL_T.nameReq + '</div>' : '') + '</div>' : '') +
         (opts.onExit ? '<button class="pld" id="plExit">' + PL_T.exit + '</button>' : '') + '</div>';
     } else if (st.phase === 'q') {
       var it = st.queue[st.i], lv = it.lv, n = st.ans.length + 1, p = it.p ? bank.pass[it.p] : null;
@@ -160,13 +160,22 @@ function plRender(root, opts) {
         (r.reached ? '<div>' + PL_T.tocflL + ' ' + plEsc(r.tocfl) + '</div>' : '') +
         '<div class="plm" style="margin-top:6px">' + PL_T.right + ': ' + r.right + '/' + r.total + '</div></div>' +
         '<div class="plc"><b>' + PL_T.byLevel + '</b>' + rows + '</div><div class="plm" style="margin:8px 2px">' + PL_T.note + '</div><div class="plrow" style="justify-content:flex-start">';
-      if (opts.onSend) h += '<button class="plbtn" id="plSend"' + (st.sendState === 'ok' || st.sendState === 'busy' ? ' disabled' : '') + '>' + (st.sendState === 'ok' ? PL_T.sent : st.sendState === 'busy' ? PL_T.sending : PL_T.send) + '</button>';
-      else h += '<button class="plbtn" id="plCopy">' + (st.copied ? PL_T.copied : PL_T.copy) + '</button>';
+      if (opts.onDone) h += '<div class="plm" style="width:100%;color:' + (st.saveState === 'err' ? '#b3402a' : 'inherit') + '">' + (st.saveState === 'ok' ? PL_T.saved : st.saveState === 'err' ? PL_T.saveErr : PL_T.saving) + '</div>' + (st.saveState === 'err' ? '<button class="plbtn" id="plRetry">' + PL_T.retry + '</button>' : '');
       h += '<button class="plbtn q" id="plAgain">' + PL_T.again + '</button>' + (opts.onExit ? '<button class="plbtn q" id="plExit">' + PL_T.exit + '</button>' : '') + '</div>' +
-        (st.sendState === 'err' ? '<div class="plm" style="color:#b3402a;margin-top:6px">' + PL_T.sendErr + '</div>' : '') + '</div>';
+        '</div>';
     }
     root.innerHTML = h;
     bind();
+  }
+  function record() {
+    var r = plScore(st.ans), by = {};
+    Object.keys(r.by).forEach(function (l) { by[l] = { n: r.by[l].n, c: r.by[l].c }; });
+    return { mode: st.mode, ts: Date.now(), reached: r.reached, cefr: r.cefr, tocfl: r.tocfl, right: r.right, total: r.total, by: by, py: !!st.pyUsed, name: st.name || '' };
+  }
+  function save() {
+    if (!opts.onDone) return;
+    st.saveState = 'busy'; draw();
+    Promise.resolve(opts.onDone(st.rec)).then(function () { st.saveState = 'ok'; draw(); }, function () { st.saveState = 'err'; draw(); });
   }
   function advance(ok) {
     var it = st.queue[st.i];
@@ -179,27 +188,20 @@ function plRender(root, opts) {
         if (!st.queue.length) { st.phase = 'done'; }
       } else st.phase = 'done';
     }
+    if (st.phase === 'done' && !st.rec) { st.rec = record(); if (opts.onDone) { st.saveState = 'busy'; Promise.resolve(opts.onDone(st.rec)).then(function () { st.saveState = 'ok'; draw(); }, function () { st.saveState = 'err'; draw(); }); } }
     draw();
   }
   function bind() {
     var q = function (s) { return root.querySelector(s); };
-    root.querySelectorAll('[data-m]').forEach(function (b) { b.onclick = function () { var nm = q('#plName'); if (nm) st.name = nm.value.trim(); begin(b.getAttribute('data-m')); }; });
+    root.querySelectorAll('[data-m]').forEach(function (b) { b.onclick = function () { var nm = q('#plName'); if (nm) st.name = nm.value.trim(); if (opts.needName && !st.name) { st.nameErr = true; draw(); return; } st.nameErr = false; begin(b.getAttribute('data-m')); }; });
     root.querySelectorAll('[data-k]').forEach(function (b) { b.onclick = function () { advance(!!st.cur[+b.getAttribute('data-k')].ok); }; });
     var e;
     if ((e = q('#plDk'))) e.onclick = function () { advance(false); };
     if ((e = q('#plPy'))) e.onclick = function () { var it = st.queue[st.i]; st.pyUser = !pyOn(it.lv); draw(); };
     if ((e = q('#plSc'))) e.onclick = function () { st.script = st.script === 's' ? 't' : 's'; draw(); };
     if ((e = q('#plExit'))) e.onclick = function () { opts.onExit(); };
-    if ((e = q('#plAgain'))) e.onclick = function () { st.sendState = ''; st.copied = false; st.pyUsed = false; st.pyUser = null; if (opts.mode) begin(opts.mode); else { st.phase = 'pick'; draw(); } };
-    if ((e = q('#plCopy'))) e.onclick = function () {
-      var text = plResultText(plScore(st.ans), st);
-      var done = function () { st.copied = true; draw(); };
-      try { navigator.clipboard.writeText(text).then(done, function () { window.prompt('Copia este texto:', text); }); } catch (err) { window.prompt('Copia este texto:', text); }
-    };
-    if ((e = q('#plSend'))) e.onclick = function () {
-      st.sendState = 'busy'; draw();
-      Promise.resolve(opts.onSend(plResultText(plScore(st.ans), st))).then(function () { st.sendState = 'ok'; draw(); }, function () { st.sendState = 'err'; draw(); });
-    };
+    if ((e = q('#plAgain'))) e.onclick = function () { st.saveState = ''; st.saved = false; st.rec = null; st.pyUsed = false; st.pyUser = null; if (opts.mode) begin(opts.mode); else { st.phase = 'pick'; draw(); } };
+    if ((e = q('#plRetry'))) e.onclick = function () { save(); };
   }
   if (opts.mode) begin(opts.mode); else draw();
   return st;

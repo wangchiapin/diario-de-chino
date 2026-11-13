@@ -111,3 +111,5 @@ python3 tests/smoke.py     # 用瀏覽器開學生頁與後台（Firebase 用假
 - 這次沒有動到 Apps Script 讀的資料（`students`、`materials` 照舊）。
 
 - 「我的能力」單字量與語法點對照（參考用）：`levels-data.js`（TOCFL 八千詞 6 級、HSK 3.0 2021 的 7 級，詞→級）、`grammar-map.js`（文法速查表標題→冊→CEFR 範圍），第一次打開「能力」才讀。連續達標 75%、對到 30 字以上才評估。老師後台「起始程度」存在 `lists/{sid}.start`（`{cefr, words, note}`）；「語法點分冊」手動對照存在 `config/gmap`（`{map:{標題:冊}}`，0＝不分類），都用原有規則，不用加新規則。
+
+- 能力分級測驗（`placement.js`、`placement-bank.js`、`placement.html`）：題庫 A1–C2 每級單字 10、語法 10、短文 2 篇×2 題；快速版約 20 題（先 8 題粗估再 12 題考邊界附近）、完整版 48 題；每級答對六成才算過。學生頁（「我的能力」）和獨立網頁（`placement.html?t=老師代號`，要填名字）測完都會自動存到 `portal/{tid}/placements/{id}`（欄位：src、sid、name、mode、ts、reached、cefr、tocfl、right、total、by、py）。後台「測驗」分頁列出全部、可刪除；學生頁只讀自己的（`sid` 對得上）。老師專用備註存在 `portal/{tid}/notes/{sid}`（後台「單字」分頁每位學生一張卡片）。**這兩個要加規則：見 `moneybook-50481-portal-rules.txt` 第十批。** 題庫是用 `build_bank` 程式從審好的題庫檔轉成（含繁體、GoodTeacher 拼音）。
