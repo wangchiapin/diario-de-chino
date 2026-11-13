@@ -235,6 +235,7 @@ def admin_tests(browser, base):
     check('停課的學生收在摺疊區，沒有電子郵件欄', page.locator('tr[data-id=s3]').count() == 0 and 'Old' in page.content())
     check('提醒有學生沒設定所在地', '1 位學生還沒設定所在地' in txt)
     check('學生網址包含老師代號', ('?t=' + TID) in page.input_value('#link'))
+    check('後台：能力分級測驗連結指向 placement.html', page.input_value('#plLink').endswith('/placement.html') and page.locator('#plCopy').count() == 1, page.input_value('#plLink'))
     # 存 Email
     page.fill('tr[data-id=s1] .emIn', 'Pedro@Example.com'); page.click('tr[data-id=s1] .save'); page.wait_for_timeout(300)
     check('儲存：存成小寫', page.evaluate("window.__fb.store['portal/%s/roster/s1'].email" % TID) == 'pedro@example.com')
