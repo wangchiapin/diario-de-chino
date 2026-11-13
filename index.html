@@ -477,6 +477,27 @@ function learnCardHtml(dots){
 function bindLearnCard(root){ bindBoardCard(root); const b = root.querySelector('#learnGo'); if(b) b.onclick = () => { learnOpen = true; learnTab = 'log'; revShown = false; revIdx = 0; revRound = null; revSeed = Date.now() % 100000; revSub = 'cards'; loadMaterials(); loadLearnData(); render(); toTop(); }; }
 /* 單字量對照：TOCFL／HSK／CEFR 三組進度條（參考用）。對照表很大，第一次打開「能力」才讀 */
 let levelsTried = false, gmapManual = {};
+/* 能力分級測驗：用 placement.js（和獨立網頁同一支）；結果可以「傳給老師」變成一則私訊 */
+let placeOpen = false, placeP = null;
+function loadPlacement(){
+  if(placeP) return placeP;
+  const ld = src => new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); });
+  placeP = ld('placement-bank.js').then(() => ld('placement.js')).catch(e => { placeP = null; throw e; });
+  return placeP;
+}
+function placeSend(text){
+  if(PREVIEW) return Promise.resolve();
+  return addDoc(collection(db, 'portal', tid, 'dm'), { sid: studentId, from: 's', text: String(text).slice(0, BOARD_MAX), ts: Date.now() });
+}
+function renderPlacement(root){
+  if(root.querySelector('#plBox')) return;   // 測驗進行中：背景更新不要把它重畫
+  root.innerHTML = `<div id="plBox" class="card center muted">${esc(T('loading'))}</div>`;
+  loadPlacement().then(() => {
+    const box = root.querySelector('#plBox'); if(!box) return;
+    box.className = ''; box.textContent = '';
+    plRender(box, { onSend: placeSend, onExit: () => { placeOpen = false; render(); toTop(); } });
+  }).catch(() => { placeOpen = false; render(); });
+}
 function levelsHtml(tot){
   if(!window.LEVELS_DATA){
     if(!levelsTried){ levelsTried = true; const sc = document.createElement('script'); sc.src = 'levels-data.js'; sc.onload = () => { const g = document.createElement('script'); g.src = 'grammar-map.js'; g.onload = g.onerror = () => { if(learnOpen) render(); }; document.head.appendChild(g); }; document.head.appendChild(sc); }
@@ -496,6 +517,7 @@ function gramHtml(tot){
   return `<div class="card"><h2>${esc(LT('abPoints'))}</h2><div class="row"><span>${esc(LT('abGLearned'))}</span><b>${tot.points.length}</b></div>${g.cefr ? `<div class="row"><span>${esc(LT('abGCefr'))}</span><b>CEFR ${esc(g.cefr)}</b></div>` : `<div class="muted">${esc(LT('abGFew'))}</div>`}</div>`;
 }
 function renderLearn(root){
+  if(placeOpen) return renderPlacement(root);
   const dots = dotsNow(); markNew(learnTab); dots[learnTab] = false;
   const tot = learnTotals(hwDocs, listDoc);
   const tabs = ['log', 'review', 'ability', 'files'], names = { log: 'tLog', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
@@ -532,6 +554,7 @@ function renderLearn(root){
   }else if(learnTab === 'ability'){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
     body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    body += `<div class="card"><h2>${esc(LT('abTestH'))}</h2><div class="muted" style="margin-bottom:8px">${esc(LT('abTestD'))}</div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
     body += levelsHtml(tot);
     if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
     else{
@@ -552,6 +575,7 @@ function renderLearn(root){
   const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
   root.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => { revSub = b.dataset.rs; revShown = false; revIdx = 0; revRound = null; render(); });
   root.querySelectorAll('[data-say]').forEach(b => b.onclick = () => speakZh(b.dataset.say));
+  on('plGo', () => { placeOpen = true; render(); toTop(); });
   on('dirZE', () => { revDir = 'z2e'; revRound = null; revIdx = 0; revShown = false; render(); });
   on('dirEZ', () => { revDir = 'e2z'; revRound = null; revIdx = 0; revShown = false; render(); });
   on('revAll', () => { revOnlyNot = false; revRound = null; revIdx = 0; revShown = false; render(); });
@@ -605,7 +629,7 @@ function startBoard(sid){
 function stopBoard(){ unsubBoard.forEach(u => u()); unsubBoard = []; boardPosts = []; wallPosts = []; dmMsgs = []; bOk = { board: false, wall: false, dm: false }; boardOpen = false; clearTimeout(boardTimer); }
 // 別人的留言進來時，如果學生正在打字，先不重畫（不然輸入框會被洗掉）；等他離開輸入框再畫
 function renderSoft(){
-  if(hwOpen) return;   // 正在寫作業：背景更新一律不重畫
+  if(hwOpen || placeOpen) return;   // 正在寫作業／做測驗：背景更新一律不重畫
   const a = document.activeElement;
   if(a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;
   render();

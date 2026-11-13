@@ -482,5 +482,50 @@ test('真實對照表：載入後 我／你好 等基本字在第 1 級', () => 
   assert.strictEqual(D.hs.length, 7);
 });
 
+console.log('\n能力分級測驗');
+{
+  const c3 = vm.createContext({ window: {}, Math, Object, Array, String, JSON, document: {} });
+  vm.runInContext(fs.readFileSync(path.join(root, 'placement-bank.js'), 'utf8'), c3);
+  vm.runInContext(fs.readFileSync(path.join(root, 'placement.js'), 'utf8'), c3);
+  const B = c3.window.PLACEMENT_BANK, P = n => c3[n];
+  test('題庫：每級 10 單字＋10 語法＋2 篇短文各 2 題，每題 4 個選項', () => {
+    for (let lv = 1; lv <= 6; lv++) {
+      assert.strictEqual(B.items.filter(x => x.lv === lv && x.k === 'v').length, 10);
+      assert.strictEqual(B.items.filter(x => x.lv === lv && x.k === 'g').length, 10);
+      assert.strictEqual(B.items.filter(x => x.lv === lv && x.k === 'r').length, 4);
+    }
+    assert.ok(B.items.every(x => x.o.length === 4));
+    assert.ok(B.items.filter(x => x.k !== 'r').every(x => x.o.every(o => o.e != null || (o.s && o.t && o.p)) ));
+  });
+  test('完整版 48 題、快速版 8＋12 題，第二階段不重複第一階段的題', () => {
+    assert.strictEqual(P('plBuildFull')(B).length, 48);
+    const s1 = P('plStage1')(B), s2 = P('plStage2')(B, 3, s1.map(x => x.id));
+    assert.strictEqual(s1.length, 8);
+    assert.strictEqual(s2.length, 12);
+    assert.ok(s2.every(x => !s1.some(y => y.id === x.id)));
+    assert.strictEqual(J(P('plStage2')(B, 1, []).map(x => x.lv).filter((v, i, a) => a.indexOf(v) === i)), J([1, 2, 3]));
+    assert.strictEqual(J(P('plStage2')(B, 6, []).map(x => x.lv).filter((v, i, a) => a.indexOf(v) === i)), J([4, 5, 6]));
+  });
+  test('粗估：要連續低一級也答對才升級', () => {
+    const E = P('plEstimate');
+    assert.strictEqual(E([{ lv: 1, ok: true }, { lv: 2, ok: true }, { lv: 4, ok: true }]), 2);
+    assert.strictEqual(E([{ lv: 1, ok: true }, { lv: 2, ok: true }, { lv: 3, ok: true }, { lv: 4, ok: true }]), 4);
+    assert.strictEqual(E([{ lv: 1, ok: false }]), 1);
+  });
+  test('計分：正確率 60% 才算過、結果給範圍', () => {
+    const S = P('plScore'), mk = (lv, c, n) => Array.from({ length: n }, (_, i) => ({ lv, ok: i < c }));
+    const r = S([].concat(mk(1, 4, 4), mk(2, 4, 4), mk(3, 3, 4), mk(4, 1, 4), mk(5, 0, 4)));
+    assert.strictEqual(r.reached, 3);
+    assert.strictEqual(r.cefr, 'B1');
+    const r2 = S([].concat(mk(1, 4, 4), mk(2, 3, 4), mk(3, 2, 4)));
+    assert.strictEqual(r2.reached, 2);
+    assert.strictEqual(r2.cefr, 'A2–B1');
+    assert.strictEqual(r2.tocfl, '2–3');
+    assert.strictEqual(S(mk(1, 0, 4)).cefr, '<A1');
+    assert.strictEqual(S(mk(1, 0, 4)).reached, 0);
+    assert.strictEqual(S([].concat(mk(3, 2, 2), mk(4, 2, 2), mk(5, 0, 2))).reached, 4);   // 沒考的更低級視為已過
+  });
+}
+
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);

@@ -884,6 +884,20 @@ def learn_tests(browser, base):
     check('能力：已批改 1 份、各題型答對率、最近作業', '已批改的作業' in txt and '填空' in txt and '100%' in txt and '排序' in txt and '0%' in txt and '63%' in txt, txt[:300])
     page.wait_for_timeout(600); txt = page.inner_text('#app')
     check('能力：TOCFL／HSK／CEFR 三組進度條和「參考」說明', 'TOCFL' in txt and 'HSK 3.0' in txt and 'CEFR' in txt and '不是考試成績' in txt and '學過的單字還太少' in txt, txt[:400])
+    page.click('#plGo'); page.wait_for_timeout(500)
+    check('能力分級測驗：能打開、選版本', page.locator('[data-m=quick]').count() == 1 and page.locator('[data-m=full]').count() == 1)
+    page.click('[data-m=quick]'); page.wait_for_timeout(200)
+    check('快速版：有拼音開關、不知道、四個選項', page.locator('#plPy').count() == 1 and page.locator('#plDk').count() == 1 and page.locator('[data-k]').count() == 4)
+    n = 0
+    while page.locator('#plDk').count() and n < 40:
+        page.locator('[data-k]').first.click(); n += 1
+    check('快速版：共 20 題', n == 20, n)
+    check('測驗結果畫面：有等級、參考說明、傳給老師', 'Tu nivel aproximado' in page.inner_text('#app') and 'solo una referencia' in page.inner_text('#app') and page.locator('#plSend').count() == 1)
+    page.click('#plSend'); page.wait_for_timeout(300)
+    dms0 = [v for k, v in page.evaluate("window.__fb.store").items() if '/dm/auto' in k]
+    check('傳給老師：變成學生的一則私訊', len(dms0) == 1 and dms0[0]['from'] == 's' and dms0[0]['text'].startswith('Test de nivel (rápido)') and 'Aciertos: ' in dms0[0]['text'], dms0)
+    page.click('#plExit'); page.wait_for_timeout(300)
+    check('測驗結束返回「能力」', '已批改的作業' in page.inner_text('#app'))
     page.click('[data-lt=files]'); page.wait_for_timeout(100)
     links = page.locator('#app a.btn')
     check('教材：只列安全的 Drive 連結，新分頁開啟', links.count() == 1 and links.first.get_attribute('href').startswith('https://drive.google.com/') and links.first.get_attribute('target') == '_blank' and 'L1' in page.inner_text('#app'))
