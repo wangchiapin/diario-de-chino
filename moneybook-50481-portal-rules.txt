@@ -1,4 +1,5 @@
 // ===== Firebase 專案 moneybook-50481：學生頁（diario-de-chino）要加的 Firestore 規則 =====
+// ⚠️ 完整、可整份貼上的規則放在 moneybook repo 的 moneybook-50481.rules.txt（2026-11-14 已同步成線上現行版）。這個檔案只留 portal 部分的說明，之後新增規則時兩邊都要更新。
 // 這只是「要加的那一段」。專案的規則整個只有一份，所以要在「目前線上的完整規則」裡加上去，不要整份換掉。
 // 加的位置：放在 match /databases/{database}/documents { 裡面，跟其他 match 並排。
 // 連接的 repo：diario-de-chino（學生頁與老師後台）、cadadiaunosminutos（日誌，負責寫入學生資料）。
