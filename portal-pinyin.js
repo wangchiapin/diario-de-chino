@@ -11,7 +11,7 @@ const DE_FOLLOW = '很不多少快慢好太比沒真更非常十分特別清楚�
 const SYL = new Map();
 /* ---- 台灣讀音：函式庫（含台灣例外表）→ 通則修正 → GoodTeacher 規則 → 使用者的修正表（最優先） ---- */
 const TW_PINYIN = {
-  '還是': 'hái shì', '還有': 'hái yǒu', '還要': 'hái yào', '還沒': 'hái méi', '還差': 'hái chà',
+  '還是': 'hái shì', '還有': 'hái yǒu', '還要': 'hái yào', '還沒': 'hái méi', '還差': 'hái chā',
   '嗎': 'ma', '誰': 'shéi', '幾': 'jǐ', '喔': 'ō', '唷': 'yō', '耶': 'ye', '啦': 'la', '囉': 'luo',
   '什麼': 'shén me', '謝謝': 'xiè xie', '麻煩': 'má fan', '我們': 'wǒ men', '你們': 'nǐ men',
   '東西': 'dōng xi', '朋友': 'péng yǒu', '覺得': 'jué de', '著': 'zhe', '只': 'zhǐ',
@@ -26,8 +26,8 @@ const TW_PINYIN = {
   '火車': 'huǒ chē', '要是': 'yào shì', '因為': 'yīn wèi', '為什麼': 'wèi shén me',
   '怎麼': 'zěn me', '那麼': 'nà me', '這麼': 'zhè me',
   '乾淨': 'gān jìng', '乾乾淨淨': 'gān gān jìng jìng', '乾杯': 'gān bēi', '高興': 'gāo xìng', '好處': 'hǎo chù',
-  '幾乎': 'jī hū', '寧可': 'nìng kě', '至於': 'zhì yú',
-  '鑰匙': 'yuè shi', '當真': 'dāng zhēn'
+  '幾乎': 'jī hū', '寧可': 'níng kě', '至於': 'zhì yú',
+  '鑰匙': 'yào shi', '當真': 'dāng zhēn'
 };
 let _twDone = false;
 function initTW() {
@@ -35,8 +35,8 @@ function initTW() {
   _twDone = true;
   try { if (typeof pinyinPro.customPinyin === 'function') pinyinPro.customPinyin(TW_PINYIN); } catch (e) {}
 }
-/* GoodTeacher 多音字規則（資料：gt-readings.json，GoodTeacher 2026-10-13 版，和 corre 管理頁同一份） */
-const GT_EXC_WORDS = ['東西', '幾乎', '寧可', '動不動', '鑰匙', '當真']; // 規則還沒涵蓋，維持上面例外表的讀音
+/* GoodTeacher 多音字規則（資料：gt-readings.json，GoodTeacher 2026-11-15 版，和 corre 管理頁同一份） */
+const GT_EXC_WORDS = ['東西', '動不動', '當真']; // 規則還沒涵蓋，維持上面例外表的讀音
 const GT_EXC_CHARS = ''; // 「為」交給 GoodTeacher 規則（為了、因為 wèi；成為、行為 wéi）
 const HANZI_RE = /[㐀-鿿]/;
 let GT = null, GT_STATE = 'loading';
