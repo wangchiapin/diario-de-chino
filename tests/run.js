@@ -9,6 +9,7 @@ const assert = require('assert');
 const root = path.join(__dirname, '..');
 const ctx = vm.createContext({ Date, Intl, Math, Object, Array, String, Number, JSON, parseInt, isNaN });
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-core.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'vendor/opencc-t2cn.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-nudge.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-learn.js'), 'utf8'), ctx);
@@ -209,6 +210,24 @@ test('批改總分：半分加總、四捨五入到 0.5', () => {
 test('Word 批改用的標準答案清單：一題一行、含大題編號', () => {
   const L = C('hwKeyLines')(SAMPLE);
   assert.ok(L.length > 0 && L.every(x => typeof x.key === 'string' && typeof x.no === 'number'));
+});
+
+console.log('\n作業：簡體作答也算對');
+test('學生用簡體字作答，能對上繁體的標準答案（填空、段落填空、排序、改錯）', () => {
+  const S2 = { meta: { title: 't' }, sections: [
+    { id: 's1', type: 'fill', enabled: true, bank: [], items: [{ id: 'f1', enabled: true, zh: '我__書。', answer: '買' }] },
+    { id: 's2', type: 'cloze', enabled: true, bank: [], items: [{ id: 'c1', enabled: true, text: '{1}喜歡{2}', answers: ['我', '學習'] }] },
+    { id: 's3', type: 'order', enabled: true, items: [{ id: 'o1', enabled: true, tokens: ['我', '喜歡', '電腦'], answer: '我喜歡電腦' }] },
+    { id: 's4', type: 'fix', enabled: true, items: [{ id: 'x1', enabled: true, wrong: '他很高興了', correct: '他很高興' }] }
+  ] };
+  const g = C('hwAutoGrade')(S2, { f1: '买', c1: ['我', '学习'], o1: ['我', '喜欢', '电脑'], x1: '他很高兴' });
+  assert.strictEqual(g.autoGot, g.autoMax);
+  const bad = C('hwAutoGrade')(S2, { f1: '卖', c1: ['你', '学习'], o1: ['我', '电脑', '喜欢'], x1: '他很高兴了' });
+  assert.strictEqual(bad.autoGot, 1);   // 只有段落填空的「學習」那一格對
+});
+test('繁體作答照樣對', () => {
+  const S2 = { sections: [{ id: 's1', type: 'fill', enabled: true, items: [{ id: 'f1', enabled: true, zh: '我__書。', answer: '買' }] }] };
+  assert.strictEqual(C('hwAutoGrade')(S2, { f1: '買' }).autoGot, 1);
 });
 
 console.log('\n彈跳視窗（練習題、激勵句、提醒）');

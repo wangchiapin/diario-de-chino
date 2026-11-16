@@ -176,6 +176,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
   <div class="foot" id="foot"></div>
 </div>
 <script>function toTop(){window.scrollTo(0,0);var w=document.querySelector('.wrap');if(w)w.scrollTop=0}</script>
+<script src="vendor/opencc-t2cn.js"></script>
 <script src="portal-core.js"></script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
@@ -199,7 +200,15 @@ const auth = getAuth(app), db = getFirestore(app);
 
 const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} } };
 const $ = id => document.getElementById(id);
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const escRaw = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* 簡體介面：畫面上的中文（單字、作業題目、語法點、上課紀錄…）在顯示時才轉成簡體，資料庫裡的內容不動。
+   只換字形、不換用語（台灣用語＋簡體字形）。學生自己打的答案、朗讀用的字（escRaw）不轉。 */
+let _zhConv = null;
+function zhSimp(s){
+  if(typeof OpenCC === 'undefined' || !/[\u3400-\u9fff]/.test(s)) return s;
+  try{ if(!_zhConv) _zhConv = OpenCC.Converter({ from: 'tw', to: 'cn' }); return _zhConv(s); }catch(e){ return s; }
+}
+const esc = s => escRaw(lang === 'sc' ? zhSimp(String(s == null ? '' : s)) : s);
 
 /* ───────── 狀態 ───────── */
 let lang = LS.get('dc.lang') || pcDetectLang(navigator.language);
@@ -557,7 +566,7 @@ function renderLearn(root){
   }else if(learnTab === 'review'){
     const subs = [['cards', 'rvCards'], ['words', 'rvWords'], ['points', 'rvPoints']];
     const subBar = `<div class="lt">${subs.map(x => `<button data-rs="${x[0]}" class="${revSub === x[0] ? 'on' : ''}">${esc(LT(x[1]))}</button>`).join('')}</div>`;
-    const spk = z => canSpeak() ? `<button class="spk" data-say="${esc(z)}" aria-label="${esc(LT('speak'))}">🔊</button>` : '';
+    const spk = z => canSpeak() ? `<button class="spk" data-say="${escRaw(z)}" aria-label="${esc(LT('speak'))}">🔊</button>` : '';
     if(revSub === 'words'){
       body = subBar + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2>${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
     }else if(revSub === 'points'){
@@ -851,7 +860,7 @@ const hwHideScore = d => !!(d && d.review && d.review.hideScore);
 function hwTa(q, a, D){
   const d = hwDocs[hwOpen], rv = d && d.status === 'graded' && d.review && d.review.items && d.review.items[q.id];
   if(rv && typeof rv.mark === 'string' && rv.mark) return `<div class="lab-mk"><span class="muted" style="font-size:12px">${esc(T('hwMarked'))}</span></div><div class="mk">${hwCleanMark(rv.mark)}</div>`;
-  return `<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea>`;
+  return `<textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${escRaw(a || '')}</textarea>`;
 }
 function hwReviewHtml(sec, q){
   const d = hwDocs[hwOpen], rv = d && d.status === 'graded' && d.review && d.review.items && d.review.items[q.id];
@@ -871,12 +880,12 @@ function hwItemHtml(sec, q, no, dis){
   switch(sec.type){
     case 'fill': {
       const i = q.zh.indexOf('__');
-      const inp = `<input type="text" class="blank" data-k="txt" data-id="${esc(q.id)}" value="${esc(a || '')}" autocomplete="off" autocapitalize="off"${D}>`;
+      const inp = `<input type="text" class="blank" data-k="txt" data-id="${esc(q.id)}" value="${escRaw(a || '')}" autocomplete="off" autocapitalize="off"${D}>`;
       return `<div class="hwq">${head}<span class="zh">${i < 0 ? esc(q.zh) + inp : esc(q.zh.slice(0, i)) + inp + esc(q.zh.slice(i + 2))}</span>${es}</div>`;
     }
     case 'cloze': {
       const arr = Array.isArray(a) ? a : [];
-      const html = esc(q.text).replace(/\{(\d+)\}/g, (m, n) => `<input type="text" class="blank" data-k="cz" data-id="${esc(q.id)}" data-n="${n - 1}" placeholder="${n}" value="${esc(arr[n - 1] || '')}" autocomplete="off" autocapitalize="off"${D}>`);
+      const html = esc(q.text).replace(/\{(\d+)\}/g, (m, n) => `<input type="text" class="blank" data-k="cz" data-id="${esc(q.id)}" data-n="${n - 1}" placeholder="${n}" value="${escRaw(arr[n - 1] || '')}" autocomplete="off" autocapitalize="off"${D}>`);
       return `<div class="hwq"><div class="zh">${html}</div></div>`;
     }
     case 'order': return `<div class="hwq" data-order="${esc(q.id)}">${head}${hwOrderInner(q, dis)}${es}</div>`;
@@ -884,7 +893,7 @@ function hwItemHtml(sec, q, no, dis){
       return `<div class="hwq">${head}${q.es ? `<span class="es" style="display:inline">${esc(q.es)}</span>` : ''}${q.options.map(o =>
         `<label class="opt"><input type="radio" name="r_${esc(q.id)}" data-k="ch" data-id="${esc(q.id)}" value="${o.i}" ${a === o.i ? 'checked' : ''}${D}><b>${hwLetter(o.i)}</b><span>${esc(o.t)}</span></label>`).join('')}</div>`;
     case 'fix':
-      return `<div class="hwq">${head}<span class="zh">${esc(q.wrong)}</span><textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${esc(a || '')}</textarea></div>`;
+      return `<div class="hwq">${head}<span class="zh">${esc(q.wrong)}</span><textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${escRaw(a || '')}</textarea></div>`;
     case 'translate':
       return `<div class="hwq">${head}<span>${esc(q.es)}</span>${q.vocab ? `<div class="es">${esc(q.vocab)}</div>` : ''}${hwTa(q, a, D)}</div>`;
     case 'zh2es':

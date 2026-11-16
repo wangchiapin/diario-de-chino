@@ -20,8 +20,13 @@
 var HW_TYPES = ['fill', 'cloze', 'order', 'choice', 'fix', 'translate', 'zh2es', 'match', 'sentence'];
 var HW_AUTO = { fill: 1, cloze: 1, order: 1, choice: 1, fix: 1, match: 1 };     // 其餘（translate / zh2es / sentence）要老師批改
 
+/* 比對答案前，繁體和簡體先統一成同一種字形（學生用簡體字作答，也能對上繁體的標準答案）；函式庫沒載入時就維持原樣比對 */
+var _hwConv = null;
+function hwSimp(s) {
+  try { if (typeof OpenCC === 'undefined') return s; if (!_hwConv) _hwConv = OpenCC.Converter({ from: 'tw', to: 'cn' }); return _hwConv(s); } catch (e) { return s; }
+}
 function hwNorm(s) {
-  return String(s == null ? '' : s).replace(/[。！？，、；：「」『』（）,.!?;:'"()\s　]/g, '').toLowerCase();
+  return hwSimp(String(s == null ? '' : s).replace(/[。！？，、；：「」『』（）,.!?;:'"()\s　]/g, '')).toLowerCase();
 }
 function hwHash(s) { var h = 0; for (var i = 0; i < String(s).length; i++) { h = (h * 31 + String(s).charCodeAt(i)) | 0; } return h >>> 0; }
 /* 配對題右欄順序：跟練習單產生器的 matchPerm 一模一樣。perm[k] = 右欄第 k 格放第幾題 */
