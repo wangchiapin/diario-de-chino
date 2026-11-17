@@ -229,5 +229,7 @@ function hwKeyLines(state) {
 /* ───────── 發給學生的那一份（存進學生自己的資料夾） ───────── */
 function hwAssignDoc(wid, state, now) {
   var s = hwBuildStudent(state);
-  return { v: 1, wid: wid, title: s.title, grammar: s.grammar, sections: s.sections, total: s.total, assignedAt: now, status: 'todo', answers: {} };
+  /* 生詞表（中文＋西文意思）一起存進去，學生頁的單字總表和卡片才有西文意思；拼音不存，學生頁自己算 */
+  var vocab = ((state && state.vocab) || []).map(function (v) { return { zh: String((v && v.zh) || '').trim(), es: String((v && v.es) || '').trim() }; }).filter(function (v) { return v.zh; });
+  return { v: 1, wid: wid, title: s.title, grammar: s.grammar, vocab: vocab, sections: s.sections, total: s.total, assignedAt: now, status: 'todo', answers: {} };
 }

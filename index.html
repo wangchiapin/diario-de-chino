@@ -177,11 +177,13 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 </div>
 <script>function toTop(){window.scrollTo(0,0);var w=document.querySelector('.wrap');if(w)w.scrollTop=0}</script>
 <script src="vendor/opencc-t2cn.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.29.5/dist/index.js"></script>
 <script src="portal-core.js"></script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
 <script src="portal-learn.js"></script>
 <script src="portal-board.js"></script>
+<script src="portal-pinyin.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -460,6 +462,13 @@ function renderHome(root){
 let learnOpen = false, learnTab = 'log', revSub = 'cards', revDir = 'z2e', revShown = false, revOnlyNot = false, revSeed = 1, revIdx = 0, revRound = null, matDoc = null, matLoaded = false, matTried = false;
 let listDoc = null, cloudMarks = null, learnDataTried = false;   // listDoc：老師為這位學生存的單字／語法清單；cloudMarks：雲端的「還不熟」（讀不到時為 null，就只用這台裝置的）
 const LT = (k, p) => learnT(lang, k, p);
+/* 單字拼音：老師存的優先；沒有就用 GoodTeacher 讀音規則現算（和後台同一套）。函式庫沒載入時就留空 */
+function learnTotalsPy(hwDocs, listDoc){
+  const tot = learnTotals(hwDocs, listDoc);
+  tot.words.forEach(w => { if(!w.py){ try{ w.py = ptWord(w.zh) || ''; }catch(e){} } });
+  return tot;
+}
+try{ ptLoad().then(() => { if(learnOpen) render(); }); }catch(e){}
 const revDeck = tot => { if(!revRound) revRound = learnDeck(tot.words, revMarks(), revOnlyNot, revSeed, revDir).map(w => w.zh); return revRound.map(zh => tot.words.find(w => w.zh === zh)).filter(Boolean); };   // 一輪開始時固定牌組，標「我記得」才不會讓下一張被跳過
 const revLocal = () => { try{ return JSON.parse(LS.get('dc.rev.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
 const revMarks = () => cloudMarks || revLocal();
@@ -554,7 +563,7 @@ function gramHtml(tot){
 function renderLearn(root){
   if(placeOpen) return renderPlacement(root);
   const dots = dotsNow(); markNew(learnTab); dots[learnTab] = false;
-  const tot = learnTotals(hwDocs, listDoc);
+  const tot = learnTotalsPy(hwDocs, listDoc);
   const tabs = ['log', 'review', 'ability', 'files'], names = { log: 'tLog', review: 'tReview', ability: 'tAbility', files: 'tFiles' };
   let body = '';
   if(learnTab === 'log'){
@@ -631,7 +640,7 @@ let learnDataDone = false;
 const newKey = () => 'dc.new.' + studentId;
 const newSeen = () => { try{ return JSON.parse(LS.get(newKey()) || '{}') || {}; }catch(e){ return {}; } };
 function allSigs(){
-  const tot = learnTotals(hwDocs, listDoc);
+  const tot = learnTotalsPy(hwDocs, listDoc);
   const sg = learnSigs({ studentDoc, hwDocs, hwLoaded, tot, listReady: learnDataDone, files: matLoaded ? learnFiles(matDoc) : null });
   sg.board = bOk.board ? String(boardMaxTs(boardPosts)) : null;
   sg.wall = bOk.wall ? String(boardMaxTs(wallPosts, p => p.sid !== studentId)) : null;

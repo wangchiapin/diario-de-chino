@@ -230,6 +230,17 @@ test('繁體作答照樣對', () => {
   assert.strictEqual(C('hwAutoGrade')(S2, { f1: '買' }).autoGot, 1);
 });
 
+test('派出作業時，生詞表（中文＋西文）一起存進去，學生頁單字總表就有西文意思', () => {
+  const S3 = { meta: { title: 't' }, vocab: [{ zh: '醫生', es: 'médico', esSrc: '醫生' }, { zh: '健康', es: '' }, { zh: '', es: 'x' }],
+    sections: [{ id: 's1', type: 'fill', enabled: true, items: [{ id: 'f1', enabled: true, zh: '我__書。', answer: '買' }] }] };
+  const d = C('hwAssignDoc')('w1', S3, 1);
+  assert.strictEqual(J(d.vocab), J([{ zh: '醫生', es: 'médico' }, { zh: '健康', es: '' }]));
+  const w = C('learnTotals')({ w1: d }, {}).words;
+  assert.strictEqual(w.find(x => x.zh === '醫生').es, 'médico');
+  assert.ok(!JSON.stringify(d).includes('"answer"'));
+  assert.strictEqual(J(C('hwAssignDoc')('w2', { sections: [] }, 1).vocab), '[]');   // 沒有生詞表也不會壞
+});
+
 console.log('\n彈跳視窗（練習題、激勵句、提醒）');
 const HWD = {
   w1: { status: 'todo', assignedAt: 1000, grammar: '比較句 ＋ 得字補語', sections: [
