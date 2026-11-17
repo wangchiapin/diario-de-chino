@@ -260,7 +260,7 @@ def preview_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(None, teacher))
     page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(300)
     txt = page.inner_text('#app')
-    check('沒登入：請先登入老師後台，看不到學生資料', '老師後台' in txt and 'Pedro' not in txt, txt)
+    check('沒登入：請先登入學生日誌管理後台，看不到學生資料', '學生日誌管理後台' in txt and 'Pedro' not in txt, txt)
     check('沒登入：沒有讀任何資料', page.evaluate('window.__fb.reads.length') == 0 and page.evaluate('window.__fb.subs.length') == 0); ctx.close()
     # 老師登入（信箱沒驗證也可以）
     ctx, page, errs = new_page(browser, base_state(None, teacher))

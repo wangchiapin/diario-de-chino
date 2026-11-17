@@ -1,6 +1,6 @@
 /* =====================================================================
    Diario de chino · 「公布欄／留言板／私訊」與「有新內容」紅點的共用程式
-   純計算，不碰網頁和 Firebase；tests/run.js 會單獨測。學生頁和老師後台都會載入。
+   純計算，不碰網頁和 Firebase；tests/run.js 會單獨測。學生頁和學生日誌管理後台都會載入。
 
    資料（都在 portal/{老師uid}/ 底下）：
    - board/{id}   公布欄：{ text, ts }                老師寫、所有學生讀
@@ -67,7 +67,7 @@ function boardMaxTs(list, pred) {
   return m;
 }
 
-/* 老師後台：每位學生的未讀私訊數。msgs：全部私訊；seen：{ 學生代號: 老師看到哪個時間 } */
+/* 學生日誌管理後台：每位學生的未讀私訊數。msgs：全部私訊；seen：{ 學生代號: 老師看到哪個時間 } */
 function dmUnreadBySid(msgs, seen) {
   var out = {};
   (msgs || []).forEach(function (m) {

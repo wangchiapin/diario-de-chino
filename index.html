@@ -245,7 +245,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc, getDoc, setDoc, deleteDoc, addDoc, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* 跟日誌、老師後台用同一個 Firebase 專案 */
+/* 跟日誌、學生日誌管理後台用同一個 Firebase 專案 */
 const app = initializeApp({
   apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0",
   authDomain: "moneybook-50481.firebaseapp.com",
@@ -298,7 +298,7 @@ function loadingHtml(){
   return `<div class="card center muted">${esc(T('loading'))}<div class="slowhint" style="animation-delay:-${el}s"><div class="small" style="margin:10px 0 6px">${esc(T('slow'))}</div><button onclick="location.reload()">${esc(T('reload'))}</button></div></div>`;
 }
 
-// 老師預覽：?preview=學生代號。用老師後台登入的帳號，唯讀看那位學生登入後會看到的畫面
+// 老師預覽：?preview=學生代號。用學生日誌管理後台登入的帳號，唯讀看那位學生登入後會看到的畫面
 const PREVIEW = (function(){ const v = new URLSearchParams(location.search).get('preview'); return v && v.indexOf('/') < 0 && v.length < 200 ? v : null; })();
 
 (function readTeacherId(){
@@ -345,7 +345,7 @@ document.querySelectorAll('#zhBar button').forEach(b => b.addEventListener('clic
 
 function renderPreview(root, user){
   if(!authReady){ root.innerHTML = loadingHtml(); return; }
-  if(!user){ root.innerHTML = `<div class="card center">老師預覽要先登入老師後台。<br><a href="admin.html">前往老師後台登入</a>，登入後再按學生旁邊的「預覽」。</div>`; return; }
+  if(!user){ root.innerHTML = `<div class="card center">老師預覽要先登入學生日誌管理後台。<br><a href="admin.html">前往學生日誌管理後台登入</a>，登入後再按學生旁邊的「預覽」。</div>`; return; }
   if(!docLoaded){ root.innerHTML = loadingHtml(); return; }
   if(docError) return renderError(root);
   renderHome(root);

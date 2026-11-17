@@ -1,5 +1,5 @@
 /* =====================================================================
-   Diario de chino · 老師後台用的「單字拼音」（只有後台會載入；學生頁不需要）
+   Diario de chino · 學生日誌管理後台用的「單字拼音」（只有後台會載入；學生頁不需要）
    讀音照 GoodTeacher：pinyin-pro（含台灣例外表）→ 通則修正 → GoodTeacher 規則（gt-readings.json）
    這段是從「練習單產生器」(Generador-de-ejercicios/index.html) 搬過來的，兩邊要保持一致。
    用法：先載入 pinyin-pro；ptLoad() 載入規則檔；ptWord('做菜') → 'zuò cài'
