@@ -536,6 +536,15 @@ console.log('\n能力分級測驗');
   vm.runInContext(fs.readFileSync(path.join(root, 'placement-bank.js'), 'utf8'), c3);
   vm.runInContext(fs.readFileSync(path.join(root, 'placement.js'), 'utf8'), c3);
   const B = c3.window.PLACEMENT_BANK, P = n => c3[n];
+  test('題庫：每個西文選項和閱讀題目都有英文，英文版選項不重複', () => {
+    B.items.forEach(x => {
+      if (x.q.e != null) assert.ok(x.q.n, x.id + ' q 缺英文');
+      const ns = [];
+      x.o.forEach(o => { if (o.e != null) { assert.ok(o.n, x.id + ' 選項缺英文'); ns.push(o.n); } });
+      assert.strictEqual(new Set(ns).size, ns.length, x.id + ' 英文選項重複');
+    });
+    assert.strictEqual(P('plMean')({ e: 'agua', n: 'water' }), 'agua');
+  });
   test('題庫：每級 10 單字＋10 語法＋2 篇短文各 2 題，每題 4 個選項', () => {
     for (let lv = 1; lv <= 6; lv++) {
       assert.strictEqual(B.items.filter(x => x.lv === lv && x.k === 'v').length, 10);

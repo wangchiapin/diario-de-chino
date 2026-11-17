@@ -99,7 +99,7 @@ PL_TX.es = {
 };
 /* 英文介面：只翻畫面文字，題目（單字選項是西文）維持原樣 */
 PL_TX.en = {
-  title: 'Chinese level test', intro: 'A quick estimate of your level. It is not an official exam. (The answer options are in Spanish.)',
+  title: 'Chinese level test', intro: 'A quick estimate of your level. It is not an official exam.',
   quick: 'Quick version', quickD: 'About 20 questions, 3–5 minutes', full: 'Full version', fullD: 'About 50 questions, 15–20 minutes',
   start: 'Start', q: 'Question', of: 'of', dk: 'I don\'t know', py: 'Pinyin', script: '简 / 繁',
   meaning: 'What does it mean?', pick: 'Choose the correct option', read: 'Read the text and answer',
@@ -109,7 +109,8 @@ PL_TX.en = {
   again: 'Take the test again', exit: 'Back', name: 'Your name', nameReq: 'Write your name to start.', saved: '✓ Result saved. Your teacher will be able to see it.', saving: 'Saving…', saveErr: 'Could not save the result. Please try again.', retry: 'Save again', below: 'Still below A1',
   lvl: 'Level', byLevel: 'Result by level', stage: 'Part', loading: 'Loading…'
 };
-var PL_T = PL_TX.es;
+var PL_T = PL_TX.es, PL_LANG = 'es';
+function plMean(x) { return PL_LANG === 'en' && x.n ? x.n : x.e; }
 function plEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function plTidyPy(p) { return String(p || '').replace(/ ([，。？！、；：,.?!;:])/g, '$1').replace(/＿＿/g, '＿＿'); }
 function plResultText(r, st) {
@@ -131,7 +132,7 @@ function plCss() {
 /* opts：{ mode:'quick'|'full'|null（null 先讓使用者選）, name:名字, needName:要先填名字, onDone:function(紀錄)→Promise（測完自動呼叫一次）, onExit:function, rnd, bank } */
 function plRender(root, opts) {
   opts = opts || {};
-  PL_T = PL_TX[opts.lang] || PL_TX.es;
+  PL_T = PL_TX[opts.lang] || PL_TX.es; PL_LANG = PL_TX[opts.lang] ? opts.lang : 'es';
   plCss();
   var bank = opts.bank || window.PLACEMENT_BANK, rnd = opts.rnd || Math.random;
   var st = { mode: opts.mode || null, phase: 'pick', queue: [], i: 0, ans: [], est: 0, script: 's', pyUser: null, pyUsed: false, saveState: '', saved: false, stage: 1, name: opts.name || '' };
@@ -143,7 +144,7 @@ function plRender(root, opts) {
   function total() { return st.mode === 'quick' ? 20 : st.queue.length; }
   function pyOn(lv) { return st.pyUser === null ? lv <= 2 : st.pyUser; }
   function tx(o, lv, big) {   // 中文：簡／繁，加上拼音
-    if (o.e != null) return plEsc(o.e);
+    if (o.e != null) return plEsc(plMean(o));
     var z = st.script === 't' ? o.t : o.s, h = plEsc(z);
     if (pyOn(lv) && o.p) { st.pyUsed = true; h += '<small>' + plEsc(plTidyPy(o.p)) + '</small>'; }
     return h;
@@ -163,7 +164,7 @@ function plRender(root, opts) {
       var order = st.cur;
       h += '<div class="plrow"><span class="plm">' + PL_T.q + ' ' + n + ' ' + PL_T.of + ' ' + total() + '</span><span><button class="plsw' + (pyOn(lv) ? ' on' : '') + '" id="plPy">' + PL_T.py + '</button> <button class="plsw" id="plSc">' + PL_T.script + '</button></span></div>' +
         '<div class="plbar"><i style="width:' + Math.round((n - 1) / total() * 100) + '%"></i></div><div class="plc">';
-      if (p) h += '<div class="plm" style="margin-bottom:6px">' + PL_T.read + '</div><div class="plpass">' + tx(p, lv) + '</div>' + '<div class="plq" style="font-size:18px">' + plEsc(it.q.e) + '</div>';
+      if (p) h += '<div class="plm" style="margin-bottom:6px">' + PL_T.read + '</div><div class="plpass">' + tx(p, lv) + '</div>' + '<div class="plq" style="font-size:18px">' + plEsc(plMean(it.q)) + '</div>';
       else if (it.k === 'v') h += '<div class="plm">' + PL_T.meaning + '</div><div class="plq">' + tx(it.q, lv) + '</div>';
       else h += '<div class="plm">' + PL_T.pick + '</div><div class="plq">' + tx(it.q, lv) + '</div>';
       order.forEach(function (x, k) { h += '<button class="plb' + (x.o.e != null ? ' es' : '') + '" data-k="' + k + '">' + tx(x.o, lv) + '</button>'; });
