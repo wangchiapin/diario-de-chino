@@ -555,6 +555,8 @@ function renderHome(root){
 /* ───────── 學習分頁：上課紀錄、已學清單、複習、能力、教材 ───────── */
 let learnOpen = false, learnTab = 'log', revSub = 'cards', revDir = 'z2e', revShown = false, revOnlyNot = false, revSeed = 1, revIdx = 0, revRound = null, matDoc = null, matLoaded = false, matTried = false;
 let listDoc = null, cloudMarks = null, learnDataTried = false;   // listDoc：老師為這位學生存的單字／語法清單；cloudMarks：雲端的「還不熟」（讀不到時為 null，就只用這台裝置的）
+// 彈跳視窗題庫：用「單字總表」（含老師補的英文意思、隱藏的字不會出）
+const nudPoolNow = () => { const t = learnTotals(hwDocs, listDoc); return { words: t.words.map(w => ({ zh: w.zh, es: w.es, en: w.en })), points: t.points.map(p => p.n) }; };
 const LT = (k, p) => uiS(learnT(lang, k, p));
 /* 單字拼音：老師存的優先；沒有就用 GoodTeacher 讀音規則現算（和後台同一套）。函式庫沒載入時就留空 */
 function learnTotalsPy(hwDocs, listDoc){
@@ -625,7 +627,7 @@ function placeSave(rec){
 }
 function placeHistHtml(){
   if(!placeHist || !placeHist.length) return '';
-  return `<div class="card abhist"><h2>${esc(LT('abTestHist'))}</h2>${placeHist.map(r => `<div class="row"><span>${esc(fmtMs(r.ts))}</span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div><div class="muted" style="margin-bottom:8px">TOCFL ${esc(r.tocfl)} · ${r.right}/${r.total}</div>`).join('')}</div>`;
+  return `<div class="card abhist"><h2>${esc(LT('abTestHist'))}</h2>${placeHist.map(r => `<div class="row"><span>${esc(fmtMs(r.ts))}</span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div><div class="muted" style="margin-bottom:8px">${r.reached ? 'TOCFL ' + esc(r.tocfl) + ' · ' : ''}${r.right}/${r.total}</div>`).join('')}</div>`;
 }
 function renderPlacement(root){
   if(root.querySelector('#plBox')) return;   // 測驗進行中：背景更新不要把它重畫
@@ -862,13 +864,13 @@ async function nudMaybeStart(){
   await nudLoadCfg();
   const todayLocal = pcLocalParts(Date.now(), effectiveTz()).date;
   const vars = { n: studentDoc.taught || 0, t: nudSpan(studentDoc.since, todayLocal, lang) };
-  const item = nudOnEnter({ cfg: nudCfg, lang, pool: nudBuildPool(hwDocs), vars, reminders: nudReminders(nudCfg, nudReminderCtx()) }, Math.random);
+  const item = nudOnEnter({ cfg: nudCfg, lang, pool: nudPoolNow(), vars, reminders: nudReminders(nudCfg, nudReminderCtx()) }, Math.random);
   if(item && !hwOpen) nudShow(item);
   nudTimer = setInterval(nudTick, window.__nudEvery || 5 * 60 * 1000);
 }
 function nudTick(){
   if(document.hidden || nudBox || hwOpen || !nudOn() || !auth.currentUser) return;
-  const q = nudMakeQuestion(nudBuildPool(hwDocs), lang, Math.random);
+  const q = nudMakeQuestion(nudPoolNow(), lang, Math.random);
   if(q) nudShow(q);
 }
 function nudStop(){ clearInterval(nudTimer); nudTimer = null; nudClose(); nudEntered = false; rosterReady = false; rosterData = null; nudCfgTried = false; nudCfg = null; }

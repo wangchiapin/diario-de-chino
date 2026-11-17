@@ -114,6 +114,10 @@ test('英文介面文字：每個 key 都有英文，英文單字意思優先、
   const T = C('learnTotals')({}, { words: [{ zh: '水', py: 'shuǐ', es: 'agua', en: 'water' }] });
   assert.strictEqual(T.words[0].en, 'water');
   assert.strictEqual(C('nudSpan')('2024-01-05', '2026-11-17', 'en'), '2 years and 10 months');
+  const pool = { words: [{ zh: '水', es: 'agua', en: 'water' }], points: [] };
+  const qEn = C('nudMakeQuestion')(pool, 'en', () => 0), qEs = C('nudMakeQuestion')(pool, 'es', () => 0);
+  assert.ok(/water/.test(qEn.text) && !/agua/.test(qEn.text), qEn.text);
+  assert.ok(/agua/.test(qEs.text), qEs.text);
 });
 test('三種語言的文字一個都沒少', () => {
   const keys = k => Object.keys(ctx.PC_I18N[k]).sort().join(',');

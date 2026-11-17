@@ -83,8 +83,8 @@ ol{margin:6px 0 0 18px;padding:0}
 button .bd{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;text-align:center;margin-left:4px;padding:0 4px}
 .lchip{display:inline-block;background:#ece7dc;border-radius:12px;padding:3px 10px;margin:3px 4px 3px 0;font-size:14px}
 .nudta{width:100%;min-height:150px;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;line-height:1.6}
-.nudcols{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.nudrem{display:grid;grid-template-columns:110px 1fr 1fr 1fr;gap:6px;align-items:center;margin:6px 0}
+.nudcols{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.nudrem{display:grid;grid-template-columns:110px 1fr 1fr 1fr 1fr;gap:6px;align-items:center;margin:6px 0}
 .nudrem input{font-size:13px;padding:6px 8px}
 details.nd{border-top:1px solid var(--line);padding:8px 0}
 details.nd summary{cursor:pointer;font-size:14px}
@@ -263,14 +263,14 @@ async function confirmReq(k, sid){
 /* ───────── 彈跳視窗設定 ───────── */
 const NUD_LABEL = { hwTodo: '作業沒交（{n} 份）', graded: '作業批改好了', classSoon: '快上課了（{day} {time}）', payLow: '課堂快用完（剩 {n} 堂）', paySingle: '單堂付費' };
 function nudDefaults(){
-  return { enc: { tc: NUD_ENC.tc.join('\n'), sc: NUD_ENC.sc.join('\n'), es: NUD_ENC.es.join('\n') } };
+  return { enc: { tc: NUD_ENC.tc.join('\n'), sc: NUD_ENC.sc.join('\n'), es: NUD_ENC.es.join('\n'), en: NUD_ENC.en.join('\n') } };
 }
 function nudCurrent(){
   if(nudDraft) return nudDraft;
   const enc = nudCfg && nudCfg.enc && Array.isArray(nudCfg.enc.tc) && nudCfg.enc.tc.length
-    ? { tc: nudCfg.enc.tc.join('\n'), sc: (nudCfg.enc.sc || []).join('\n'), es: (nudCfg.enc.es || []).join('\n') } : nudDefaults().enc;
+    ? { tc: nudCfg.enc.tc.join('\n'), sc: (nudCfg.enc.sc || []).join('\n'), es: (nudCfg.enc.es || []).join('\n'), en: (nudCfg.enc.en && nudCfg.enc.en.length ? nudCfg.enc.en : NUD_ENC.en.slice(0, nudCfg.enc.tc.length)).join('\n') } : nudDefaults().enc;
   const rem = {};
-  NUD_REM_KEYS.forEach(k => { const c = nudCfg && nudCfg.rem && nudCfg.rem[k] || {}; rem[k] = { tc: c.tc || NUD_REM[k].tc, sc: c.sc || NUD_REM[k].sc, es: c.es || NUD_REM[k].es }; });
+  NUD_REM_KEYS.forEach(k => { const c = nudCfg && nudCfg.rem && nudCfg.rem[k] || {}; rem[k] = { tc: c.tc || NUD_REM[k].tc, sc: c.sc || NUD_REM[k].sc, es: c.es || NUD_REM[k].es, en: c.en || NUD_REM[k].en }; });
   return { enc, rem };
 }
 function nudHtml(active){
@@ -286,16 +286,17 @@ function nudHtml(active){
       : `<tr><td><b>${esc(students[id].name)}</b></td><td class="muted small" colspan="3">先到「學生」分頁填電子郵件，才能設定</td></tr>`;
   });
   const remRows = NUD_REM_KEYS.map(k => `<div class="nudrem" data-rk="${k}"><div class="small">${esc(NUD_LABEL[k])}</div>
-      <input class="rTc" value="${esc(cur.rem[k].tc)}" aria-label="繁體"><input class="rSc" value="${esc(cur.rem[k].sc)}" aria-label="簡體"><input class="rEs" value="${esc(cur.rem[k].es)}" aria-label="Español"></div>`).join('');
+      <input class="rTc" value="${esc(cur.rem[k].tc)}" aria-label="繁體"><input class="rSc" value="${esc(cur.rem[k].sc)}" aria-label="簡體"><input class="rEs" value="${esc(cur.rem[k].es)}" aria-label="Español"><input class="rEn" value="${esc(cur.rem[k].en)}" aria-label="English"></div>`).join('');
   return `<div class="card"><h2>彈跳視窗（學生頁會跳出練習題、鼓勵和提醒）</h2>
     ${helpBox('nd1', '學生一進頁面，會隨機跳出一個（練習題、鼓勵或提醒）；停留在頁面的話，每 5 分鐘再跳一題練習題。練習題來自學生收到的練習單，題庫會隨作業增加而變多。學生只能按右上角 X 關掉。')}
     <table style="margin-top:8px"><tbody>${rows}</tbody></table>
     <details class="nd" id="nudDet" ${nudOpen ? 'open' : ''}><summary>修改「鼓勵的話」和「提醒的話」</summary>
-      <div class="muted small" style="margin:8px 0">鼓勵的話：一行一句，三欄請「第幾行對第幾行」。簡體或西文留空的那一行，會用繁體那一句。<br>
+      <div class="muted small" style="margin:8px 0">鼓勵的話：一行一句，四欄請「第幾行對第幾行」。簡體或西文留空的那一行，會用繁體那一句；English 留空的那一行，會用內建的英文句。<br>
       可以用 <b>{n}</b>＝已上堂數、<b>{t}</b>＝學中文多久（用日誌「基本資料」裡的「起始上課日期」算，沒填就不會出現）；沒有資料的時候，含這些字的句子就不會出現。</div>
       <div class="nudcols"><div><div class="small">繁體</div><textarea class="nudta" id="eTc">${esc(cur.enc.tc)}</textarea></div>
         <div><div class="small">簡體（台灣用語）</div><textarea class="nudta" id="eSc">${esc(cur.enc.sc)}</textarea></div>
-        <div><div class="small">Español</div><textarea class="nudta" id="eEs">${esc(cur.enc.es)}</textarea></div></div>
+        <div><div class="small">Español</div><textarea class="nudta" id="eEs">${esc(cur.enc.es)}</textarea></div>
+        <div><div class="small">English</div><textarea class="nudta" id="eEn">${esc(cur.enc.en)}</textarea></div></div>
       <div class="muted small" style="margin-top:12px">提醒的話（有事才會出現）：<b>{n}</b>＝數量、<b>{day}</b>＝今天／明天、<b>{time}</b>＝上課時間</div>
       ${remRows}
       <div class="row" style="margin-top:10px"><button id="nudSave">儲存</button><button class="quiet" id="nudReset">還原成預設</button><span class="small ${nudMsg && !nudMsg.ok ? 'err' : 'ok'}" id="nudMsg">${esc(nudMsg ? nudMsg.text : '')}</span></div>
@@ -303,11 +304,11 @@ function nudHtml(active){
 }
 function nudReadForm(root){
   const g = id => root.querySelector(id).value.split('\n');
-  const tc = g('#eTc'), sc = g('#eSc'), es = g('#eEs');
-  const out = { tc: [], sc: [], es: [] };
-  tc.forEach((t, i) => { t = t.trim(); if(!t) return; out.tc.push(t); out.sc.push((sc[i] || '').trim()); out.es.push((es[i] || '').trim()); });
+  const tc = g('#eTc'), sc = g('#eSc'), es = g('#eEs'), en = g('#eEn');
+  const out = { tc: [], sc: [], es: [], en: [] };
+  tc.forEach((t, i) => { t = t.trim(); if(!t) return; out.tc.push(t); out.sc.push((sc[i] || '').trim()); out.es.push((es[i] || '').trim()); out.en.push((en[i] || '').trim()); });
   const rem = {};
-  root.querySelectorAll('[data-rk]').forEach(d => { rem[d.dataset.rk] = { tc: d.querySelector('.rTc').value.trim(), sc: d.querySelector('.rSc').value.trim(), es: d.querySelector('.rEs').value.trim() }; });
+  root.querySelectorAll('[data-rk]').forEach(d => { rem[d.dataset.rk] = { tc: d.querySelector('.rTc').value.trim(), sc: d.querySelector('.rSc').value.trim(), es: d.querySelector('.rEs').value.trim(), en: d.querySelector('.rEn').value.trim() }; });
   return { enc: out, rem };
 }
 function bindNud(root){
@@ -344,8 +345,8 @@ function bindNud(root){
 /* 打字中就先記著（不去掉空行），畫面被更新時才不會洗掉 */
 function nudReadFormRaw(root){
   const rem = {};
-  root.querySelectorAll('[data-rk]').forEach(d => { rem[d.dataset.rk] = { tc: d.querySelector('.rTc').value, sc: d.querySelector('.rSc').value, es: d.querySelector('.rEs').value }; });
-  return { enc: { tc: root.querySelector('#eTc').value, sc: root.querySelector('#eSc').value, es: root.querySelector('#eEs').value }, rem };
+  root.querySelectorAll('[data-rk]').forEach(d => { rem[d.dataset.rk] = { tc: d.querySelector('.rTc').value, sc: d.querySelector('.rSc').value, es: d.querySelector('.rEs').value, en: d.querySelector('.rEn').value }; });
+  return { enc: { tc: root.querySelector('#eTc').value, sc: root.querySelector('#eSc').value, es: root.querySelector('#eEs').value, en: root.querySelector('#eEn').value }, rem };
 }
 
 function hwHtml(active){

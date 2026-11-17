@@ -168,14 +168,15 @@ function nudBuildPool(hwDocs) {
 function nudMakeQuestion(pool, lang, rnd) {
   lang = nudLang(lang);
   var kinds = [];
-  var withEs = (pool.words || []).filter(function (w) { return w.es; });
+  var mean = function (w) { return lang === 'en' && w.en ? w.en : w.es; };
+  var withEs = (pool.words || []).filter(function (w) { return mean(w); });
   if (withEs.length) kinds.push('zhOf');
   if ((pool.words || []).length) { kinds.push('meaning'); kinds.push('sentWord'); }
   if ((pool.points || []).length) { kinds.push('sentGram'); kinds.push('recall'); }
   var kind = nudPick(kinds, rnd);
   if (!kind) return null;
   var x;
-  if (kind === 'zhOf') x = nudPick(withEs, rnd).es;
+  if (kind === 'zhOf') x = mean(nudPick(withEs, rnd));
   else if (kind === 'meaning' || kind === 'sentWord') x = nudPick(pool.words, rnd).zh;
   else x = nudPick(pool.points, rnd);
   return { kind: kind, text: nudFill(NUD_Q[kind][lang], { x: x }) };
