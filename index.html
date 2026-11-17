@@ -41,8 +41,6 @@ body{height:100vh;height:100dvh;box-sizing:border-box}
 .pvbar{max-width:860px;margin-left:auto;margin-right:auto}
 #app:has(.home)>.pvbar{max-width:none}
 #app:has(.lview)>.pvbar{max-width:1200px}
-.lcols .lym{margin-top:0;padding-top:10px}
-.lview .rcard{max-width:760px;margin-left:auto;margin-right:auto}
 .cal-grid .day{aspect-ratio:auto;height:44px}
 .home{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.5fr) minmax(0,.85fr);gap:0 18px;align-items:start}
 .colA,.colB,.colC{display:block}
@@ -59,22 +57,36 @@ body{height:100vh;height:100dvh;box-sizing:border-box}
 .lbar2 .lt{margin:0}
 .rvbars{display:flex;flex-wrap:wrap;gap:10px 28px;align-items:center;margin-bottom:12px}
 .rvbars .lt{margin:0}
-.logwrap{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0 16px;align-items:start}
-.logwrap .nx{grid-column:1;grid-row:1}
-.logwrap .loglist,.logwrap>.card:only-child{grid-column:2;grid-row:1}
-.logwrap>.card:only-child{grid-column:1/-1}
-.lcols{column-count:2;column-gap:32px}
-.lcols .lg{break-inside:avoid}
-.abwrap{column-count:2;column-gap:16px}
-.abwrap>*{break-inside:avoid}
-.filesw{column-count:2;column-gap:32px}
-.filesw .hwitem{break-inside:avoid;border-top:0;border-bottom:1px solid var(--line)}
+.lview.fixed{max-width:860px;height:calc(100vh - 110px);display:flex;flex-direction:column}
+#app:has(.pvbar) .lview.fixed{height:calc(100vh - 180px)}
+#app:has(.lview.fixed)>.pvbar{max-width:860px}
+.lview.fixed>*{flex:0 0 auto}
+.lview.fixed .logwrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.lview.fixed .logwrap>.card{flex:0 0 auto}
+.lview.fixed .logwrap>.loglist{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.lview.fixed .lscroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding-right:6px}
+.lview.fixed>.filesw{flex:1 1 auto;min-height:0;overflow-y:auto}
+.lview.fixed .lym{margin-top:0;padding-top:10px}
+.abwrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px;align-items:start}
+.abwrap>.lgrid{grid-column:1/3;order:1;margin-bottom:12px}
+.abwrap>.abtest{grid-column:3;order:2;margin-bottom:12px}
+.abwrap>.lvl{order:3}
+.abwrap>.abtail{order:4}
+.abwrap>.abhist{order:5;grid-column:1/-1}
+.abwrap>.abnote{order:6;grid-column:1/-1}
+.abwrap>.card.center{grid-column:1/-1;order:7}
+.abwrap .lvl .lbar{height:6px;margin:2px 0 6px}
+.abwrap .lvl .row{font-size:13px}
+.lview .rcard{max-width:760px;margin-left:auto;margin-right:auto;min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.lview .rcard .back{min-height:84px}
 .wgrid{display:grid;grid-template-columns:repeat(3,1fr);column-gap:32px}
 .wgrid .wrow:nth-child(-n+3){border-top:0}
 }
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.02em}
-.lang{display:flex;gap:4px}
+.langs{display:flex;gap:6px 14px;flex-wrap:wrap;justify-content:flex-end}
+.lang{display:flex;gap:4px;align-items:center}
+.lgl{font-size:12px;color:var(--sub);margin-right:2px}
 .lang button{border:1px solid var(--line);background:transparent;color:var(--sub);border-radius:8px;padding:3px 10px;font-size:13px;cursor:pointer;font-family:inherit}
 .lang button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
@@ -211,8 +223,9 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <div class="wrap">
   <header>
     <h1 id="appTitle"></h1>
-    <div class="lang" id="langBar">
-      <button data-l="es">ES</button><button data-l="tc">繁</button><button data-l="sc">简</button>
+    <div class="langs">
+      <div class="lang" id="langBar"><span class="lgl" id="lgl1"></span><button data-l="es">ES</button><button data-l="tc">繁</button><button data-l="sc">简</button></div>
+      <div class="lang" id="zhBar"><span class="lgl" id="lgl2"></span><button data-z="tc">繁</button><button data-z="sc">简</button></div>
     </div>
   </header>
   <main id="app"><div class="card center muted" id="loading"><div class="slowhint"><div class="small" style="margin:10px 0 6px">等很久了嗎？Tarda mucho?</div><button onclick="location.reload()">重新載入 / Recargar</button></div></div></main>
@@ -253,10 +266,24 @@ function zhSimp(s){
   if(typeof OpenCC === 'undefined' || !/[\u3400-\u9fff]/.test(s)) return s;
   try{ if(!_zhConv) _zhConv = OpenCC.Converter({ from: 'tw', to: 'cn' }); return _zhConv(s); }catch(e){ return s; }
 }
-const esc = s => escRaw(lang === 'sc' ? zhSimp(String(s == null ? '' : s)) : s);
+const UIM = '\u2063';   // 介面文字（T/LT/BT 回傳的）前面的隱形記號：這種字依「介面語言」顯示，不跟著「中文字」轉
+const uiS = s => UIM + s;
+const esc = s => {
+  s = String(s == null ? '' : s);
+  if(s.indexOf(UIM) > -1) return escRaw(s.split(UIM).join(''));
+  return escRaw(zhs() === 'sc' ? zhSimp(s) : s);
+};
 
 /* ───────── 狀態 ───────── */
-let lang = LS.get('dc.lang') || pcDetectLang(navigator.language);
+let lang = LS.get('dc.lang') || pcDetectLang(navigator.language);   // 介面語言：es / tc / sc
+/* 中文字（繁／簡）：學生自己選的優先（記在這台裝置）；舊使用者沿用以前的設定；
+   沒選過就用老師在後台替他設的預設；都沒有就是簡體。老師預覽時不吃這台電腦的記憶，才看得到學生的預設。 */
+let zhsPick = (() => { try{ if(/[?&]preview=/.test(location.search)) return null; }catch(e){}
+  const z = LS.get('dc.zh'); if(z === 'tc' || z === 'sc') return z;
+  const old = LS.get('dc.lang'); if(old === 'tc' || old === 'sc'){ LS.set('dc.zh', old); return old; }
+  return null; })();
+let rosterData = null;
+function zhs(){ return zhsPick || (rosterData && (rosterData.script === 'tc' || rosterData.script === 'sc') ? rosterData.script : 'sc'); }
 let tid = null;                  // 老師的 uid，從老師給的連結（?t=）取得，之後記在這台裝置
 let studentId = null, studentDoc = null, docLoaded = false, docError = null;
 let unsubDoc = null;
@@ -264,7 +291,7 @@ let authMode = 'login';          // 'login' | 'register'
 let calMonth = null, selDay = null;   // calMonth: {y, m}
 let tzSetting = null;            // 學生自己選的時區（沒選就 null）
 let busyMsg = '', busyErr = '';
-const T = (k, p) => pcT(lang, k, p);
+const T = (k, p) => uiS(pcT(lang, k, p));
 const pageT0 = Date.now();
 function loadingHtml(){
   const el = Math.min(((Date.now() - pageT0) / 1000), 60).toFixed(1);
@@ -300,10 +327,21 @@ function setLang(l){
   lang = l; LS.set('dc.lang', l);
   document.documentElement.lang = l === 'es' ? 'es' : l === 'sc' ? 'zh-CN' : 'zh-TW';
   document.querySelectorAll('#langBar button').forEach(b => b.classList.toggle('on', b.dataset.l === l));
-  $('appTitle').textContent = T('title');
+  paintZhBar();
+  $('appTitle').innerHTML = esc(T('title'));
+  render();
+}
+function paintZhBar(){
+  document.querySelectorAll('#zhBar button').forEach(b => b.classList.toggle('on', b.dataset.z === zhs()));
+  $('lgl1').innerHTML = esc(T('uiLang')); $('lgl2').innerHTML = esc(T('zhLang'));
+}
+function setZh(z){
+  zhsPick = z; if(!PREVIEW) LS.set('dc.zh', z);
+  paintZhBar(); $('appTitle').innerHTML = esc(T('title'));
   render();
 }
 document.querySelectorAll('#langBar button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
+document.querySelectorAll('#zhBar button').forEach(b => b.addEventListener('click', () => setZh(b.dataset.z)));
 
 function renderPreview(root, user){
   if(!authReady){ root.innerHTML = loadingHtml(); return; }
@@ -318,6 +356,7 @@ function render(){
   const root = $('app');
   const user = auth.currentUser;
   $('foot').textContent = '';
+  paintZhBar();
   if(PREVIEW) return renderPreview(root, user);
   if(!tid && !user){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>`; return; }
   if(!authReady){ root.innerHTML = loadingHtml(); return; }
@@ -515,7 +554,7 @@ function renderHome(root){
 /* ───────── 學習分頁：上課紀錄、已學清單、複習、能力、教材 ───────── */
 let learnOpen = false, learnTab = 'log', revSub = 'cards', revDir = 'z2e', revShown = false, revOnlyNot = false, revSeed = 1, revIdx = 0, revRound = null, matDoc = null, matLoaded = false, matTried = false;
 let listDoc = null, cloudMarks = null, learnDataTried = false;   // listDoc：老師為這位學生存的單字／語法清單；cloudMarks：雲端的「還不熟」（讀不到時為 null，就只用這台裝置的）
-const LT = (k, p) => learnT(lang, k, p);
+const LT = (k, p) => uiS(learnT(lang, k, p));
 /* 單字拼音：老師存的優先；沒有就用 GoodTeacher 讀音規則現算（和後台同一套）。函式庫沒載入時就留空 */
 function learnTotalsPy(hwDocs, listDoc){
   const tot = learnTotals(hwDocs, listDoc);
@@ -585,7 +624,7 @@ function placeSave(rec){
 }
 function placeHistHtml(){
   if(!placeHist || !placeHist.length) return '';
-  return `<div class="card"><h2>${esc(LT('abTestHist'))}</h2>${placeHist.map(r => `<div class="row"><span>${esc(fmtMs(r.ts))}</span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div><div class="muted" style="margin-bottom:8px">TOCFL ${esc(r.tocfl)} · ${r.right}/${r.total}</div>`).join('')}</div>`;
+  return `<div class="card abhist"><h2>${esc(LT('abTestHist'))}</h2>${placeHist.map(r => `<div class="row"><span>${esc(fmtMs(r.ts))}</span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div><div class="muted" style="margin-bottom:8px">TOCFL ${esc(r.tocfl)} · ${r.right}/${r.total}</div>`).join('')}</div>`;
 }
 function renderPlacement(root){
   if(root.querySelector('#plBox')) return;   // 測驗進行中：背景更新不要把它重畫
@@ -607,12 +646,12 @@ function levelsHtml(tot){
     const lv = r.levels, top = r.reached ? esc(nm(r.reached === undefined ? 0 : (name === 'CEFR' ? lv[r.reached - 1].lv : r.reached))) : esc(LT('abNone'));
     const head = !r.enough ? `<div class="muted">${esc(LT('abFew'))}</div>` : `<div class="row"><span>${esc(LT('abReached'))}</span><b>${top}</b></div>${r.learning ? `<div class="row"><span>${esc(LT('abLearning'))}</span><b>${esc(nm(name === 'CEFR' ? lv[r.learning - 1].lv : r.learning))}</b></div>` : ''}`;
     const bars = lv.map(x => `<div class="row"><span>${esc(name === 'CEFR' ? x.lv : nm(x.lv))}</span><b>${x.pct}%</b></div><div class="lbar"><i style="width:${x.pct}%"></i></div>`).join('');
-    return `<div class="card"><h2>${esc(name)}</h2>${head}${bars}</div>`;
-  }).join('') + gramHtml(tot) + `<div class="muted" style="margin-bottom:10px">${L.start ? esc(LT('abStart', { l: L.start })) + ' ' : ''}${esc(LT('abRef'))}</div>`;
+    return `<div class="card lvl"><h2>${esc(name)}</h2>${head}${bars}</div>`;
+  }).join('') + gramHtml(tot) + `<div class="muted abnote" style="margin-bottom:10px">${L.start ? esc(LT('abStart', { l: L.start })) + ' ' : ''}${esc(LT('abRef'))}</div>`;
 }
 function gramHtml(tot){
   const g = learnGrammar(tot.points, window.GRAMMAR_MAP, gmapManual);
-  return `<div class="card"><h2>${esc(LT('abPoints'))}</h2><div class="row"><span>${esc(LT('abGLearned'))}</span><b>${tot.points.length}</b></div>${g.cefr ? `<div class="row"><span>${esc(LT('abGCefr'))}</span><b>CEFR ${esc(g.cefr)}</b></div>` : `<div class="muted">${esc(LT('abGFew'))}</div>`}</div>`;
+  return `<div class="card abtail"><h2>${esc(LT('abPoints'))}</h2><div class="row"><span>${esc(LT('abGLearned'))}</span><b>${tot.points.length}</b></div>${g.cefr ? `<div class="row"><span>${esc(LT('abGCefr'))}</span><b>CEFR ${esc(g.cefr)}</b></div>` : `<div class="muted">${esc(LT('abGFew'))}</div>`}</div>`;
 }
 function renderLearn(root){
   if(placeOpen) return renderPlacement(root);
@@ -623,7 +662,7 @@ function renderLearn(root){
   if(learnTab === 'log'){
     const groups = learnLogGroups(studentDoc.log), n = groups.reduce((a, g) => a + g.rows.length, 0);
     const nx = studentDoc.next && studentDoc.next.n ? `<div class="card nx"><h2>${esc(LT('nextUp'))}</h2><div>${esc(studentDoc.next.n)}</div></div>` : '';
-    body = `<div class="logwrap">` + nx + (n ? `<div class="card loglist"><h2>${esc(LT('logCount', { n }))}</h2><div class="lcols">` + groups.map(g => `<div class="lg"><div class="lym">${esc(pcFmtDate(g.ym + '-01', lang, { year: 'numeric', month: 'long' }))}</div>` +
+    body = `<div class="logwrap">` + nx + (n ? `<div class="card loglist"><h2>${esc(LT('logCount', { n }))}</h2><div class="lscroll">` + groups.map(g => `<div class="lg"><div class="lym">${esc(pcFmtDate(g.ym + '-01', lang, { year: 'numeric', month: 'long' }))}</div>` +
       g.rows.map(r => `<div class="lrow"><span class="d">${esc(pcFmtDate(r.d, lang, { month: 'numeric', day: 'numeric' }))}</span><span>${esc(r.p)}</span></div>`).join('') + '</div>').join('') + '</div></div>'
       : `<div class="card center muted">${esc(LT('logEmpty'))}</div>`) + `</div>`;
   }else if(learnTab === 'review'){
@@ -654,12 +693,12 @@ function renderLearn(root){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
     body = `<div class="abwrap"><div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
     placeLoad(); body += placeHistHtml();
-    body += `<div class="card"><h2>${esc(LT('abTestH'))}</h2><div class="muted" style="margin-bottom:8px">${esc(LT('abTestD'))}</div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
+    body += `<div class="card abtest"><h2>${esc(LT('abTestH'))}</h2><div class="muted" style="margin-bottom:8px">${esc(LT('abTestD'))}</div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
     body += levelsHtml(tot);
     if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
     else{
-      if(types.length) body += `<div class="card"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
-      if(ab.trend.length) body += `<div class="card"><h2>${esc(LT('abTrend'))}</h2>${ab.trend.map(t => `<div class="row"><span>${esc(t.title)}</span><b>${t.pct}%</b></div><div class="lbar"><i style="width:${t.pct}%"></i></div>`).join('')}<div class="muted">${esc(LT('abNote'))}</div></div>`;
+      if(types.length) body += `<div class="card abtail"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
+      if(ab.trend.length) body += `<div class="card abtail"><h2>${esc(LT('abTrend'))}</h2>${ab.trend.map(t => `<div class="row"><span>${esc(t.title)}</span><b>${t.pct}%</b></div><div class="lbar"><i style="width:${t.pct}%"></i></div>`).join('')}<div class="muted">${esc(LT('abNote'))}</div></div>`;
     }
     body += '</div>';
   }else{
@@ -668,7 +707,7 @@ function renderLearn(root){
       ? `<div class="card filesw">${files.map(f => `<div class="hwitem"><div><div class="t">${esc(f.n)}</div>${f.t ? `<div class="muted">${esc(fmtMs(f.t))}</div>` : ''}</div><a class="btn quiet" style="text-decoration:none" href="${esc(f.u)}" target="_blank" rel="noopener noreferrer">${esc(LT('fOpen'))}</a></div>`).join('')}</div>`
       : `<div class="card center muted">${esc(LT('fEmpty'))}</div>`;
   }
-  root.innerHTML = `<div class="lview"><div class="lbar2"><div class="card lhead"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
+  root.innerHTML = `<div class="lview${learnTab === 'log' || learnTab === 'files' ? ' fixed' : ''}"><div class="lbar2"><div class="card lhead"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
     <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}${dotHtml(dots[k])}</button>`).join('')}</div></div>${body}${logoutBlock()}</div>`;
   $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
   $('learnBack').onclick = () => { learnOpen = false; render(); toTop(); };
@@ -718,7 +757,7 @@ const dotHtml = on => on ? '<span class="rdot"></span>' : '';
 /* ───────── 公布欄／留言板／私訊 ───────── */
 let boardOpen = false, boardTab = 'board', wallDraft = '', dmDraft = '', boardMsg = '', boardBusy = false, boardTimer = null;
 let boardPosts = [], wallPosts = [], dmMsgs = [], bOk = { board: false, wall: false, dm: false }, unsubBoard = [];
-const BT = (k, p) => boardT(lang, k, p);
+const BT = (k, p) => uiS(boardT(lang, k, p));
 function startBoard(sid){
   stopBoard();
   const col = c => collection(db, 'portal', tid, c);
@@ -791,7 +830,7 @@ async function sendBoard(kind){
   boardBusy = false; render();
 }
 
-let rosterData = null, rosterReady = false, nudCfg = null, nudCfgTried = false, nudEntered = false, nudTimer = null, nudBox = null;
+let rosterReady = false, nudCfg = null, nudCfgTried = false, nudEntered = false, nudTimer = null, nudBox = null;
 const nudOn = () => !!(studentDoc && !studentDoc.archived && !(rosterData && rosterData.nudge && rosterData.nudge.on === false));
 const nudSeen = () => { try{ return JSON.parse(LS.get('dc.seen.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
 const nudMarkSeen = id => { if(PREVIEW) return; const s = nudSeen(); s[id] = 1; LS.set('dc.seen.' + studentId, JSON.stringify(s)); };

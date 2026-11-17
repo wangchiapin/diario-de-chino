@@ -121,3 +121,14 @@ python3 tests/smoke.py     # 用瀏覽器開學生頁與後台（Firebase 用假
 - 「我的能力」單字量與語法點對照（參考用）：`levels-data.js`（TOCFL 八千詞 6 級、HSK 3.0 2021 的 7 級，詞→級）、`grammar-map.js`（文法速查表標題→冊→CEFR 範圍），第一次打開「能力」才讀。連續達標 75%、對到 30 字以上才評估。老師後台「起始程度」存在 `lists/{sid}.start`（`{cefr, words, note}`）；「語法點分冊」手動對照存在 `config/gmap`（`{map:{標題:冊}}`，0＝不分類），都用原有規則，不用加新規則。
 
 - 能力分級測驗（`placement.js`、`placement-bank.js`、`placement.html`）：題庫 A1–C2 每級單字 10、語法 10、短文 2 篇×2 題；快速版約 20 題（先 8 題粗估再 12 題考邊界附近）、完整版 48 題；每級答對六成才算過。學生頁（「我的能力」）和獨立網頁（`placement.html?t=老師代號`，要填名字）測完都會自動存到 `portal/{tid}/placements/{id}`（欄位：src、sid、name、mode、ts、reached、cefr、tocfl、right、total、by、py）。後台「測驗」分頁列出全部、可刪除；學生頁只讀自己的（`sid` 對得上）。老師專用備註存在 `portal/{tid}/notes/{sid}`（後台「單字」分頁每位學生一張卡片）。**這兩個要加規則：見 `moneybook-50481-portal-rules.txt` 第十批。** 題庫是用 `build_bank` 程式從審好的題庫檔轉成（含繁體、GoodTeacher 拼音）。
+
+
+## 語言設定（兩個開關）
+- 介面語言：ES / 繁 / 简（按鈕、說明文字）。
+- 中文字：繁 / 简（教材、單字卡、練習單、測驗、彈跳視窗等中文內容），預設簡體。
+- 學生的選擇記在該裝置的瀏覽器（localStorage：dc.lang、dc.zh）。
+- 老師可在後台「學生」分頁為每位學生設預設中文字（roster 文件的 script 欄位）。
+
+## 電腦版（≥1024px）補充
+- 上課紀錄、教材：單欄、固定高度、框內捲動（最新在上）。
+- 我的能力：數字＋測驗 / TOCFL・HSK・CEFR 三欄 / 語法點＋最近作業。

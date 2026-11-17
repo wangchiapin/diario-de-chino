@@ -1032,12 +1032,13 @@ function render(){
   }else{
     html += `<div class="card"><h2>對照表：學生 ↔ 電子郵件（${active.length} 位在學）</h2>
       ${missingTz ? `<div class="muted small" style="margin-bottom:6px">有 ${missingTz} 位學生還沒設定所在地。</div>${helpBox('tz', '學生頁會先用他們裝置的時區；到日誌「課表及學生設定」選好所在地就會自動帶入。')}` : ''}
-      <table><thead><tr><th>學生</th><th>付費</th><th>已上</th><th>時區</th><th>日誌更新</th><th>登入用電子郵件</th><th></th></tr></thead><tbody>`;
+      <table><thead><tr><th>學生</th><th>付費</th><th>已上</th><th>時區</th><th>日誌更新</th><th>中文字</th><th>登入用電子郵件</th><th></th></tr></thead><tbody>`;
     active.forEach(id => {
       const s = students[id], r = roster[id], m = rowMsg[id];
       html += `<tr data-id="${esc(id)}">
         <td><b>${esc(s.name)}</b></td><td${s.pay === 'package' && s.remaining < 0 ? ' class="err"' : ''}>${esc(payText(s))}</td><td>${s.taught || 0} 堂</td>
         <td class="small">${esc(s.tz || '（沒設定）')}</td><td class="small">${esc(fmtTime(s.updatedAt))}</td>
+        <td>${r ? `<select class="zhSel" title="學生頁一打開時的中文字；學生自己改過就以他的為準"><option value="sc"${r.script !== 'tc' ? ' selected' : ''}>簡體</option><option value="tc"${r.script === 'tc' ? ' selected' : ''}>繁體</option></select>` : '<span class="muted small">—</span>'}</td>
         <td class="em"><input type="email" class="emIn" value="${esc(drafts[id] != null ? drafts[id] : (r ? r.email : ''))}" placeholder="student@example.com" autocapitalize="off"></td>
         <td><button class="save">儲存</button> <a class="pv" href="index.html?preview=${encodeURIComponent(id)}" target="_blank" rel="noopener">預覽</a><div class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : (r ? '已設定' : ''))}</div></td></tr>`;
     });
@@ -1072,6 +1073,12 @@ function render(){
     // 還沒按「儲存」的字先記著，日誌更新、畫面重畫時才不會被洗掉
     tr.querySelector('.emIn').oninput = e => { drafts[id] = e.target.value; };
     tr.querySelector('.save').onclick = () => saveEmail(id, tr.querySelector('.emIn').value);
+    const zs = tr.querySelector('.zhSel');
+    if(zs) zs.onchange = async () => {
+      try{ await updateDoc(doc(db, 'portal', uid, 'roster', id), { script: zs.value }); roster[id] = Object.assign({}, roster[id], { script: zs.value }); rowMsg[id] = { text: '✓ 預設中文字已存', ok: true }; }
+      catch(err){ console.error(err); rowMsg[id] = { text: '儲存失敗，請再試一次', ok: false }; }
+      render();
+    };
   });
 }
 
