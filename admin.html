@@ -114,10 +114,11 @@ td.em{min-width:260px}
 .tabbar button.on{background:var(--accent);color:#fff}
 .tabbar .bd{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;text-align:center;margin-left:5px;padding:0 4px}
 @media (max-width:640px){
-  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;gap:2px;background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
-  .tabbar button{flex:1;border:0;border-radius:10px;padding:10px 2px;font-size:14px}
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;gap:2px;background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(18px + env(safe-area-inset-bottom));overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabbar::-webkit-scrollbar{display:none}
+  .tabbar button{flex:1 0 auto;border:0;border-radius:10px;padding:10px 10px;font-size:13px;white-space:nowrap}
   .tabbar button.on{background:var(--accent-soft);color:var(--text);font-weight:600}
-  .wrap{padding-bottom:90px}
+  .wrap{padding-bottom:104px}
 }
 @media (max-width:640px){
   table,thead,tbody,tr,td{display:block}
