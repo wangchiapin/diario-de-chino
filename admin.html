@@ -152,6 +152,7 @@ let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = 
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
 let pool = {}, poolLoaded = false, admins = {}, hw = {}, hwUnsubs = {};   // hw：學生代號 → { 作業代號 → 文件 }
+let delOpen = null, delInfo = {}, delOk = {}, delBusy = false;
 let assignOpen = null, assignSel = {}, hwNote = {}, adminDraft = { code: '', label: '' }, adminMsg = null;
 const poolCache = {};
 let gradeOpen = null, gdraft = null, gmsg = null;   // 批改中：{sid,wid}、批改草稿
@@ -336,7 +337,8 @@ function hwHtml(active){
     const p = pool[wid], st = poolState(wid) || {}, total = window.hwTotal ? hwTotal(st) : (p.count || 0);
     const rows = active.map(sid => ({ sid, d: (hw[sid] || {})[wid] })).filter(x => x.d);
     h += `<div class="hwrow" data-wid="${esc(wid)}"><div class="row"><b>${esc(p.name || '（沒有名稱）')}</b><span class="muted small">${total} 分　${esc(fmtTime(p.upd || p.ts))}</span>
-      <button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button></div>`;
+      <button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
+    if(delOpen === wid) h += delPanelHtml(wid);
     if(rows.length) h += `<div class="small" style="margin-top:4px">${rows.map(x => `<span class="muted">${esc(students[x.sid].name)}</span> ${hwChip(x.d)}${x.d.status !== 'todo' ? `<button class="tiny quiet" data-g="${esc(x.sid)}" data-gw="${esc(wid)}">${x.d.status === 'graded' ? '看批改' : '批改'}</button> ` : ''}`).join('')}</div>`;
     if(assignOpen === wid){
       const sel = assignSel[wid] || {};
@@ -350,6 +352,43 @@ function hwHtml(active){
   });
   h += `</div>`;
   return h;
+}
+/* 刪除作業：沒發過就直接刪原稿；發過的，連學生那份（作答、批改、上傳的 Word）一起刪，已交或已批改的要再勾一次確認 */
+function delPanelHtml(wid){
+  const p = pool[wid] || {}, f = delInfo[wid], note = hwNote[wid];
+  if(!f) return `<div class="small muted" style="margin-top:8px">確認中…</div>`;
+  const need = f.sub + f.graded > 0, ok = !need || !!delOk[wid];
+  const msg = !f.n ? '這份作業還沒發給任何學生，刪除後就從這裡消失，無法復原。'
+    : `這份作業已發給 ${f.n} 位學生${f.sub || f.graded ? `，其中 ${f.sub} 位已交、${f.graded} 位已批改` : '，都還沒交'}。刪除後，他們的作業、作答、批改結果和上傳的 Word 檔都會一起消失，單字總表裡只來自這份作業的單字也會消失，無法復原。`;
+  return `<div class="card" style="margin-top:8px;background:#f6e7e4;border-color:#d9a79e"><div class="small"><b>刪除「${esc(p.name || '（沒有名稱）')}」？</b></div><div class="small" style="margin-top:4px">${esc(msg)}</div>
+    ${need ? `<label class="small" style="display:block;margin-top:6px"><input type="checkbox" data-delok ${delOk[wid] ? 'checked' : ''}> 我確定要連學生的作答和批改一起刪除</label>` : ''}
+    <div class="row" style="margin-top:8px"><button class="tiny" data-a="delgo" ${ok && !delBusy ? '' : 'disabled'}>${delBusy ? '刪除中…' : '確定刪除'}</button><button class="tiny quiet" data-a="delno">取消</button><span class="small err">${esc(note && !note.ok ? note.text : '')}</span></div></div>`;
+}
+async function delPrepare(wid){
+  delOpen = wid; delOk[wid] = false; hwNote[wid] = null; delInfo[wid] = null; render();
+  const f = { n: 0, sub: 0, graded: 0, sids: [] };
+  for(const sid of Object.keys(students)){
+    let d = (hw[sid] || {})[wid];
+    if(!d && students[sid].archived){ try{ const g = await getDoc(doc(db, 'portal', uid, 'students', sid, 'hw', wid)); if(g.exists()) d = g.data(); }catch(e){} }
+    if(!d) continue;
+    f.n++; f.sids.push(sid);
+    if(d.status === 'graded') f.graded++; else if(d.status === 'submitted') f.sub++;
+  }
+  if(delOpen === wid){ delInfo[wid] = f; render(); }
+}
+async function delRun(wid){
+  const f = delInfo[wid]; if(!f || delBusy) return;
+  delBusy = true; hwNote[wid] = null; render();
+  try{
+    for(const sid of f.sids){
+      await deleteDoc(doc(db, 'portal', uid, 'students', sid, 'hw', wid));
+      try{ await deleteDoc(doc(db, 'portal', uid, 'students', sid, 'hwFiles', wid)); }catch(e){}
+      if(hw[sid]) delete hw[sid][wid];
+    }
+    await deleteDoc(doc(db, 'portal', uid, 'hwPool', wid));
+    delete pool[wid]; delOpen = null; delete delInfo[wid]; delete delOk[wid]; assignOpen = assignOpen === wid ? null : assignOpen;
+  }catch(err){ console.error(err); hwNote[wid] = { text: err && err.code === 'permission-denied' ? '沒有權限刪除' : '刪除失敗，請再試一次（已刪掉的部分不會回來，再按一次就會繼續）', ok: false }; }
+  delBusy = false; render();
 }
 /* 發布帳號卡片（放在「設定」分頁） */
 
@@ -651,7 +690,11 @@ function bindHw(root, active){
       if(a === 'assign'){ assignOpen = assignOpen === wid ? null : wid; hwNote[wid] = null; return render(); }
       if(a === 'all'){ assignSel[wid] = {}; active.forEach(sid => { if(!(hw[sid] || {})[wid]) assignSel[wid][sid] = true; }); return render(); }
       if(a === 'send') return sendAssign(wid);
+      if(a === 'del') return delOpen === wid ? (delOpen = null, render()) : delPrepare(wid);
+      if(a === 'delno'){ delOpen = null; return render(); }
+      if(a === 'delgo') return delRun(wid);
     });
+    row.querySelectorAll('input[data-delok]').forEach(i => i.onchange = () => { delOk[wid] = i.checked; render(); });
     row.querySelectorAll('input[data-sid]').forEach(i => i.onchange = () => { (assignSel[wid] = assignSel[wid] || {})[i.dataset.sid] = i.checked; });
   });
 }
