@@ -358,7 +358,7 @@ function hwHtml(active){
     const p = pool[wid], st = poolState(wid) || {}, total = window.hwTotal ? hwTotal(st) : (p.count || 0);
     const rows = active.map(sid => ({ sid, d: (hw[sid] || {})[wid] })).filter(x => x.d);
     h += `<div class="hwrow" data-wid="${esc(wid)}"><div class="row"><b>${esc(p.name || '（沒有名稱）')}</b><span class="muted small">${total} 分　${esc(fmtTime(p.upd || p.ts))}</span>
-      <button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
+      <button class="tiny quiet" data-a="try" title="用學生的作答畫面自己寫一次，不會存給任何學生">試寫</button><button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
     if(delOpen === wid) h += delPanelHtml(wid);
     if(rows.length) h += `<div class="small" style="margin-top:4px">${rows.map(x => `<span class="muted">${esc(students[x.sid].name)}</span> ${hwChip(x.d)}${x.d.status !== 'todo' ? `<button class="tiny quiet" data-g="${esc(x.sid)}" data-gw="${esc(wid)}">${x.d.status === 'graded' ? '看批改' : '批改'}</button> ` : ''}`).join('')}</div>`;
     if(assignOpen === wid){
@@ -715,6 +715,7 @@ function bindHw(root, active){
     const wid = row.dataset.wid;
     row.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
       const a = b.dataset.a;
+      if(a === 'try'){ window.open('index.html?try=' + encodeURIComponent(wid), '_blank', 'noopener'); return; }
       if(a === 'assign'){ assignOpen = assignOpen === wid ? null : wid; hwNote[wid] = null; return render(); }
       if(a === 'all'){ assignSel[wid] = {}; active.forEach(sid => { if(!(hw[sid] || {})[wid]) assignSel[wid][sid] = true; }); return render(); }
       if(a === 'send') return sendAssign(wid);

@@ -299,6 +299,8 @@ function loadingHtml(){
 }
 
 // 老師預覽：?preview=學生代號。用學生日誌管理後台登入的帳號，唯讀看那位學生登入後會看到的畫面
+/* 老師試寫：後台作業旁的「試寫」開這個模式，答案只在這個畫面，不存進任何學生 */
+const TRYHW = (function(){ const v = new URLSearchParams(location.search).get('try'); return v && v.indexOf('/') < 0 && v.length < 200 ? v : null; })();
 const PREVIEW = (function(){ const v = new URLSearchParams(location.search).get('preview'); return v && v.indexOf('/') < 0 && v.length < 200 ? v : null; })();
 
 (function readTeacherId(){
@@ -344,6 +346,47 @@ function setZh(z){
 document.querySelectorAll('#langBar button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
 document.querySelectorAll('#zhBar button').forEach(b => b.addEventListener('click', () => setZh(b.dataset.z)));
 
+/* ───────── 老師試寫：本機作答、本機批改，不寫入任何資料 ───────── */
+let tryState = null, tryErr = '';
+async function startTry(user){
+  tid = user.uid; tryState = null; tryErr = '';
+  try{
+    const s = await getDoc(doc(db, 'portal', tid, 'hwPool', TRYHW));
+    if(!s.exists()) throw new Error('none');
+    tryState = JSON.parse(s.data().data || '{}');
+    tryReset();
+  }catch(err){ console.error(err); tryErr = '找不到這份作業，或這個帳號沒有權限（請先登入學生日誌管理後台）。'; render(); }
+}
+function tryReset(){
+  const d = hwAssignDoc(TRYHW, tryState, Date.now());
+  hwDocs = {}; hwDocs[TRYHW] = d; hwOpen = TRYHW; hwOpenStatus = 'todo';
+  hwDraft = {}; hwOrder = {}; hwFile = null; hwConfirming = false; hwSaveState = '';
+  render(); toTop();
+}
+function tryGrade(d){
+  const au = hwAutoGrade(tryState, hwDraft), items = {};
+  hwActiveSections(tryState).forEach(sec => hwActiveItems(sec).forEach(it => {
+    const r = au.items[it.id], o = { got: r.auto ? r.got : r.max, max: r.max, key: hwKeyText(sec.type, it) };
+    const ke = hwKeyTextEn(sec.type, it); if(ke) o.keyEn = ke;
+    if(r.blanks) o.blanks = r.blanks;
+    if(!r.auto) o.tryManual = 1;
+    items[it.id] = o;
+  }));
+  d.status = 'graded'; hwOpenStatus = 'graded'; d.answers = JSON.parse(JSON.stringify(hwDraft));
+  d.result = { got: au.autoGot, max: au.autoMax }; d.review = { items: items, note: '' };
+  tryManual = au.manual; render(); toTop();
+}
+let tryManual = 0;
+function renderTry(root, user){
+  if(!authReady){ root.innerHTML = loadingHtml(); return; }
+  if(!user){ root.innerHTML = `<div class="card center">試寫要先登入學生日誌管理後台。<br><a href="admin.html">前往學生日誌管理後台登入</a>，登入後再按作業旁邊的「試寫」。</div>`; return; }
+  if(tryErr){ root.innerHTML = `<div class="card center">${esc(tryErr)}</div>`; return; }
+  if(!tryState || !hwDocs[TRYHW]){ root.innerHTML = loadingHtml(); return; }
+  const d = hwDocs[TRYHW];
+  renderHw(root);
+  $('hwBack').textContent = '↻ 重新試寫'; $('hwBack').onclick = () => tryReset();
+  root.insertAdjacentHTML('afterbegin', `<div class="card pvbar" style="background:#e6dfd0;text-align:center">老師試寫：答案只在這個畫面，不會存給任何學生　<a href="admin.html">回後台</a>${d.status === 'graded' ? `<div class="muted" style="font-size:13px;margin-top:4px">${tryManual ? '翻譯、造句這類手寫題不計分，請自己對照下面的標準答案。' : ''}</div>` : '<div class="muted" style="font-size:13px;margin-top:4px">寫完按最下面的交卷，馬上看自動批改結果。</div>'}</div>`);
+}
 function renderPreview(root, user){
   if(!authReady){ root.innerHTML = loadingHtml(); return; }
   if(!user){ root.innerHTML = `<div class="card center">老師預覽要先登入學生日誌管理後台。<br><a href="admin.html">前往學生日誌管理後台登入</a>，登入後再按學生旁邊的「預覽」。</div>`; return; }
@@ -359,6 +402,7 @@ function render(){
   $('foot').textContent = '';
   paintZhBar();
   if(PREVIEW) return renderPreview(root, user);
+  if(TRYHW) return renderTry(root, user);
   if(!tid && !user){ root.innerHTML = `<div class="card center">${esc(T('needLink'))}</div>`; return; }
   if(!authReady){ root.innerHTML = loadingHtml(); return; }
   if(!user) return renderAuth(root);
@@ -935,7 +979,7 @@ async function hwLoadFile(id){
 }
 function hwSetDraft(id, val){
   if(val === '' || val == null || (Array.isArray(val) && !val.some(x => x))) delete hwDraft[id]; else hwDraft[id] = val;
-  if(PREVIEW) return;
+  if(PREVIEW || TRYHW) return;
   hwSaveState = 'saving'; hwShowSave();
   clearTimeout(hwTimer); hwTimer = setTimeout(hwSave, 1200);
 }
@@ -945,7 +989,7 @@ function hwShowSave(){
   el.className = 'savemsg' + (hwSaveState === 'err' ? ' err' : '');
 }
 async function hwSave(extra){
-  const id = hwOpen; if(!id || PREVIEW) return;
+  const id = hwOpen; if(!id || PREVIEW || TRYHW) return;
   try{
     await updateDoc(doc(db, 'portal', tid, 'students', studentId, 'hw', id), Object.assign({ answers: JSON.parse(JSON.stringify(hwDraft)) }, extra || {}));
     hwSaveState = 'saved'; hwShowSave(); return true;
@@ -975,6 +1019,7 @@ const hwTitleOf = d => (lang === 'en' && d.titleEn) || d.title || '';
 function hwReviewHtml(sec, q){
   const d = hwDocs[hwOpen], rv = d && d.status === 'graded' && d.review && d.review.items && d.review.items[q.id];
   if(!rv) return '';
+  if(rv.tryManual) return `<div class="rv"><span class="k"><span class="lab">${esc(T(sec.type === 'sentence' ? 'hwSample' : 'hwKey'))}</span>${esc((lang === 'en' && rv.keyEn) || rv.key || '')}</span></div>`;
   const cls = rv.got >= rv.max ? 'y' : rv.got > 0 ? 'h' : 'n';
   const ico = cls === 'y' ? '✓' : cls === 'h' ? '½' : '✗';
   const word = T(cls === 'y' ? 'hwRight' : cls === 'h' ? 'hwHalf' : 'hwWrong');
@@ -1031,7 +1076,7 @@ function loadJs(src){
   });
 }
 function hwWordHtml(d, locked){
-  if(PREVIEW) return '';
+  if(PREVIEW || TRYHW) return '';
   if(locked){
     return hwFile ? `<div class="card"><h2>${esc(T('hwWordTitle'))}</h2><div>${esc(T('hwWordUploaded', { name: hwFile.name }))}</div></div>` : '';
   }
@@ -1105,7 +1150,7 @@ function renderHw(root){
   root.innerHTML = h;
   $('hwBack').onclick = () => { clearTimeout(hwTimer); if(hwSaveState === 'saving') hwSave(); hwOpen = null; render(); toTop(); };
   if(locked) return;
-  hwWordBind();
+  if(!TRYHW) hwWordBind();
   hwShowSave(); hwActionDraw(d);
   root.oninput = e => {
     const t = e.target, k = t.dataset.k, id = t.dataset.id; if(!k) return;
@@ -1141,6 +1186,7 @@ function hwActionDraw(d){
     $('hwNo').onclick = () => { hwConfirming = false; hwActionDraw(d); };
     $('hwYes').onclick = async () => {
       clearTimeout(hwTimer); $('hwYes').disabled = true;
+      if(TRYHW) return tryGrade(d);
       const ok = await hwSave({ status: 'submitted', submittedAt: Date.now() });
       if(!ok){ hwConfirming = false; hwActionDraw(d); }
     };
@@ -1189,6 +1235,7 @@ onAuthStateChanged(auth, user => {
   stopHw(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; placeOpen = false; placeHist = null; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
+  if(TRYHW){ if(user) startTry(user); else render(); return; }
   if(user && user.emailVerified) startRoster(); else render();
 });
 
