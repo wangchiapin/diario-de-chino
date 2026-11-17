@@ -67,14 +67,13 @@ body{height:100vh;height:100dvh;box-sizing:border-box}
 .lview.fixed .lscroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding-right:6px}
 .lview.fixed>.filesw{flex:1 1 auto;min-height:0;overflow-y:auto}
 .lview.fixed .lym{margin-top:0;padding-top:10px}
-.abwrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px;align-items:start}
-.abwrap>.lgrid{grid-column:1/3;order:1;margin-bottom:12px}
-.abwrap>.abtest{grid-column:3;order:2;margin-bottom:12px}
-.abwrap>.lvl{order:3}
-.abwrap>.abtail{order:4}
-.abwrap>.abhist{order:5;grid-column:1/-1}
-.abwrap>.abnote{order:6;grid-column:1/-1}
-.abwrap>.card.center{grid-column:1/-1;order:7}
+.abwrap{display:block}
+.abwrap .abgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 16px;align-items:start}
+.abwrap .abgrid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.abwrap>.abtest{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+.abwrap>.abtest h2{margin:0 0 4px}.abwrap>.abtest .muted{margin:0}
+.abwrap .lvl>.muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.abhist .hsub{font-size:13px;margin-left:2px}
 .abwrap .lvl .lbar{height:6px;margin:2px 0 6px}
 .abwrap .lvl .row{font-size:13px}
 .lview .rcard{max-width:760px;margin-left:auto;margin-right:auto;min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
@@ -170,6 +169,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .wrow .we{color:var(--sub);font-size:14px}
 .lbar{height:10px;background:#ece7dc;border-radius:6px;overflow:hidden;margin:4px 0 10px}
 .lbar i{display:block;height:100%;background:var(--accent)}
+.abh{font-size:13px;font-weight:700;color:var(--sub);margin:20px 2px 8px;letter-spacing:.02em}
 .lgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
 .lgrid div{background:#f3efe6;border-radius:8px;padding:8px 4px;text-align:center}
 .lgrid b{display:block;font-size:20px}
@@ -654,6 +654,7 @@ function loadPlacement(){
   placeP = ld('placement-bank.js').then(() => ld('placement.js')).catch(e => { placeP = null; throw e; });
   return placeP;
 }
+let placeAll = false;   // 測驗紀錄：預設只顯示最近 3 筆，按「看全部」才展開
 let placeHist = null;   // 這位學生自己的測驗紀錄（新的在前）；還沒讀好是 null
 async function placeLoad(){
   if(placeHist !== null || PREVIEW) return;
@@ -671,7 +672,8 @@ function placeSave(rec){
 }
 function placeHistHtml(){
   if(!placeHist || !placeHist.length) return '';
-  return `<div class="card abhist"><h2>${esc(LT('abTestHist'))}</h2>${placeHist.map(r => `<div class="row"><span>${esc(fmtMs(r.ts))}</span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div><div class="muted" style="margin-bottom:8px">${r.reached ? 'TOCFL ' + esc(r.tocfl) + ' · ' : ''}${r.right}/${r.total}</div>`).join('')}</div>`;
+  const rows = placeAll ? placeHist : placeHist.slice(0, 3);
+  return `<div class="card abhist"><h2>${esc(LT('abTestHist'))}</h2>${rows.map(r => `<div class="row"><span>${r.reached ? 'TOCFL ' + esc(r.tocfl) + ' · ' : ''}${r.right}/${r.total}<span class="muted hsub"> · ${esc(fmtMs(r.ts))}</span></span><b>${esc(r.reached ? r.cefr : '<A1')}</b></div>`).join('')}${placeHist.length > 3 ? `<button class="btn quiet" id="plAll" style="margin-top:6px;padding:4px 14px;font-size:13px">${esc(placeAll ? LT('abHistLess') : LT('abHistAll', { n: placeHist.length }))}</button>` : ''}</div>`;
 }
 function renderPlacement(root){
   if(root.querySelector('#plBox')) return;   // 測驗進行中：背景更新不要把它重畫
@@ -689,16 +691,17 @@ function levelsHtml(tot){
   }
   const L = learnLevels(tot.words, window.LEVELS_DATA, 0.75, 30, listDoc && listDoc.start);
   const sets = [['TOCFL', L.tocfl, i => LT('abLvName', { n: i })], ['HSK 3.0（2021）', L.hsk, i => LT('abLvName', { n: i === 7 ? '7-9' : i })], ['CEFR', L.cefr, i => i]];
-  return sets.map(([name, r, nm]) => {
+  const cards = gramHtml(tot) + sets.map(([name, r, nm]) => {
     const lv = r.levels, top = r.reached ? esc(nm(r.reached === undefined ? 0 : (name === 'CEFR' ? lv[r.reached - 1].lv : r.reached))) : esc(LT('abNone'));
     const head = !r.enough ? `<div class="muted">${esc(LT('abFew'))}</div>` : `<div class="row"><span>${esc(LT('abReached'))}</span><b>${top}</b></div>${r.learning ? `<div class="row"><span>${esc(LT('abLearning'))}</span><b>${esc(nm(name === 'CEFR' ? lv[r.learning - 1].lv : r.learning))}</b></div>` : ''}`;
     const bars = lv.map(x => `<div class="row"><span>${esc(name === 'CEFR' ? x.lv : nm(x.lv))}</span><b>${x.pct}%</b></div><div class="lbar"><i style="width:${x.pct}%"></i></div>`).join('');
     return `<div class="card lvl"><h2>${esc(name)}</h2>${head}${bars}</div>`;
-  }).join('') + gramHtml(tot) + `<div class="muted abnote" style="margin-bottom:10px">${L.start ? esc(LT('abStart', { l: L.start })) + ' ' : ''}${esc(LT('abRef'))}</div>`;
+  }).join('');
+  return `<div class="abh">${esc(LT('abSecLevel'))}</div><div class="muted abnote" style="margin:-2px 2px 10px">${L.start ? esc(LT('abStart', { l: L.start })) + ' ' : ''}${esc(LT('abRef'))}</div><div class="abgrid">${cards}</div>`;
 }
 function gramHtml(tot){
   const g = learnGrammar(tot.points, window.GRAMMAR_MAP, gmapManual);
-  return `<div class="card abtail"><h2>${esc(LT('abPoints'))}</h2><div class="row"><span>${esc(LT('abGLearned'))}</span><b>${tot.points.length}</b></div>${g.cefr ? `<div class="row"><span>${esc(LT('abGCefr'))}</span><b>CEFR ${esc(g.cefr)}</b></div>` : `<div class="muted">${esc(LT('abGFew'))}</div>`}</div>`;
+  return `<div class="card abtail"><h2>${esc(LT('abGTitle'))}</h2><div class="row"><span>${esc(LT('abGLearned'))}</span><b>${tot.points.length}</b></div>${g.cefr ? `<div class="row"><span>${esc(LT('abGCefr'))}</span><b>CEFR ${esc(g.cefr)}</b></div>` : ''}</div>`;
 }
 function renderLearn(root){
   if(placeOpen) return renderPlacement(root);
@@ -739,13 +742,16 @@ function renderLearn(root){
   }else if(learnTab === 'ability'){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
     body = `<div class="abwrap"><div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
-    placeLoad(); body += placeHistHtml();
-    body += `<div class="card abtest"><h2>${esc(LT('abTestH'))}</h2><div class="muted" style="margin-bottom:8px">${esc(LT('abTestD'))}</div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
+    placeLoad();
+    body += `<div class="card abtest"><div><h2>${esc(LT('abTestH'))}</h2><div class="muted">${esc(LT('abTestD'))}</div></div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
+    body += placeHistHtml();
     body += levelsHtml(tot);
-    if(!ab.graded) body += `<div class="card center muted">${esc(LT('abEmpty'))}</div>`;
+    if(!ab.graded) body += `<div class="card center muted" style="margin-top:12px">${esc(LT('abEmpty'))}</div>`;
     else{
+      body += `<div class="abh">${esc(LT('abSecHw'))}</div><div class="abgrid two">`;
       if(types.length) body += `<div class="card abtail"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
       if(ab.trend.length) body += `<div class="card abtail"><h2>${esc(LT('abTrend'))}</h2>${ab.trend.map(t => `<div class="row"><span>${esc(t.title)}</span><b>${t.pct}%</b></div><div class="lbar"><i style="width:${t.pct}%"></i></div>`).join('')}<div class="muted">${esc(LT('abNote'))}</div></div>`;
+      body += '</div>';
     }
     body += '</div>';
   }else{
@@ -763,6 +769,7 @@ function renderLearn(root){
   root.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => { revSub = b.dataset.rs; revShown = false; revIdx = 0; revRound = null; render(); });
   root.querySelectorAll('[data-say]').forEach(b => b.onclick = () => speakZh(b.dataset.say));
   on('plGo', () => { placeOpen = true; render(); toTop(); });
+  on('plAll', () => { placeAll = !placeAll; render(); });
   on('dirZE', () => { revDir = 'z2e'; revRound = null; revIdx = 0; revShown = false; render(); });
   on('dirEZ', () => { revDir = 'e2z'; revRound = null; revIdx = 0; revShown = false; render(); });
   on('revAll', () => { revOnlyNot = false; revRound = null; revIdx = 0; revShown = false; render(); });
