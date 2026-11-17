@@ -219,6 +219,9 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .nudx{position:absolute;top:6px;right:8px;width:40px;height:40px;border:0;background:none;font-size:28px;line-height:1;color:var(--sub);cursor:pointer}
 .nudk{font-size:12px;color:var(--sub);letter-spacing:.06em;margin-bottom:8px}
 .nudt{font-size:18px;line-height:1.65;padding-right:14px}
+.nudc.q{background:#edf0f1;border-color:#cdd6da;border-top:4px solid #7f98a3}.nudc.q .nudk{color:#5d7882}
+.nudc.enc{background:#f6f0dd;border-color:#e3d8b4;border-top:4px solid #c2a85a}.nudc.enc .nudk{color:#8a7430}
+.nudc.rem{background:#f5e9e4;border-color:#e3cbc2;border-top:4px solid #b4695a}.nudc.rem .nudk{color:#95473a}
 </style>
 </head>
 <body>
@@ -906,7 +909,8 @@ function nudShow(item){
   const box = document.createElement('div');
   box.className = 'nud'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-live', 'polite');
   const label = item.kind === 'enc' ? 'nudEnc' : item.kind === 'rem' ? 'nudRem' : 'nudQ';
-  box.innerHTML = `<div class="nudc"><button class="nudx" id="nudX" aria-label="${esc(T('nudClose'))}">×</button><div class="nudk">${esc(T(label))}</div><div class="nudt" id="nudText">${esc(item.text)}</div></div>`;
+  const kcls = item.kind === 'enc' ? 'enc' : item.kind === 'rem' ? 'rem' : 'q';
+  box.innerHTML = `<div class="nudc ${kcls}"><button class="nudx" id="nudX" aria-label="${esc(T('nudClose'))}">×</button><div class="nudk">${esc(T(label))}</div><div class="nudt" id="nudText">${esc(item.text)}</div></div>`;
   document.body.appendChild(box); nudBox = box;
   $('nudX').onclick = nudClose;
 }
