@@ -37,9 +37,12 @@ body{height:100vh;height:100dvh;box-sizing:border-box}
 /* 電腦版（寬螢幕）：首頁左右兩欄、其他頁面置中加寬、單字總表並排。手機版的規則都在上面，這裡不影響 */
 @media (min-width:1024px){
 .wrap{max-width:1400px}
-#app>:not(.home):not(.pvbar){max-width:860px;margin-left:auto;margin-right:auto}
+#app>:not(.home):not(.pvbar):not(.lview){max-width:860px;margin-left:auto;margin-right:auto}
 .pvbar{max-width:860px;margin-left:auto;margin-right:auto}
 #app:has(.home)>.pvbar{max-width:none}
+#app:has(.lview)>.pvbar{max-width:1200px}
+.lcols .lym{margin-top:0;padding-top:10px}
+.lview .rcard{max-width:760px;margin-left:auto;margin-right:auto}
 .cal-grid .day{aspect-ratio:auto;height:44px}
 .home{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.5fr) minmax(0,.85fr);gap:0 18px;align-items:start}
 .colA,.colB,.colC{display:block}
@@ -49,8 +52,25 @@ body{height:100vh;height:100dvh;box-sizing:border-box}
 .tzcard{display:none}
 .hello .hi{font-size:22px;font-weight:700;color:var(--text)}
 .colB .card h2{font-size:19px;font-weight:700;color:var(--text);letter-spacing:0}
-.wgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:32px}
-.wgrid .wrow:nth-child(-n+2){border-top:0}
+.lview{max-width:1200px;margin-left:auto;margin-right:auto}
+.calh{display:none}
+.lbar2{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.lbar2 .lhead{flex:0 0 auto;margin:0;padding:8px 14px}
+.lbar2 .lt{margin:0}
+.rvbars{display:flex;flex-wrap:wrap;gap:10px 28px;align-items:center;margin-bottom:12px}
+.rvbars .lt{margin:0}
+.logwrap{display:grid;grid-template-columns:280px minmax(0,1fr);gap:0 16px;align-items:start}
+.logwrap .nx{grid-column:1;grid-row:1}
+.logwrap .loglist,.logwrap>.card:only-child{grid-column:2;grid-row:1}
+.logwrap>.card:only-child{grid-column:1/-1}
+.lcols{column-count:2;column-gap:32px}
+.lcols .lg{break-inside:avoid}
+.abwrap{column-count:2;column-gap:16px}
+.abwrap>*{break-inside:avoid}
+.filesw{column-count:2;column-gap:32px}
+.filesw .hwitem{break-inside:avoid;border-top:0;border-bottom:1px solid var(--line)}
+.wgrid{display:grid;grid-template-columns:repeat(3,1fr);column-gap:32px}
+.wgrid .wrow:nth-child(-n+3){border-top:0}
 }
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.02em}
@@ -469,7 +489,7 @@ function renderHome(root){
     </div>
     <div class="colC">
     <div class="it" style="order:6"><div class="card">
-      <h2>${esc(T('calendar'))}</h2>
+      <h2 class="calh">${esc(T('calendar'))}</h2>
       <div class="cal-head"><button id="calPrev" aria-label="prev">‹</button><b>${esc(monthTitle)}</b><button id="calNext" aria-label="next">›</button></div>
       <div class="cal-grid">${grid}</div>
       <div class="legend"><span><i class="sw done"></i>${esc(T('legendDone'))}</span><span><i class="sw up"></i>${esc(T('legendNext'))}</span><span><i class="sw off"></i>${esc(T('legendOff'))}</span></div>
@@ -602,23 +622,24 @@ function renderLearn(root){
   let body = '';
   if(learnTab === 'log'){
     const groups = learnLogGroups(studentDoc.log), n = groups.reduce((a, g) => a + g.rows.length, 0);
-    const nx = studentDoc.next && studentDoc.next.n ? `<div class="card"><h2>${esc(LT('nextUp'))}</h2><div>${esc(studentDoc.next.n)}</div></div>` : '';
-    body = nx + (n ? `<div class="card"><h2>${esc(LT('logCount', { n }))}</h2>` + groups.map(g => `<div class="lym">${esc(pcFmtDate(g.ym + '-01', lang, { year: 'numeric', month: 'long' }))}</div>` +
-      g.rows.map(r => `<div class="lrow"><span class="d">${esc(pcFmtDate(r.d, lang, { month: 'numeric', day: 'numeric' }))}</span><span>${esc(r.p)}</span></div>`).join('')).join('') + '</div>'
-      : `<div class="card center muted">${esc(LT('logEmpty'))}</div>`);
+    const nx = studentDoc.next && studentDoc.next.n ? `<div class="card nx"><h2>${esc(LT('nextUp'))}</h2><div>${esc(studentDoc.next.n)}</div></div>` : '';
+    body = `<div class="logwrap">` + nx + (n ? `<div class="card loglist"><h2>${esc(LT('logCount', { n }))}</h2><div class="lcols">` + groups.map(g => `<div class="lg"><div class="lym">${esc(pcFmtDate(g.ym + '-01', lang, { year: 'numeric', month: 'long' }))}</div>` +
+      g.rows.map(r => `<div class="lrow"><span class="d">${esc(pcFmtDate(r.d, lang, { month: 'numeric', day: 'numeric' }))}</span><span>${esc(r.p)}</span></div>`).join('') + '</div>').join('') + '</div></div>'
+      : `<div class="card center muted">${esc(LT('logEmpty'))}</div>`) + `</div>`;
   }else if(learnTab === 'review'){
     const subs = [['cards', 'rvCards'], ['words', 'rvWords'], ['points', 'rvPoints']];
     const subBar = `<div class="lt">${subs.map(x => `<button data-rs="${x[0]}" class="${revSub === x[0] ? 'on' : ''}">${esc(LT(x[1]))}</button>`).join('')}</div>`;
+    const wrapBars = h => `<div class="rvbars">${h}</div>`;
     const spk = z => canSpeak() ? `<button class="spk" data-say="${escRaw(z)}" aria-label="${esc(LT('speak'))}">🔊</button>` : '';
     if(revSub === 'words'){
-      body = subBar + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2><div class="wgrid">${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div></div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
+      body = wrapBars(subBar) + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2><div class="wgrid">${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div></div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
     }else if(revSub === 'points'){
-      body = subBar + (tot.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: tot.points.length }))}</h2>${tot.points.map(x => `<span class="lchip">${esc(x.n)}</span>`).join('')}</div>` : `<div class="card center muted">${esc(LT('pointsNone'))}</div>`);
+      body = wrapBars(subBar) + (tot.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: tot.points.length }))}</h2>${tot.points.map(x => `<span class="lchip">${esc(x.n)}</span>`).join('')}</div>` : `<div class="card center muted">${esc(LT('pointsNone'))}</div>`);
     }else{
       const deck = revDeck(tot);
-      const tog = subBar + `<div class="lt"><button id="dirZE" class="${revDir === 'z2e' ? 'on' : ''}">${esc(LT('dirZE'))}</button><button id="dirEZ" class="${revDir === 'e2z' ? 'on' : ''}">${esc(LT('dirEZ'))}</button></div>
-        <div class="lt"><button id="revAll" class="${revOnlyNot ? '' : 'on'}">${esc(LT('revAll'))}</button><button id="revNot" class="${revOnlyNot ? 'on' : ''}">${esc(LT('revOnlyNot'))}</button></div>`;
-      if(!tot.words.length) body = subBar + `<div class="card center muted">${esc(LT('revEmpty'))}</div>`;
+      const tog = wrapBars(subBar + `<div class="lt"><button id="dirZE" class="${revDir === 'z2e' ? 'on' : ''}">${esc(LT('dirZE'))}</button><button id="dirEZ" class="${revDir === 'e2z' ? 'on' : ''}">${esc(LT('dirEZ'))}</button></div>
+        <div class="lt"><button id="revAll" class="${revOnlyNot ? '' : 'on'}">${esc(LT('revAll'))}</button><button id="revNot" class="${revOnlyNot ? 'on' : ''}">${esc(LT('revOnlyNot'))}</button></div>`);
+      if(!tot.words.length) body = wrapBars(subBar) + `<div class="card center muted">${esc(LT('revEmpty'))}</div>`;
       else if(!deck.length) body = tog + `<div class="card center muted">${esc(revOnlyNot ? LT('revNoNot') : LT('wordsNone'))}</div>`;
       else if(revIdx >= deck.length) body = tog + `<div class="card center"><div class="big">${esc(LT('revDone'))}</div><div style="margin-top:12px"><button class="btn" id="revAgain">${esc(LT('revAgain'))}</button></div></div>`;
       else{
@@ -631,7 +652,7 @@ function renderLearn(root){
     }
   }else if(learnTab === 'ability'){
     const ab = learnAbility(hwDocs), types = Object.keys(ab.byType);
-    body = `<div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
+    body = `<div class="abwrap"><div class="lgrid"><div><b>${ab.graded}</b><span>${esc(LT('abHw'))}</span></div><div><b>${tot.words.length + ((listDoc && listDoc.start && +listDoc.start.words) || 0)}</b><span>${esc(LT('abWords'))}</span></div><div><b>${tot.points.length}</b><span>${esc(LT('abPoints'))}</span></div><div><b>${studentDoc.taught || 0}</b><span>${esc(LT('abClasses'))}</span></div></div>`;
     placeLoad(); body += placeHistHtml();
     body += `<div class="card"><h2>${esc(LT('abTestH'))}</h2><div class="muted" style="margin-bottom:8px">${esc(LT('abTestD'))}</div><button class="btn" id="plGo">${esc(LT('abTestGo'))}</button></div>`;
     body += levelsHtml(tot);
@@ -640,14 +661,15 @@ function renderLearn(root){
       if(types.length) body += `<div class="card"><h2>${esc(LT('abByType'))}</h2>${types.map(k => `<div class="row"><span>${esc(learnTypeName(lang, k))}</span><b>${ab.byType[k].pct}%</b></div><div class="lbar"><i style="width:${ab.byType[k].pct}%"></i></div>`).join('')}</div>`;
       if(ab.trend.length) body += `<div class="card"><h2>${esc(LT('abTrend'))}</h2>${ab.trend.map(t => `<div class="row"><span>${esc(t.title)}</span><b>${t.pct}%</b></div><div class="lbar"><i style="width:${t.pct}%"></i></div>`).join('')}<div class="muted">${esc(LT('abNote'))}</div></div>`;
     }
+    body += '</div>';
   }else{
     const files = learnFiles(matDoc);
     body = !matLoaded ? `<div class="card center muted">${esc(T('loading'))}</div>` : files.length
-      ? `<div class="card">${files.map(f => `<div class="hwitem"><div><div class="t">${esc(f.n)}</div>${f.t ? `<div class="muted">${esc(fmtMs(f.t))}</div>` : ''}</div><a class="btn quiet" style="text-decoration:none" href="${esc(f.u)}" target="_blank" rel="noopener noreferrer">${esc(LT('fOpen'))}</a></div>`).join('')}</div>`
+      ? `<div class="card filesw">${files.map(f => `<div class="hwitem"><div><div class="t">${esc(f.n)}</div>${f.t ? `<div class="muted">${esc(fmtMs(f.t))}</div>` : ''}</div><a class="btn quiet" style="text-decoration:none" href="${esc(f.u)}" target="_blank" rel="noopener noreferrer">${esc(LT('fOpen'))}</a></div>`).join('')}</div>`
       : `<div class="card center muted">${esc(LT('fEmpty'))}</div>`;
   }
-  root.innerHTML = `<div class="card"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
-    <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}${dotHtml(dots[k])}</button>`).join('')}</div>${body}${logoutBlock()}`;
+  root.innerHTML = `<div class="lview"><div class="lbar2"><div class="card lhead"><button class="btn quiet" id="learnBack">${esc(LT('learnBack'))}</button> <b style="margin-left:6px">${esc(LT('learn'))}</b></div>
+    <div class="lt">${tabs.map(k => `<button data-lt="${k}" class="${k === learnTab ? 'on' : ''}">${esc(LT(names[k]))}${dotHtml(dots[k])}</button>`).join('')}</div></div>${body}${logoutBlock()}</div>`;
   $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
   $('learnBack').onclick = () => { learnOpen = false; render(); toTop(); };
   root.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => { learnTab = b.dataset.lt; revShown = false; revIdx = 0; revRound = null; render(); });
