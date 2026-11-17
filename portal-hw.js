@@ -239,5 +239,8 @@ function hwAssignDoc(wid, state, now) {
   var s = hwBuildStudent(state);
   /* 生詞表（中文＋西文意思）一起存進去，學生頁的單字總表和卡片才有西文意思；拼音不存，學生頁自己算 */
   var vocab = ((state && state.vocab) || []).map(function (v) { return { zh: String((v && v.zh) || '').trim(), es: String((v && v.es) || '').trim(), en: String((v && v.en) || '').trim() }; }).filter(function (v) { return v.zh; });
-  return { v: 1, wid: wid, title: s.title, titleEn: s.titleEn || '', grammar: s.grammar, vocab: vocab, sections: s.sections, total: s.total, assignedAt: now, status: 'todo', answers: {} };
+  var rb = state && state.opts && (state.opts.student === 'pinyin' || state.opts.student === 'zhuyin') ? state.opts.student : '';   // 練習頁加拼音／注音：學生頁照這個在中文字上方加讀音
+  var doc = { v: 1, wid: wid, title: s.title, titleEn: s.titleEn || '', grammar: s.grammar, vocab: vocab, sections: s.sections, total: s.total, assignedAt: now, status: 'todo', answers: {} };
+  if (rb) doc.rb = rb;
+  return doc;
 }

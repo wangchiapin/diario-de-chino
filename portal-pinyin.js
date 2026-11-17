@@ -1,11 +1,37 @@
 /* =====================================================================
-   Diario de chino · 學生日誌管理後台用的「單字拼音」（只有後台會載入；學生頁不需要）
+   Diario de chino · 「單字拼音／注音」（後台補單字拼音、學生頁作業的拼音／注音都用這份）
    讀音照 GoodTeacher：pinyin-pro（含台灣例外表）→ 通則修正 → GoodTeacher 規則（gt-readings.json）
    這段是從「練習單產生器」(Generador-de-ejercicios/index.html) 搬過來的，兩邊要保持一致。
    用法：先載入 pinyin-pro；ptLoad() 載入規則檔；ptWord('做菜') → 'zuò cài'
 ===================================================================== */
 var GT_URL = 'gt-readings.json';
 function toSimp(s) { return s; }   // 只用在「函式庫不認得的冷僻字」的備案，這裡直接略過
+/* ---- 拼音 → 注音（從練習單產生器搬來，兩邊要保持一致） ---- */
+const TONE_MAP = {};
+['aāáǎà', 'eēéěè', 'iīíǐì', 'oōóǒò', 'uūúǔù', 'vǖǘǚǜ'].forEach(s => { for (let t = 1; t <= 4; t++) TONE_MAP[s[t]] = [s[0], t]; });
+const ZY_INIT = { b:'ㄅ',p:'ㄆ',m:'ㄇ',f:'ㄈ',d:'ㄉ',t:'ㄊ',n:'ㄋ',l:'ㄌ',g:'ㄍ',k:'ㄎ',h:'ㄏ',j:'ㄐ',q:'ㄑ',x:'ㄒ',zh:'ㄓ',ch:'ㄔ',sh:'ㄕ',r:'ㄖ',z:'ㄗ',c:'ㄘ',s:'ㄙ' };
+const ZY_FIN = { a:'ㄚ',o:'ㄛ',e:'ㄜ',ai:'ㄞ',ei:'ㄟ',ao:'ㄠ',ou:'ㄡ',an:'ㄢ',en:'ㄣ',ang:'ㄤ',eng:'ㄥ',er:'ㄦ',
+  i:'ㄧ',ia:'ㄧㄚ',io:'ㄧㄛ',ie:'ㄧㄝ',iao:'ㄧㄠ',iu:'ㄧㄡ',iou:'ㄧㄡ',ian:'ㄧㄢ',in:'ㄧㄣ',iang:'ㄧㄤ',ing:'ㄧㄥ',iong:'ㄩㄥ',
+  u:'ㄨ',ua:'ㄨㄚ',uo:'ㄨㄛ',uai:'ㄨㄞ',ui:'ㄨㄟ',uei:'ㄨㄟ',uan:'ㄨㄢ',un:'ㄨㄣ',uen:'ㄨㄣ',uang:'ㄨㄤ',ueng:'ㄨㄥ',ong:'ㄨㄥ',
+  v:'ㄩ',ve:'ㄩㄝ',van:'ㄩㄢ',vn:'ㄩㄣ' };
+function symToZhuyin(py) {
+  let base = '', tone = 0;
+  for (const c of String(py).toLowerCase()) {
+    const m = TONE_MAP[c];
+    if (m) { base += m[0]; tone = m[1]; } else base += (c === 'ü' ? 'v' : c);
+  }
+  let ini = '', fin = base;
+  if (/^(zh|ch|sh)/.test(base)) { ini = base.slice(0, 2); fin = base.slice(2); }
+  else if (/^[bpmfdtnlgkhjqxrzcs]/.test(base)) { ini = base[0]; fin = base.slice(1); }
+  else if (base[0] === 'y') { const r = base.slice(1); fin = r[0] === 'i' ? r : r[0] === 'u' ? 'v' + r.slice(1) : 'i' + r; }
+  else if (base[0] === 'w') { const r = base.slice(1); fin = r === 'u' ? 'u' : 'u' + r; }
+  if (/^[jqx]$/.test(ini) && fin[0] === 'u') fin = 'v' + fin.slice(1);
+  if (/^(zh|ch|sh|r|z|c|s)$/.test(ini) && fin === 'i') fin = '';
+  if (fin && !ZY_FIN[fin]) return py;
+  const body = (ZY_INIT[ini] || '') + (fin ? ZY_FIN[fin] : '');
+  if (!body) return py;
+  return tone === 0 ? '˙' + body : body + ['', '', 'ˊ', 'ˇ', 'ˋ'][tone];
+}
 const PUNCT = { '，':', ', '。':'. ', '？':'? ', '！':'! ', '、':', ', '：':': ', '；':'; ', '「':' "', '」':'" ', '（':' (', '）':') ', '…':'… ' };
 const DE_FOLLOW = '很不多少快慢好太比沒真更非常十分特別清楚高低大小早晚遠近累餓飽';
 const SYL = new Map();
@@ -142,6 +168,7 @@ function syllables(trad) {
     let at = trad.indexOf(w);
     while (at !== -1) { for (let k = 0; k < w.length; k++) { out[at + k].py = parts[k]; out[at + k].isZh = true; } at = trad.indexOf(w, at + w.length); }
   }
+  for (const s of out) if (s.isZh && s.py) s.zy = symToZhuyin(s.py);
   SYL.set(trad, out);
   return out;
 }

@@ -14,6 +14,7 @@ vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-nudge.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-learn.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-board.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-pinyin.js'), 'utf8') + ';this.symToZhuyin = symToZhuyin;', ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
 
@@ -632,6 +633,19 @@ console.log('\n後台新增單字：中文 西文 ｜ 英文');
     assert.ok(vm2.vocParse(ex).every(v => v.zh && v.es && v.en));
   });
 }
+
+console.log('\n作業的拼音／注音');
+test('拼音轉注音：一聲不標、輕聲加點、ü／y／w／整體認讀音節', () => {
+  const Z = C('symToZhuyin');
+  assert.strictEqual(J(['zhōng', 'nǐ', 'ma', 'yuè', 'wǒ', 'shì', 'xué', 'ér'].map(Z)), J(['ㄓㄨㄥ', 'ㄋㄧˇ', '˙ㄇㄚ', 'ㄩㄝˋ', 'ㄨㄛˇ', 'ㄕˋ', 'ㄒㄩㄝˊ', 'ㄦˊ']));
+});
+test('發給學生的作業：練習單選了拼音／注音才帶 rb，沒選就沒有', () => {
+  const st = o => ({ meta: { title: 'x' }, opts: o, sections: [{ id: 's1', type: 'fill', enabled: true, items: [{ id: 'a', enabled: true, zh: '我__學生', es: 'soy' }] }], vocab: [] });
+  assert.strictEqual(C('hwAssignDoc')('w', st({ student: 'pinyin', cueEs: true }), 1).rb, 'pinyin');
+  assert.strictEqual(C('hwAssignDoc')('w', st({ student: 'zhuyin' }), 1).rb, 'zhuyin');
+  assert.strictEqual('rb' in C('hwAssignDoc')('w', st({ student: 'none' }), 1), false);
+  assert.strictEqual('rb' in C('hwAssignDoc')('w', st({}), 1), false);
+});
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);

@@ -189,6 +189,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .hwq:first-of-type{border-top:0}
 .hwq .no{display:inline-block;min-width:22px;color:var(--sub);font-size:13px}
 .hwq .zh{font-size:18px;line-height:2}
+.hwq ruby rt,.bank ruby rt,.tok ruby rt{font-size:.56em;color:var(--sub);font-weight:400}.hwq.rb .zh,.hwq.rb .opt span{line-height:2.4}.tok ruby rt{line-height:1.2}
 .hwq .es{font-size:13px;color:var(--sub);margin-top:2px}
 .hwq input[type=text],.hwq textarea,.hwq select{font:inherit;font-size:16px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
 .hwq input.blank{width:5.5em;text-align:center;margin:0 3px}
@@ -1042,42 +1043,58 @@ function hwReviewHtml(sec, q){
   return `<div class="rv ${cls}"><span class="rvb">${ico} ${esc(word)}${esc(pts)}</span>${cls === 'y' && ['translate','zh2es','sentence'].indexOf(sec.type) < 0 ? '' : `<span class="k"><span class="lab">${esc(T(keyLab))}</span>${esc((lang === 'en' && rv.keyEn) || rv.key || '')}</span>`}${rv.note ? `<span class="nt">${esc(rv.note)}</span>` : ''}</div>`;
 }
 
+/* 作業的讀音：練習單設了「練習頁加拼音／注音」，學生那份就有 rb；中文字上方加讀音（照繁體算，再照學生選的字體顯示） */
+function hwRb(){ const d = hwDocs[hwOpen]; return d && (d.rb === 'pinyin' || d.rb === 'zhuyin') ? d.rb : ''; }
+function rbChars(text){
+  text = String(text == null ? '' : text); const mode = hwRb();
+  if(!mode) return Array.from(text).map(c => esc(c));
+  let syl = null; try{ syl = syllables(text); }catch(e){}
+  const conv = zhs() === 'sc' ? zhSimp(text) : text, same = conv.length === text.length;
+  return Array.from(text).map((c, i) => {
+    const sh = same ? conv[i] : c, s = syl && syl[i], rt = s && s.isZh ? (mode === 'pinyin' ? s.py : s.zy) : '';
+    return rt ? `<ruby>${escRaw(sh)}<rt>${escRaw(rt)}</rt></ruby>` : esc(c);
+  });
+}
+const rbHtml = text => rbChars(text).join('');
 function hwItemHtml(sec, q, no, dis){
   const a = hwDraft[q.id], D = dis ? ' disabled' : '';
   const head = `<span class="no">${no}</span>`;
   const es = hwTr(q, 'es') ? `<div class="es">${esc(hwTr(q, 'es'))}</div>` : '';
   switch(sec.type){
     case 'fill': {
-      const i = q.zh.indexOf('__');
+      const i = q.zh.indexOf('__'), rc = rbChars(q.zh);
       const inp = `<input type="text" class="blank" data-k="txt" data-id="${esc(q.id)}" value="${escRaw(a || '')}" autocomplete="off" autocapitalize="off"${D}>`;
-      return `<div class="hwq">${head}<span class="zh">${i < 0 ? esc(q.zh) + inp : esc(q.zh.slice(0, i)) + inp + esc(q.zh.slice(i + 2))}</span>${es}</div>`;
+      return `<div class="hwq${hwRb() ? ' rb' : ''}">${head}<span class="zh">${i < 0 ? rc.join('') + inp : rc.slice(0, i).join('') + inp + rc.slice(i + 2).join('')}</span>${es}</div>`;
     }
     case 'cloze': {
       const arr = Array.isArray(a) ? a : [];
-      const html = esc(q.text).replace(/\{(\d+)\}/g, (m, n) => `<input type="text" class="blank" data-k="cz" data-id="${esc(q.id)}" data-n="${n - 1}" placeholder="${n}" value="${escRaw(arr[n - 1] || '')}" autocomplete="off" autocapitalize="off"${D}>`);
-      return `<div class="hwq"><div class="zh">${html}</div></div>`;
+      const rc = rbChars(q.text); let html = '', at = 0, mm; const re = /\{(\d+)\}/g;
+      const inp = n => `<input type="text" class="blank" data-k="cz" data-id="${esc(q.id)}" data-n="${n - 1}" placeholder="${n}" value="${escRaw(arr[n - 1] || '')}" autocomplete="off" autocapitalize="off"${D}>`;
+      while((mm = re.exec(q.text))){ html += rc.slice(at, mm.index).join('') + inp(mm[1]); at = mm.index + mm[0].length; }
+      html += rc.slice(at).join('');
+      return `<div class="hwq${hwRb() ? ' rb' : ''}"><div class="zh">${html}</div></div>`;
     }
-    case 'order': return `<div class="hwq" data-order="${esc(q.id)}">${head}${hwOrderInner(q, dis)}${es}</div>`;
+    case 'order': return `<div class="hwq${hwRb() ? ' rb' : ''}" data-order="${esc(q.id)}">${head}${hwOrderInner(q, dis)}${es}</div>`;
     case 'choice':
-      return `<div class="hwq">${head}${hwTr(q, 'es') ? `<span class="es" style="display:inline">${esc(hwTr(q, 'es'))}</span>` : ''}${q.options.map(o =>
-        `<label class="opt"><input type="radio" name="r_${esc(q.id)}" data-k="ch" data-id="${esc(q.id)}" value="${o.i}" ${a === o.i ? 'checked' : ''}${D}><b>${hwLetter(o.i)}</b><span>${esc(o.t)}</span></label>`).join('')}</div>`;
+      return `<div class="hwq${hwRb() ? ' rb' : ''}">${head}${hwTr(q, 'es') ? `<span class="es" style="display:inline">${esc(hwTr(q, 'es'))}</span>` : ''}${q.options.map(o =>
+        `<label class="opt"><input type="radio" name="r_${esc(q.id)}" data-k="ch" data-id="${esc(q.id)}" value="${o.i}" ${a === o.i ? 'checked' : ''}${D}><b>${hwLetter(o.i)}</b><span>${rbHtml(o.t)}</span></label>`).join('')}</div>`;
     case 'fix':
-      return `<div class="hwq">${head}<span class="zh">${esc(q.wrong)}</span><textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${escRaw(a || '')}</textarea></div>`;
+      return `<div class="hwq${hwRb() ? ' rb' : ''}">${head}<span class="zh">${rbHtml(q.wrong)}</span><textarea data-k="txt" data-id="${esc(q.id)}" placeholder="${esc(T('hwWrite'))}"${D}>${escRaw(a || '')}</textarea></div>`;
     case 'translate':
       return `<div class="hwq">${head}<span>${esc(hwTr(q, 'es'))}</span>${hwTr(q, 'vocab') ? `<div class="es">${esc(hwTr(q, 'vocab'))}</div>` : ''}${hwTa(q, a, D)}</div>`;
     case 'zh2es':
-      return `<div class="hwq">${head}<span class="zh">${esc(q.zh)}</span>${hwTr(q, 'vocab') ? `<div class="es">${esc(hwTr(q, 'vocab'))}</div>` : ''}${hwTa(q, a, D)}</div>`;
+      return `<div class="hwq${hwRb() ? ' rb' : ''}">${head}<span class="zh">${rbHtml(q.zh)}</span>${hwTr(q, 'vocab') ? `<div class="es">${esc(hwTr(q, 'vocab'))}</div>` : ''}${hwTa(q, a, D)}</div>`;
     case 'sentence':
-      return `<div class="hwq">${head}<span class="zh">${esc(q.cue)}</span>${es}${hwTa(q, a, D)}</div>`;
+      return `<div class="hwq${hwRb() ? ' rb' : ''}">${head}<span class="zh">${rbHtml(q.cue)}</span>${es}${hwTa(q, a, D)}</div>`;
     case 'match':
-      return `<div class="matchrow"><span class="no">${no}</span><span class="zh" style="font-size:18px;flex:1">${esc(q.zh)}</span><select data-k="mt" data-id="${esc(q.id)}"${D}><option value="">${esc(T('hwPick'))}</option>${sec.rights.map((r, k) => `<option value="${k}" ${a === k ? 'selected' : ''}>${hwLetter(k)}</option>`).join('')}</select></div>`;
+      return `<div class="matchrow"><span class="no">${no}</span><span class="zh" style="font-size:18px;flex:1${hwRb() ? ';line-height:2.4' : ''}">${rbHtml(q.zh)}</span><select data-k="mt" data-id="${esc(q.id)}"${D}><option value="">${esc(T('hwPick'))}</option>${sec.rights.map((r, k) => `<option value="${k}" ${a === k ? 'selected' : ''}>${hwLetter(k)}</option>`).join('')}</select></div>`;
   }
   return '';
 }
 function hwOrderInner(q, dis){
   const used = hwOrder[q.id] || [], D = dis ? ' disabled' : '';
-  return `<div class="ans">${used.map((ti, pos) => `<button class="tok" data-k="orm" data-id="${esc(q.id)}" data-pos="${pos}"${D}>${esc(q.tokens[ti])}</button>`).join('')}</div>
-    <div>${q.tokens.map((t, ti) => used.indexOf(ti) < 0 ? `<button class="tok" data-k="ora" data-id="${esc(q.id)}" data-ti="${ti}"${D}>${esc(t)}</button>` : '').join('')}
+  return `<div class="ans">${used.map((ti, pos) => `<button class="tok" data-k="orm" data-id="${esc(q.id)}" data-pos="${pos}"${D}>${rbHtml(q.tokens[ti])}</button>`).join('')}</div>
+    <div>${q.tokens.map((t, ti) => used.indexOf(ti) < 0 ? `<button class="tok" data-k="ora" data-id="${esc(q.id)}" data-ti="${ti}"${D}>${rbHtml(t)}</button>` : '').join('')}
     ${used.length && !dis ? `<button class="btn quiet" style="padding:3px 12px;font-size:13px" data-k="orc" data-id="${esc(q.id)}">${esc(T('hwClear'))}</button>` : ''}</div>`;
 }
 
@@ -1155,7 +1172,7 @@ function renderHw(root){
   }
   (wm ? [] : (d.sections || [])).forEach((sec, si) => {
     h += `<div class="card"><h2>${NUM[si] || si + 1}、${esc(T('hwT_' + sec.type + (lang === 'en' && sec.en && sec.type === 'zh2es' ? '_en' : '')))}</h2>`;
-    if(sec.bank && sec.bank.length && (sec.type === 'fill' || sec.type === 'cloze')) h += `<div class="bank">${sec.bank.map(esc).join('　')}</div>`;
+    if(sec.bank && sec.bank.length && (sec.type === 'fill' || sec.type === 'cloze')) h += `<div class="bank"${hwRb() ? ' style="line-height:2.6"' : ''}>${sec.bank.map(rbHtml).join('　')}</div>`;
     if(sec.type === 'match') h += `<div class="rights">${((lang === 'en' && sec.rightsEn) || sec.rights).map((r, k) => `<div><b>${hwLetter(k)}</b> ${esc(r)}</div>`).join('')}</div>`;
     sec.items.forEach((q, qi) => { h += hwItemHtml(sec, q, qi + 1, locked) + hwReviewHtml(sec, q); });
     h += '</div>';
