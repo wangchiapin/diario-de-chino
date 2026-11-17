@@ -605,5 +605,33 @@ console.log('\n能力分級測驗');
   });
 }
 
+console.log('\n後台新增單字：中文 西文 ｜ 英文');
+{
+  const src = fs.readFileSync(path.join(root, 'admin.html'), 'utf8');
+  const fn = src.slice(src.indexOf('function vocParse(txt){'), src.indexOf('// 給 AI 的提示詞'));
+  const pr = src.match(/const VOC_PROMPT = `([\s\S]*?)`;/)[1];
+  const vm2 = vm.createContext({ nudParseVocab: C('nudParseVocab') });
+  vm.runInContext(fn + ';this.vocParse = vocParse;', vm2);
+  test('「中文 西文 ｜ 英文」三欄都拆得出來', () => {
+    assert.strictEqual(J(vm2.vocParse('冰 hielo ｜ ice')), J([{ zh: '冰', es: 'hielo', en: 'ice' }]));
+    assert.strictEqual(J(vm2.vocParse('便利商店 tienda de conveniencia | convenience store')), J([{ zh: '便利商店', es: 'tienda de conveniencia', en: 'convenience store' }]));
+    assert.strictEqual(J(vm2.vocParse('花時間 llevar tiempo, dedicar tiempo ｜ take time, spend time')), J([{ zh: '花時間', es: 'llevar tiempo, dedicar tiempo', en: 'take time, spend time' }]));
+  });
+  test('舊寫法照舊：只有中文、中文＋西文、頓號分開', () => {
+    assert.strictEqual(J(vm2.vocParse('做菜\n電腦 computadora')), J([{ zh: '做菜', es: '' }, { zh: '電腦', es: 'computadora' }]));
+    assert.strictEqual(J(vm2.vocParse('冰、房間')), J([{ zh: '冰', es: '' }, { zh: '房間', es: '' }]));
+  });
+  test('只有中文加英文（西文留空）也行；多個字一行不套英文', () => {
+    assert.strictEqual(J(vm2.vocParse('冰 ｜ ice')), J([{ zh: '冰', es: '', en: 'ice' }]));
+    assert.strictEqual(J(vm2.vocParse('冰、房間 ｜ ice')), J([{ zh: '冰', es: '' }, { zh: '房間', es: '' }]));
+  });
+  test('AI 提示詞：講清楚格式、有範例，而且範例本身能被解析', () => {
+    assert.ok(pr.includes('中文 西班牙文 ｜ 英文') && pr.includes('只輸出結果'));
+    const ex = pr.split('範例：')[1].split('以下是')[0];
+    assert.strictEqual(vm2.vocParse(ex).length, 3);
+    assert.ok(vm2.vocParse(ex).every(v => v.zh && v.es && v.en));
+  });
+}
+
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);

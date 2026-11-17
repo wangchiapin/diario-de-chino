@@ -438,11 +438,36 @@ function vocParse(txt){
   const out = [];
   String(txt || '').split('\n').forEach(line => {
     line = line.trim(); if(!line) return;
+    // 「中文 西文 ｜ 英文」：｜（或 |）後面是英文意思；先切掉，剩下照原本的方式解析
+    let en = '';
+    const bar = line.search(/[｜|]/);
+    if(bar >= 0){ en = line.slice(bar + 1).replace(/[｜|]/g, ',').trim(); line = line.slice(0, bar).trim(); }
     if(/^[㐀-鿿、，,\s]+$/.test(line)) line = line.replace(/[、，,]/g, '\n');
-    nudParseVocab(line).forEach(v => out.push(v));
+    const got = nudParseVocab(line);
+    if(en && got.length === 1) got[0].en = en;
+    got.forEach(v => out.push(v));
   });
   return out;
 }
+// 給 AI 的提示詞：貼中文單字進去，AI 就會照「中文 西文 ｜ 英文」一行一個回覆，可以直接貼進上面的新增單字框
+const VOC_PROMPT = `我會給你一批中文單字（一行一個，或用頓號分開）。請幫我翻成西班牙文和英文，給西班牙語母語的華語學習者用。
+
+輸出規則：
+1. 只輸出結果，不要任何說明、標題、編號或前後文字。
+2. 每個單字一行，格式固定是：中文 西班牙文 ｜ 英文
+3. 中文和西班牙文之間用一個空格；西班牙文和英文之間用全形的「｜」。
+4. 中文照我給的原樣寫，不要轉成別的字體，不要加拼音。
+5. 取最常用、最適合初學者的意思；一個字最多兩個意思，用逗號分開。
+6. 動詞西班牙文用原形，名詞不要加冠詞。
+7. 請放在程式碼區塊裡，方便我直接複製。
+
+範例：
+冰 hielo ｜ ice
+便利商店 tienda de conveniencia ｜ convenience store
+花時間 llevar tiempo, dedicar tiempo ｜ take time, spend time
+
+以下是要翻譯的單字：
+`;
 async function vocSave(sid, mutate, okText){
   const cur = JSON.parse(JSON.stringify(vocList(sid)));
   ['words', 'hideW', 'points', 'hideP'].forEach(k => { if(!Array.isArray(cur[k])) cur[k] = []; });
@@ -501,9 +526,9 @@ function vocHtml(active){
   return `<div class="card"><h2>單字與語法點</h2>
     ${helpBox('vc1', '這裡管理每位學生在學生頁「複習」分頁看到的單字總表和語法總表。練習單裡的單字和語法點會自動進來，你可以補充、修改拼音和西文意思、或隱藏不要的。拼音照 GoodTeacher 讀音自動帶出，西文意思會先查其他練習單裡出現過的同一個字，查不到就請自己填。「存」之後學生重新整理就看得到。')}
     <select id="vocSel" style="margin-bottom:8px">${opts}</select>
-    <div class="small">新增單字（一行一個；可以只寫中文，也可以「中文 西文」）</div>
-    <textarea id="vocW" class="nudta" placeholder="做菜&#10;電腦 computadora" style="width:100%;min-height:70px">${esc(vocDraft.w)}</textarea>
-    <div class="row" style="margin:6px 0 10px"><button id="vocAdd">加入</button><span class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : '')}</span></div>
+    <div class="small">新增單字（一行一個；可以只寫中文，也可以「中文 西文」或「中文 西文 ｜ 英文」）</div>
+    <textarea id="vocW" class="nudta" placeholder="做菜&#10;電腦 computadora&#10;冰 hielo ｜ ice" style="width:100%;min-height:86px">${esc(vocDraft.w)}</textarea>
+    <div class="row" style="margin:6px 0 10px"><button id="vocAdd">加入</button><button id="vocPrompt" class="quiet" title="複製給 AI 的提示詞：把中文單字貼給 AI，它會照格式翻成西文和英文">複製 AI 提示詞</button><span class="small ${m && !m.ok ? 'err' : 'ok'}">${esc(m ? m.text : '')}</span></div>
     <div class="small">新增語法點（一行一個，或用「＋」分開）</div>
     <textarea id="vocP" class="nudta" placeholder="把字句＋可以" style="width:100%;min-height:44px">${esc(vocDraft.p)}</textarea>
     <div class="row" style="margin:6px 0 4px"><button id="vocAddP">加入語法點</button></div></div>
@@ -538,11 +563,17 @@ function bindVoc(root){
   const ta = root.querySelector('#vocW'), tp = root.querySelector('#vocP');
   ta.oninput = e => { vocDraft.w = e.target.value; }; tp.oninput = e => { vocDraft.p = e.target.value; };
   const on = (id, f) => { const e = root.querySelector('#' + id); if(e) e.onclick = f; };
+  on('vocPrompt', async () => {
+    const b = root.querySelector('#vocPrompt'); let ok = true;
+    try{ await navigator.clipboard.writeText(VOC_PROMPT); }
+    catch(e){ const t = document.createElement('textarea'); t.value = VOC_PROMPT; document.body.appendChild(t); t.select(); try{ ok = document.execCommand('copy'); }catch(e2){ ok = false; } t.remove(); }
+    b.textContent = ok ? '已複製，貼給 AI 就好' : '複製失敗'; setTimeout(() => { if(b.isConnected) b.textContent = '複製 AI 提示詞'; }, 2500);
+  });
   on('vocAdd', () => {
     const items = vocParse(ta.value);
     if(!items.length){ vocMsg = { text: '請輸入中文單字', ok: false }; return render(); }
     const have = {}; vocList(sid).words.forEach(w => { have[w.zh] = w; });
-    const res = items.map(v => { const r = { zh: v.zh, es: v.es || (have[v.zh] && have[v.zh].es) || vocFindEs(v.zh), py: vocPy(v.zh) }; const en = (have[v.zh] && have[v.zh].en) || vocFindEn(v.zh); if(en) r.en = en; return r; });
+    const res = items.map(v => { const r = { zh: v.zh, es: v.es || (have[v.zh] && have[v.zh].es) || vocFindEs(v.zh), py: vocPy(v.zh) }; const en = v.en || (have[v.zh] && have[v.zh].en) || vocFindEn(v.zh); if(en) r.en = en; return r; });
     const noEs = res.filter(r => !r.es).length;
     vocSave(sid, cur => {
       let added = 0;
