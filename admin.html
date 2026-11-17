@@ -90,6 +90,26 @@ details.nd{border-top:1px solid var(--line);padding:8px 0}
 details.nd summary{cursor:pointer;font-size:14px}
 @media (max-width:640px){.nudcols{grid-template-columns:1fr}.nudrem{grid-template-columns:1fr}}
 .tabbar{display:flex;gap:6px;margin-bottom:12px}
+/* 電腦版（寬螢幕）：左邊固定側邊選單、內容放右邊、表單並排。手機版的規則都在上面和下面，這裡不影響 */
+@media (min-width:1024px){
+.wrap:has(#tabbar){max-width:1280px}
+#app:has(>#tabbar){display:grid;grid-template-columns:150px minmax(0,1fr);column-gap:20px;align-items:start}
+#app>#tabbar{grid-column:1;position:sticky;top:12px;flex-direction:column;margin:0;gap:4px}
+#app>#tabbar button{text-align:left;border-radius:10px;padding:10px 14px;border-color:transparent}
+#app>#tabbar button.on{border-color:var(--accent)}
+#app>.tabp{grid-column:2;min-width:0}
+td.em{min-width:260px}
+.tabp[data-p="stu"],.tabp[data-p="pub"]{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;align-items:start}
+.tabp[data-p="stu"]>.card,.tabp[data-p="pub"]>.card{grid-column:1/-1}
+.tabp[data-p="stu"]>.card.c-half,.tabp[data-p="pub"]>.card.half{grid-column:auto}
+.tabp[data-p="voc"]{display:grid;grid-template-columns:minmax(340px,.8fr) minmax(0,1.3fr);column-gap:14px;align-items:start}
+.tabp[data-p="voc"]>.card{grid-column:1}
+.tabp[data-p="voc"]>.card.vw{grid-column:2;grid-row:1 / span 8}
+.tabp[data-p="set"]{max-width:760px}
+.vw td:last-child{white-space:nowrap}
+.vw td:last-child button{padding:5px 12px;font-size:13px}
+.vw td{padding:6px 6px}
+}
 .tabbar button{background:transparent;color:var(--accent);position:relative}
 .tabbar button.on{background:var(--accent);color:#fff}
 .tabbar .bd{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;text-align:center;margin-left:5px;padding:0 4px}
@@ -485,7 +505,7 @@ function vocHtml(active){
         <select id="stCefr" aria-label="起點等級"><option value="">從零開始</option>${['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map(c => `<option ${((L.start || {}).cefr === c) ? 'selected' : ''}>${c}</option>`).join('')}</select>
         <input id="stWords" type="number" min="0" max="20000" placeholder="起始單字量（選填）" value="${esc((L.start || {}).words || '')}" style="width:170px">
         <button id="stSave">存</button></div></div>
-    <div class="card"><h2>單字（${tot.words.length}）</h2>
+    <div class="card vw"><h2>單字（${tot.words.length}）</h2>
       ${noPy ? `<div class="row" style="margin-bottom:8px"><button id="vocFill">全部補上拼音（${noPy} 個）</button><span class="muted small">只補還沒有拼音的</span></div>` : ''}
       ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
       ${hiddenHtml}</div>
@@ -605,11 +625,11 @@ function bbHtml(active){
   let body = '';
   if(bbTab === 'board'){
     const list = boardSortDesc(bbPosts);
-    body = `<div class="card"><h2>貼公告（所有學生都看得到）</h2>
+    body = `<div class="card half"><h2>貼公告（所有學生都看得到）</h2>
       ${helpBox('bb1', '貼在這裡的字，所有學生一打開學生頁的「公布欄」就看得到，新的在最上面。學生不能改。有新公告時，學生首頁的卡片會亮紅點。一則最多 500 字。')}
       <textarea id="bbText" class="nudta" style="width:100%;min-height:90px" maxlength="${BOARD_MAX}" placeholder="例如：11/20 沒有課">${esc(bbDraft.board)}</textarea>
       <div class="row" style="margin-top:6px"><button id="bbPost">貼出</button>${msg}</div></div>
-      <div class="card"><h2>已貼的公告（${list.length}）</h2>${list.length ? list.map(p => `<div class="bbitem"><div class="small muted">${esc(bbTime(p.ts))} <button class="quiet bbDel" data-k="board" data-id="${esc(p.id)}" style="padding:0 8px">刪除</button></div><div class="bbtx">${esc(p.text)}</div></div>`).join('') : '<div class="muted small">還沒有公告</div>'}</div>`;
+      <div class="card half"><h2>已貼的公告（${list.length}）</h2>${list.length ? list.map(p => `<div class="bbitem"><div class="small muted">${esc(bbTime(p.ts))} <button class="quiet bbDel" data-k="board" data-id="${esc(p.id)}" style="padding:0 8px">刪除</button></div><div class="bbtx">${esc(p.text)}</div></div>`).join('') : '<div class="muted small">還沒有公告</div>'}</div>`;
   }else if(bbTab === 'wall'){
     const list = boardSortDesc(bbWall);
     body = `<div class="card"><h2>公開留言板（${list.length}）</h2>
@@ -995,7 +1015,7 @@ function render(){
   const archived = ids.filter(id => students[id].archived);
   const missingTz = active.filter(id => !students[id].tz).length;
 
-  let html = `<div class="card">
+  let html = `<div class="card c-half">
     <h2>學生網址</h2>
     <div class="row"><input id="link" readonly value="${esc(studentUrl())}" style="flex:1;min-width:200px"><button id="copy">複製</button></div>
     ${helpBox('url', `把這個網址傳給學生。學生第一次要用自己的電子郵件「建立帳號」並驗證信箱，之後用密碼登入。<ol style="margin:6px 0 0;padding-left:18px">
@@ -1004,7 +1024,7 @@ function render(){
       <li>學生資料來自日誌；日誌開著時，有變動約 1 分鐘內會自動更新。</li>
     </ol>`)}</div>`;
 
-  html += `<div class="card"><h2>能力分級測驗連結</h2><div class="muted small" style="margin-bottom:6px">給新學生（還沒有帳號也能做）。測完學生會複製結果貼給你。</div>
+  html += `<div class="card c-half"><h2>能力分級測驗連結</h2><div class="muted small" style="margin-bottom:6px">給新學生（還沒有帳號也能做）。測完學生會複製結果貼給你。</div>
     <div class="row" style="gap:8px"><input id="plLink" readonly value="${esc(placementUrl())}" style="flex:1"><button id="plCopy">複製連結</button></div></div>`;
 
   if(!ids.length){

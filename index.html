@@ -31,6 +31,19 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{height:100vh;height:100dvh;box-sizing:border-box}
 .wrap{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;box-sizing:border-box}
 }
+/* 電腦版（寬螢幕）：首頁左右兩欄、其他頁面置中加寬、單字總表並排。手機版的規則都在上面，這裡不影響 */
+@media (min-width:1024px){
+.wrap{max-width:1080px}
+#app>:not(.home):not(.pvbar){max-width:860px;margin-left:auto;margin-right:auto}
+.pvbar{max-width:860px;margin-left:auto;margin-right:auto}
+#app:has(.home)>.pvbar{max-width:none}
+.cal-grid .day{aspect-ratio:auto;height:44px}
+.home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}
+.home>.hello{grid-column:1/-1}
+.colR{position:sticky;top:12px}
+.wgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:32px}
+.wgrid .wrow:nth-child(-n+2){border-top:0}
+}
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.02em}
 .lang{display:flex;gap:4px}
@@ -268,7 +281,7 @@ function renderPreview(root, user){
   if(!docLoaded){ root.innerHTML = loadingHtml(); return; }
   if(docError) return renderError(root);
   renderHome(root);
-  root.insertAdjacentHTML('afterbegin', `<div class="card center" style="background:#e6dfd0">老師預覽：${esc(studentDoc && studentDoc.name || PREVIEW)}（唯讀，學生看到的就是這個畫面）　<a href="admin.html">回後台</a></div>`);
+  root.insertAdjacentHTML('afterbegin', `<div class="card center pvbar" style="background:#e6dfd0">老師預覽：${esc(studentDoc && studentDoc.name || PREVIEW)}（唯讀，學生看到的就是這個畫面）　<a href="admin.html">回後台</a></div>`);
 }
 
 function render(){
@@ -429,13 +442,16 @@ function renderHome(root){
   const opts = zones.map(z => `<option value="${esc(z)}" ${z === tz ? 'selected' : ''}>${esc(z)}</option>`).join('');
   const srcLabel = tzSource() === 'teacher' ? T('tzTeacher') : tzSource() === 'device' ? T('tzDevice') : '';
 
-  root.innerHTML = `
-    <div class="card"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
+  root.innerHTML = `<div class="home">
+    <div class="card hello"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
+    <div class="colL">
     <div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div>
     ${hwCardHtml()}
     ${boardCardHtml(HOME_DOTS)}
     ${learnCardHtml(HOME_DOTS)}
     ${stats}
+    </div>
+    <div class="colR">
     <div class="card">
       <h2>${esc(T('calendar'))}</h2>
       <div class="cal-head"><button id="calPrev" aria-label="prev">‹</button><b>${esc(monthTitle)}</b><button id="calNext" aria-label="next">›</button></div>
@@ -447,6 +463,8 @@ function renderHome(root){
       <h2>${esc(T('timezone'))}</h2>
       <select id="tzSel">${opts}</select>
       <div class="muted" style="margin-top:6px">${esc(srcLabel)}</div>
+    </div>
+    </div>
     </div>
     ${logoutBlock()}`;
   $('foot').textContent = studentDoc.updatedAt ? T('updated', { t: fmtMs(studentDoc.updatedAt) }) : '';
@@ -577,7 +595,7 @@ function renderLearn(root){
     const subBar = `<div class="lt">${subs.map(x => `<button data-rs="${x[0]}" class="${revSub === x[0] ? 'on' : ''}">${esc(LT(x[1]))}</button>`).join('')}</div>`;
     const spk = z => canSpeak() ? `<button class="spk" data-say="${escRaw(z)}" aria-label="${esc(LT('speak'))}">🔊</button>` : '';
     if(revSub === 'words'){
-      body = subBar + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2>${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
+      body = subBar + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2><div class="wgrid">${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div></div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
     }else if(revSub === 'points'){
       body = subBar + (tot.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: tot.points.length }))}</h2>${tot.points.map(x => `<span class="lchip">${esc(x.n)}</span>`).join('')}</div>` : `<div class="card center muted">${esc(LT('pointsNone'))}</div>`);
     }else{
