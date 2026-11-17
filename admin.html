@@ -424,6 +424,13 @@ function vocFindEs(zh){
   }
   return '';
 }
+function vocFindEn(zh){
+  for(const sid of Object.keys(students)){
+    const w = learnTotals(hw[sid] || {}, vocList(sid)).words.find(x => x.zh === zh && x.en);
+    if(w) return w.en;
+  }
+  return '';
+}
 const vocPy = zh => { try{ return ptWord(zh); }catch(e){ return ''; } };
 // 輸入一批：一行一個；「中文 西文」或只有中文；全中文的行可用頓號、逗號分開
 function vocParse(txt){
@@ -483,7 +490,7 @@ function vocHtml(active){
   const opts = active.map(id => `<option value="${esc(id)}" ${id === sid ? 'selected' : ''}>${esc(students[id].name)}</option>`).join('');
   const noPy = tot.words.filter(w => !w.py).length;
   const rows = tot.words.map(w => `<tr data-z="${esc(w.zh)}"><td><b>${esc(w.zh)}</b><div class="muted small">${w.src === 'tc' ? '自己加的' : '練習單'}</div></td>
-      <td><input class="vPy" value="${esc(w.py)}" placeholder="拼音" aria-label="拼音"></td><td><input class="vEs" value="${esc(w.es)}" placeholder="西文意思" aria-label="西文意思"></td>
+      <td><input class="vPy" value="${esc(w.py)}" placeholder="拼音" aria-label="拼音"></td><td><input class="vEs" value="${esc(w.es)}" placeholder="西文意思" aria-label="西文意思"></td><td><input class="vEn" value="${esc(w.en || '')}" placeholder="英文意思" aria-label="英文意思"></td>
       <td class="vAct"><button class="vSave">存</button> <button class="quiet vHide">${w.src === 'tc' ? '刪除' : '隱藏'}</button></td></tr>`).join('');
   const ptRows = tot.points.map(x => `<span class="lchip" data-n="${esc(x.n)}">${esc(x.n)} <button class="quiet vpHide" style="padding:0 6px">${x.src === 'tc' ? '×' : '隱藏'}</button></span>`).join('');
   const hidden = (L.hideW || []).concat((L.hideP || []).map(x => '語法：' + x));
@@ -507,7 +514,7 @@ function vocHtml(active){
         <button id="stSave">存</button></div></div>
     <div class="card vw"><h2>單字（${tot.words.length}）</h2>
       ${noPy ? `<div class="row" style="margin-bottom:8px"><button id="vocFill">全部補上拼音（${noPy} 個）</button><span class="muted small">只補還沒有拼音的</span></div>` : ''}
-      ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
+      ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th>英文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
       ${hiddenHtml}</div>
     <div class="card"><h2>語法點（${tot.points.length}）</h2>${ptRows || '<div class="muted small">還沒有語法點</div>'}</div>
     ${notesCardHtml(sid)}
@@ -534,7 +541,7 @@ function bindVoc(root){
     const items = vocParse(ta.value);
     if(!items.length){ vocMsg = { text: '請輸入中文單字', ok: false }; return render(); }
     const have = {}; vocList(sid).words.forEach(w => { have[w.zh] = w; });
-    const res = items.map(v => ({ zh: v.zh, es: v.es || (have[v.zh] && have[v.zh].es) || vocFindEs(v.zh), py: vocPy(v.zh) }));
+    const res = items.map(v => { const r = { zh: v.zh, es: v.es || (have[v.zh] && have[v.zh].es) || vocFindEs(v.zh), py: vocPy(v.zh) }; const en = (have[v.zh] && have[v.zh].en) || vocFindEn(v.zh); if(en) r.en = en; return r; });
     const noEs = res.filter(r => !r.es).length;
     vocSave(sid, cur => {
       let added = 0;
@@ -570,8 +577,8 @@ function bindVoc(root){
   root.querySelectorAll('tr[data-z]').forEach(tr => {
     const zh = tr.dataset.z;
     tr.querySelector('.vSave').onclick = () => {
-      const py = tr.querySelector('.vPy').value.trim(), es = tr.querySelector('.vEs').value.trim();
-      vocSave(sid, cur => { const i = cur.words.findIndex(w => w.zh === zh); if(i >= 0) Object.assign(cur.words[i], { py, es }); else cur.words.push({ zh, py, es }); });
+      const py = tr.querySelector('.vPy').value.trim(), es = tr.querySelector('.vEs').value.trim(), en = tr.querySelector('.vEn').value.trim();
+      vocSave(sid, cur => { const i = cur.words.findIndex(w => w.zh === zh); if(i >= 0) Object.assign(cur.words[i], { py, es, en }); else cur.words.push({ zh, py, es, en }); });
     };
     tr.querySelector('.vHide').onclick = () => {
       const mine = vocList(sid).words.find(w => w.zh === zh), own = mine && vocTotals(sid).words.find(w => w.zh === zh).src === 'tc';

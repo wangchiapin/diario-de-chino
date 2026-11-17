@@ -8,7 +8,7 @@
    學生日誌管理後台可以改的文字放在 portal/{老師}/config/nudge；沒設定就用這裡的預設。
 ===================================================================== */
 
-var NUD_LANGS = ['es', 'tc', 'sc'];
+var NUD_LANGS = ['es', 'en', 'tc', 'sc'];
 
 /* ───────── 激勵句預設（{n} 已上堂數、{t} 學了多久；缺資料的句子自動跳過） ───────── */
 var NUD_ENC = {
@@ -56,6 +56,28 @@ var NUD_ENC = {
     '不懂就问，发问也是学习的一部分！',
     '每一次开口，都是在为自己的中文打好基础。'
   ],
+  en: [
+    'Practice a little every day and your Chinese will take off!',
+    'Keep it up, you can do it!',
+    'You\'ve already had {n} classes with Ben, great job!',
+    'You\'ve been learning Chinese for {t}, keep going!',
+    'It\'s okay to make mistakes: every error moves you forward a little.',
+    'Practicing just one question today already counts as progress.',
+    'Speaking matters more than speaking perfectly!',
+    'What you didn\'t know yesterday, you know today.',
+    'Learning a language is like growing a tree: a little water every day and it slowly grows.',
+    'You\'re better than you think!',
+    'Take it easy: nobody learns Chinese in a day.',
+    'The characters you remember came from practicing again and again.',
+    'Let\'s review a little today too, five minutes is enough!',
+    'You\'ve come a long way, don\'t stop now!',
+    'Saying one sentence out loud already takes courage!',
+    'Every new word brings you a little closer to Taiwan.',
+    'Being consistent matters more than being fast. You\'re doing great!',
+    'Today\'s you speaks better Chinese than yesterday\'s you.',
+    'If you don\'t understand, ask: asking is learning too.',
+    'Every time you speak, you\'re building the foundation of your Chinese.'
+  ],
   es: [
     '¡Practica un poquito cada día y tu chino mejorará muchísimo!',
     '¡Sigue esforzándote, tú puedes!',
@@ -82,25 +104,25 @@ var NUD_ENC = {
 
 /* ───────── 提醒文字預設（{n} 數量、{day} 今天／明天、{time} 時間） ───────── */
 var NUD_REM = {
-  hwTodo:    { tc: '你有 {n} 份作業還沒交，記得寫完傳上來喔！', sc: '你有 {n} 份作业还没交，记得写完传上来喔！', es: 'Tienes {n} tarea(s) sin entregar. ¡Recuerda completarla(s) y enviarla(s)!' },
-  graded:    { tc: '你的作業批改好了，快去看看吧！', sc: '你的作业批改好了，快去看看吧！', es: '¡Tu tarea ya fue corregida, ve a verla!' },
-  classSoon: { tc: '{day} {time} 有課，別忘了喔！', sc: '{day} {time} 有课，别忘了喔！', es: '¡{day} a las {time} tienes clase, no lo olvides!' },
-  payLow:    { tc: '你的課堂只剩 {n} 堂了，記得提前續購喔！', sc: '你的课堂只剩 {n} 堂了，记得提前续购喔！', es: 'Te quedan solo {n} clase(s). ¡Recuerda renovar con tiempo!' },
-  paySingle: { tc: '上課前記得提前付費唷！', sc: '上课前记得提前付费唷！', es: '¡Recuerda pagar antes de la clase!' }
+  hwTodo:    { tc: '你有 {n} 份作業還沒交，記得寫完傳上來喔！', sc: '你有 {n} 份作业还没交，记得写完传上来喔！', es: 'Tienes {n} tarea(s) sin entregar. ¡Recuerda completarla(s) y enviarla(s)!', en: 'You have {n} homework(s) not submitted yet. Remember to finish and send them!' },
+  graded:    { tc: '你的作業批改好了，快去看看吧！', sc: '你的作业批改好了，快去看看吧！', es: '¡Tu tarea ya fue corregida, ve a verla!', en: 'Your homework has been graded, go and take a look!' },
+  classSoon: { tc: '{day} {time} 有課，別忘了喔！', sc: '{day} {time} 有课，别忘了喔！', es: '¡{day} a las {time} tienes clase, no lo olvides!', en: 'You have class {day} at {time}, don\'t forget!' },
+  payLow:    { tc: '你的課堂只剩 {n} 堂了，記得提前續購喔！', sc: '你的课堂只剩 {n} 堂了，记得提前续购喔！', es: 'Te quedan solo {n} clase(s). ¡Recuerda renovar con tiempo!', en: 'You only have {n} class(es) left. Remember to renew in time!' },
+  paySingle: { tc: '上課前記得提前付費唷！', sc: '上课前记得提前付费唷！', es: '¡Recuerda pagar antes de la clase!', en: 'Remember to pay before the class!' }
 };
 var NUD_REM_KEYS = ['hwTodo', 'graded', 'classSoon', 'payLow', 'paySingle'];
-var NUD_DAY = { today: { tc: '今天', sc: '今天', es: 'Hoy' }, tomorrow: { tc: '明天', sc: '明天', es: 'Mañana' } };
+var NUD_DAY = { today: { tc: '今天', sc: '今天', es: 'Hoy', en: 'Today' }, tomorrow: { tc: '明天', sc: '明天', es: 'Mañana', en: 'Tomorrow' } };
 
 /* ───────── 題目樣板（{x} 是單字或語法點） ───────── */
 var NUD_Q = {
-  zhOf:     { tc: '「{x}」的中文怎麼說？', sc: '「{x}」的中文怎么说？', es: '¿Cómo se dice «{x}» en chino?' },
-  meaning:  { tc: '「{x}」是什麼意思？', sc: '「{x}」是什么意思？', es: '¿Qué significa «{x}»?' },
-  sentWord: { tc: '用「{x}」造一個句子吧！然後傳給 Ben！', sc: '用「{x}」造一个句子吧！然后传给 Ben！', es: '¡Haz una oración con «{x}» y mándasela a Ben!' },
-  sentGram: { tc: '用「{x}」造一個句子吧！然後傳給 Ben！', sc: '用「{x}」造一个句子吧！然后传给 Ben！', es: '¡Haz una oración con «{x}» y mándasela a Ben!' },
-  recall:   { tc: '你還記得「{x}」怎麼用嗎？', sc: '你还记得「{x}」怎么用吗？', es: '¿Recuerdas cómo se usa «{x}»?' }
+  zhOf:     { tc: '「{x}」的中文怎麼說？', sc: '「{x}」的中文怎么说？', es: '¿Cómo se dice «{x}» en chino?', en: 'How do you say "{x}" in Chinese?' },
+  meaning:  { tc: '「{x}」是什麼意思？', sc: '「{x}」是什么意思？', es: '¿Qué significa «{x}»?', en: 'What does "{x}" mean?' },
+  sentWord: { tc: '用「{x}」造一個句子吧！然後傳給 Ben！', sc: '用「{x}」造一个句子吧！然后传给 Ben！', es: '¡Haz una oración con «{x}» y mándasela a Ben!', en: 'Make a sentence with "{x}" and send it to Ben!' },
+  sentGram: { tc: '用「{x}」造一個句子吧！然後傳給 Ben！', sc: '用「{x}」造一个句子吧！然后传给 Ben！', es: '¡Haz una oración con «{x}» y mándasela a Ben!', en: 'Make a sentence with "{x}" and send it to Ben!' },
+  recall:   { tc: '你還記得「{x}」怎麼用嗎？', sc: '你还记得「{x}」怎么用吗？', es: '¿Recuerdas cómo se usa «{x}»?', en: 'Do you remember how to use "{x}"?' }
 };
 
-function nudLang(l) { return l === 'es' || l === 'sc' ? l : 'tc'; }
+function nudLang(l) { return l === 'es' || l === 'en' || l === 'sc' ? l : 'tc'; }
 function nudFill(tpl, vars) {
   return String(tpl).replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] != null ? vars[k] : m; });
 }
@@ -169,10 +191,15 @@ function nudSpan(sinceIso, todayIso, lang) {
   if (days < 1) return '';
   var months = (+b[0] - +a[0]) * 12 + (+b[1] - +a[1]) - (+b[2] < +a[2] ? 1 : 0);
   var y = Math.floor(months / 12), mo = months % 12;
-  var zh = lang !== 'es';
+  var zh = lang !== 'es' && lang !== 'en';
+  if (lang === 'en') {
+    if (months < 1) return days + (days === 1 ? ' day' : ' days');
+    if (months < 12) return months + (months === 1 ? ' month' : ' months');
+  }
   if (months < 1) return zh ? days + ' 天' : days + (days === 1 ? ' día' : ' días');
   if (y < 1) return zh ? months + ' 個月'.replace('個', lang === 'sc' ? '个' : '個') : months + (months === 1 ? ' mes' : ' meses');
   if (zh) return y + ' 年' + (mo ? ' ' + mo + (lang === 'sc' ? ' 个月' : ' 個月') : '');
+  if (lang === 'en') return y + (y === 1 ? ' year' : ' years') + (mo ? ' and ' + mo + (mo === 1 ? ' month' : ' months') : '');
   return y + (y === 1 ? ' año' : ' años') + (mo ? ' y ' + mo + (mo === 1 ? ' mes' : ' meses') : '');
 }
 /* 取出某語言的激勵句清單：後台有設定就用後台的（該語言沒有就退回繁體），沒有就用預設 */
@@ -181,7 +208,7 @@ function nudEncList(cfg, lang) {
   var enc = cfg && cfg.enc;
   if (enc && Array.isArray(enc.tc) && enc.tc.length) {
     var base = enc.tc, mine = Array.isArray(enc[lang]) ? enc[lang] : [];
-    var out = base.map(function (t, i) { return String(mine[i] || '').trim() || (lang === 'tc' ? t : String(t)); });
+    var out = base.map(function (t, i) { return String(mine[i] || '').trim() || (lang === 'en' ? NUD_ENC.en[i] || '' : String(t)); });
     return out.filter(function (s) { return s.trim(); });
   }
   return NUD_ENC[lang].slice();
@@ -202,7 +229,7 @@ function nudMakeEnc(cfg, lang, vars, rnd) {
 function nudRemText(cfg, key, lang) {
   lang = nudLang(lang);
   var c = cfg && cfg.rem && cfg.rem[key], d = NUD_REM[key];
-  var mine = c && typeof c[lang] === 'string' && c[lang].trim() ? c[lang] : (c && typeof c.tc === 'string' && c.tc.trim() && lang !== 'es' ? c.tc : '');
+  var mine = c && typeof c[lang] === 'string' && c[lang].trim() ? c[lang] : (c && typeof c.tc === 'string' && c.tc.trim() && lang !== 'es' && lang !== 'en' ? c.tc : '');
   return mine || d[lang];
 }
 function nudReminders(cfg, ctx) {

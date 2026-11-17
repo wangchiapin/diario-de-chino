@@ -104,11 +104,14 @@ function pcMonthGrid(year, month){          // month: 1–12
   return cells;
 }
 
+/* 介面語言 → 日期／Firebase 用的語系代碼 */
+function pcLoc(lang){ return lang === 'es' ? 'es' : lang === 'en' ? 'en' : lang === 'sc' ? 'zh-CN' : 'zh-TW'; }
+
 /* 日期文字（用該語言的星期、月份名稱）。iso 是純日期，不受瀏覽器時區影響 */
 function pcFmtDate(iso, lang, opt){
   var p = iso.split('-');
   var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
-  var loc = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW';
+  var loc = pcLoc(lang);
   return new Intl.DateTimeFormat(loc, Object.assign({ timeZone: 'UTC' }, opt || { weekday: 'short', day: 'numeric', month: 'short' })).format(d);
 }
 
@@ -124,6 +127,7 @@ function pcDetectLang(nav){
   if(n.indexOf('zh') === 0){
     return (n.indexOf('cn') > -1 || n.indexOf('hans') > -1 || n.indexOf('sg') > -1) ? 'sc' : 'tc';
   }
+  if(n.indexOf('en') === 0) return 'en';
   return 'es';
 }
 
@@ -159,6 +163,37 @@ var PC_I18N = {
     hwT_fill: 'Completa con la palabra correcta', hwT_cloze: 'Completa el texto con la palabra correcta', hwT_order: 'Ordena las palabras para formar una oración',
     hwT_choice: 'Elige la oración correcta', hwT_fix: 'Escribe la oración correcta', hwT_translate: 'Traduce al chino', hwT_zh2es: 'Traduce al español',
     hwT_match: 'Une cada palabra con su significado', hwT_sentence: 'Escribe una oración con la palabra o estructura indicada'
+  },
+  en: {
+    title: 'My Chinese Diary', login: 'Log in', register: 'Create account', email: 'Email', password: 'Password',
+    forgot: 'Forgot your password?', logout: 'Log out', language: 'Language',
+    needLink: 'Please open this page from the link your teacher sent you.',
+    verifyTitle: 'Confirm your email', verifyMsg: 'We sent a message to {email}. Open the link in it and come back here. If you can\'t find it, check your spam folder.',
+    verifyDone: 'I\'ve confirmed it', verifyResend: 'Resend message', sent: 'Message sent.', resetSent: 'We sent you a message to reset your password. Check your spam folder too.',
+    notListedTitle: 'Your email is not registered yet', notListedMsg: 'Ask your teacher to use this email: {email}',
+    hello: 'Hello, {name}', nextClass: 'Next class', noNext: 'There is no upcoming class on the calendar yet.',
+    twTime: 'Taiwan time', yourTime: 'Your time', today: 'today', tomorrow: 'tomorrow', inDays: 'in {n} days', now: 'in progress',
+    prevDay: 'previous day', nextDay: 'next day',
+    payment: 'Payment', remaining: 'Classes left', single: 'Pay per class', taught: 'Classes taken', unit: '{n} classes', unit1: '{n} class',
+    calendar: 'Calendar', legendDone: 'Taken', legendNext: 'Upcoming', legendOff: 'No class / cancelled',
+    dayDetail: 'Classes on this day', noClassDay: 'No classes on this day.', off: 'No class',
+    timezone: 'Your time zone', tzTeacher: 'Set by your teacher', tzDevice: 'From your device', tzChange: 'Change',
+    updated: 'Updated: {t}', loading: 'Loading…', slow: 'Taking too long? Close the app completely and open it again, or tap here:', reload: 'Reload', archived: 'This account is no longer active.', retry: 'Try again',
+    errLogin: 'Wrong email or password.', errExists: 'This email already has an account. Please log in.', errWeak: 'The password must be at least 6 characters.',
+    errEmail: 'The email is not valid.', errMany: 'Too many attempts. Please wait a few minutes.', errNet: 'No connection. Check your internet.', errOther: 'Something went wrong. Please try again.',
+    errNoPerm: 'You don\'t have permission to see this data. Confirm your email and try again.', noNoData: 'Your teacher hasn\'t published your information yet.',
+    hwTitle: 'Homework', uiLang: 'Language', zhLang: 'Characters', hwPosted: 'Posted', hwStTodo: 'To submit', hwStSubmitted: 'Submitted, waiting for feedback', hwStGraded: 'Graded',
+    hwStart: 'Do the homework', hwView: 'View', hwBack: 'Back', hwSubmit: 'Submit homework', hwConfirm: 'Submit the homework? You won\'t be able to change your answers afterwards.',
+    hwUnanswered: 'You still have {n} unanswered questions.', hwYes: 'Yes, submit', hwNo: 'Cancel', hwSaving: 'Saving…', hwSaved: 'Saved', hwSaveErr: 'Could not save. Check your connection.',
+    hwLocked: 'You already submitted this homework. Your teacher will grade it.', hwScore: 'Score: {got}/{max}', hwPoints: '{n} pts', hwAssigned: 'Assigned: {t}', hwClear: 'Clear',
+    hwPreviewRO: 'Teacher preview: read only.', hwPick: 'Choose', hwWrite: 'Write your answer',
+    hwKey: 'Correct answer', hwSample: 'Sample answer', hwTeacherNote: 'Message from your teacher', hwRight: 'Correct', hwWrong: 'Incorrect', hwHalf: 'Partly correct', hwNoAns: '(no answer)', hwMarked: 'Your teacher\'s feedback',
+    hwWordTitle: 'Do the homework in Word', hwWordHelp: '1) Download the Word file. 2) Answer it on your computer or phone. 3) Upload it here (.docx only, max 600 KB) and press Submit.', hwWordDown: 'Download Word', hwWordUp: 'Upload my Word', hwWordUploaded: 'Uploaded: {name}', hwWordRemove: 'Remove', hwWordBig: 'The file is too large (max 600 KB).', hwWordType: 'Only .docx files are accepted.', hwWordFail: 'Upload failed. Please try again.', hwWordDownFail: 'Could not create the Word file. Check your connection.', hwWordName: 'Name', hwWordDate: 'Date', hwMatchNote: 'Write the letter that matches each number.', hwWordSent: 'Your Word file is uploaded.', hwWordMarkedTitle: 'Your graded Word file', hwAnswersTitle: 'Correct answers', hwWordBusy: 'Uploading…',
+    nudQ: 'Practice', nudEnc: 'Cheer up', nudRem: 'Reminder', nudClose: 'Close',
+    notListedSent: 'We let your teacher know ({email}). Once they confirm, press "Check again".', recheck: 'Check again',
+    hwT_fill: 'Fill in the blank with the right word', hwT_cloze: 'Complete the text with the right words', hwT_order: 'Put the words in order to make a sentence',
+    hwT_choice: 'Choose the correct sentence', hwT_fix: 'Write the correct sentence', hwT_translate: 'Translate into Chinese', hwT_zh2es: 'Translate into Spanish',
+    hwT_match: 'Match each word with its meaning', hwT_sentence: 'Write a sentence with the given word or structure'
   },
   tc: {
     title: '我的中文日誌', login: '登入', register: '建立帳號', email: '電子郵件', password: '密碼',
@@ -233,10 +268,13 @@ function pcT(lang, key, params){
   return s;
 }
 
+/* 「1 class」「2 classes」：只有英文分單複數，其他語言用同一個 */
+function pcUnitKey(lang, n){ return n === 1 && PC_I18N[lang] && PC_I18N[lang].unit1 ? 'unit1' : 'unit'; }
+
 /* 付費卡片要顯示什麼：包堂顯示剩幾堂；單堂付費只顯示「單堂付費」；沒設定就不顯示 */
 function pcPayLine(doc, lang){
   if(!doc) return null;
-  if(doc.pay === 'package' && doc.remaining != null) return { label: pcT(lang, 'remaining'), value: pcT(lang, 'unit', { n: Math.max(0, doc.remaining) }) };
+  if(doc.pay === 'package' && doc.remaining != null) return { label: pcT(lang, 'remaining'), value: pcT(lang, pcUnitKey(lang, Math.max(0, doc.remaining)), { n: Math.max(0, doc.remaining) }) };
   if(doc.pay === 'single') return { label: pcT(lang, 'payment'), value: pcT(lang, 'single') };
   return null;
 }

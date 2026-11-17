@@ -20,6 +20,14 @@ var BOARD_I18N = {
     wallPh: 'Escribe un mensaje…', dmPh: 'Escribe un mensaje para el profesor…', send: 'Enviar', del: 'Borrar', teacher: 'Profesor',
     sending: 'Enviando…', sendErr: 'No se pudo enviar. Inténtalo de nuevo.', tooLong: 'Máximo {n} caracteres.', confirmDel: '¿Borrar este mensaje?'
   },
+  en: {
+    bTitle: 'Board and messages', bBtn: 'Open', bBack: '‹ Back',
+    tBoard: 'Notices', tWall: 'Messages', tDm: 'For the teacher',
+    boardEmpty: 'No notices yet.', wallEmpty: 'No messages yet. Be the first!', dmEmpty: 'You can write to your teacher here. Only you and your teacher will see these messages.',
+    wallHint: 'All students can see what you write here.', dmHint: 'Only you and your teacher see these messages.',
+    wallPh: 'Write a message…', dmPh: 'Write a message for your teacher…', send: 'Send', del: 'Delete', teacher: 'Teacher',
+    sending: 'Sending…', sendErr: 'Could not send. Please try again.', tooLong: 'Maximum {n} characters.', confirmDel: 'Delete this message?'
+  },
   tc: {
     bTitle: '公布欄與留言', bBtn: '打開', bBack: '‹ 返回',
     tBoard: '公布欄', tWall: '留言板', tDm: '給老師',
@@ -38,7 +46,7 @@ var BOARD_I18N = {
   }
 };
 function boardT(lang, key, p) {
-  var l = lang === 'es' || lang === 'sc' ? lang : 'tc';
+  var l = lang === 'es' || lang === 'en' || lang === 'sc' ? lang : 'tc';
   var s = BOARD_I18N[l][key];
   if (s == null) s = BOARD_I18N.tc[key];
   if (typeof s !== 'string') return s;

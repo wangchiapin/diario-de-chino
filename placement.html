@@ -40,7 +40,7 @@ const db = getFirestore(initializeApp({
 }));
 const app = document.getElementById('app');
 if(!tid){ app.innerHTML = '<div style="padding:20px;text-align:center">Enlace incompleto. Pide a tu profesor el enlace correcto.</div>'; }
-else plRender(app, { needName: true, onDone: rec => addDoc(collection(db, 'portal', tid, 'placements'), Object.assign({ src: 'web' }, rec)) });
+else plRender(app, { lang: new URLSearchParams(location.search).get('lang') || 'es', needName: true, onDone: rec => addDoc(collection(db, 'portal', tid, 'placements'), Object.assign({ src: 'web' }, rec)) });
 </script>
 </body>
 </html>

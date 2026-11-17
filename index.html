@@ -224,7 +224,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
   <header>
     <h1 id="appTitle"></h1>
     <div class="langs">
-      <div class="lang" id="langBar"><span class="lgl" id="lgl1"></span><button data-l="es">ES</button><button data-l="tc">繁</button><button data-l="sc">简</button></div>
+      <div class="lang" id="langBar"><span class="lgl" id="lgl1"></span><button data-l="es">ES</button><button data-l="en">EN</button><button data-l="tc">繁</button><button data-l="sc">简</button></div>
       <div class="lang" id="zhBar"><span class="lgl" id="lgl2"></span><button data-z="tc">繁</button><button data-z="sc">简</button></div>
     </div>
   </header>
@@ -275,7 +275,7 @@ const esc = s => {
 };
 
 /* ───────── 狀態 ───────── */
-let lang = LS.get('dc.lang') || pcDetectLang(navigator.language);   // 介面語言：es / tc / sc
+let lang = (l => ['es', 'en', 'tc', 'sc'].indexOf(l) > -1 ? l : null)(LS.get('dc.lang')) || pcDetectLang(navigator.language);   // 介面語言：es / en / tc / sc
 /* 中文字（繁／簡）：學生自己選的優先（記在這台裝置）；舊使用者沿用以前的設定；
    沒選過就用老師在後台替他設的預設；都沒有就是簡體。老師預覽時不吃這台電腦的記憶，才看得到學生的預設。 */
 let zhsPick = (() => { try{ if(/[?&]preview=/.test(location.search)) return null; }catch(e){}
@@ -325,7 +325,8 @@ function allTimeZones(){
 /* ───────── 畫面 ───────── */
 function setLang(l){
   lang = l; LS.set('dc.lang', l);
-  document.documentElement.lang = l === 'es' ? 'es' : l === 'sc' ? 'zh-CN' : 'zh-TW';
+  try{ revRound = null; }catch(e){}
+  document.documentElement.lang = pcLoc(l);
   document.querySelectorAll('#langBar button').forEach(b => b.classList.toggle('on', b.dataset.l === l));
   paintZhBar();
   $('appTitle').innerHTML = esc(T('title'));
@@ -390,7 +391,7 @@ function renderAuth(root){
     const em = $('em').value.trim().toLowerCase(), pw = $('pw').value;
     busyErr = busyMsg = ''; $('btnAuth').disabled = true;
     try{
-      auth.languageCode = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW';
+      auth.languageCode = pcLoc(lang);
       if(authMode === 'register'){
         const cred = await createUserWithEmailAndPassword(auth, em, pw);
         await sendEmailVerification(cred.user);
@@ -403,7 +404,7 @@ function renderAuth(root){
   if(f) f.onclick = async () => {
     const em = $('em').value.trim().toLowerCase();
     if(!em){ $('authMsg').className = 'msg err'; $('authMsg').textContent = T('errEmail'); return; }
-    try{ auth.languageCode = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW'; await sendPasswordResetEmail(auth, em); $('authMsg').className = 'msg ok'; $('authMsg').textContent = T('resetSent'); }
+    try{ auth.languageCode = pcLoc(lang); await sendPasswordResetEmail(auth, em); $('authMsg').className = 'msg ok'; $('authMsg').textContent = T('resetSent'); }
     catch(err){ $('authMsg').className = 'msg err'; $('authMsg').textContent = T(pcAuthErrorKey(err && err.code)); }
   };
 }
@@ -423,7 +424,7 @@ function renderVerify(root, user){
     if(auth.currentUser && auth.currentUser.emailVerified){ await auth.currentUser.getIdToken(true); startRoster(); } else render();
   };
   $('btnResend').onclick = async () => {
-    try{ auth.languageCode = lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW'; await sendEmailVerification(user); busyErr = ''; busyMsg = T('sent'); }
+    try{ auth.languageCode = pcLoc(lang); await sendEmailVerification(user); busyErr = ''; busyMsg = T('sent'); }
     catch(err){ busyMsg = ''; busyErr = T(pcAuthErrorKey(err && err.code)); }
     render();
   };
@@ -447,11 +448,11 @@ function renderError(root){
 }
 
 function fmtMs(ms){
-  return new Intl.DateTimeFormat(lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
+  return new Intl.DateTimeFormat(pcLoc(lang), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
 }
 
 function fmtDay(ms){
-  return new Intl.DateTimeFormat(lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW', { dateStyle: 'medium' }).format(new Date(ms));
+  return new Intl.DateTimeFormat(pcLoc(lang), { dateStyle: 'medium' }).format(new Date(ms));
 }
 
 function timesHtml(v, tz){
@@ -489,7 +490,7 @@ function renderHome(root){
 
   /* 付費＋已上堂數 */
   const pay = pcPayLine(studentDoc, lang);
-  const taught = `<div class="card"><h2>${esc(T('taught'))}</h2><div class="big">${esc(T('unit', { n: studentDoc.taught || 0 }))}</div></div>`;
+  const taught = `<div class="card"><h2>${esc(T('taught'))}</h2><div class="big">${esc(T(pcUnitKey(lang, studentDoc.taught || 0), { n: studentDoc.taught || 0 }))}</div></div>`;
   const payCard = pay ? `<div class="card"><h2>${esc(pay.label)}</h2><div class="big">${esc(pay.value)}</div></div>` : '';
   const stats = pay ? `<div class="two grid2">${payCard}${taught}</div>` : taught;
 
@@ -562,7 +563,7 @@ function learnTotalsPy(hwDocs, listDoc){
   return tot;
 }
 try{ ptLoad().then(() => { if(learnOpen) render(); }); }catch(e){}
-const revDeck = tot => { if(!revRound) revRound = learnDeck(tot.words, revMarks(), revOnlyNot, revSeed, revDir).map(w => w.zh); return revRound.map(zh => tot.words.find(w => w.zh === zh)).filter(Boolean); };   // 一輪開始時固定牌組，標「我記得」才不會讓下一張被跳過
+const revDeck = tot => { if(!revRound) revRound = learnDeck(tot.words, revMarks(), revOnlyNot, revSeed, revDir, lang).map(w => w.zh); return revRound.map(zh => tot.words.find(w => w.zh === zh)).filter(Boolean); };   // 一輪開始時固定牌組，標「我記得」才不會讓下一張被跳過
 const revLocal = () => { try{ return JSON.parse(LS.get('dc.rev.' + studentId) || '{}') || {}; }catch(e){ return {}; } };
 const revMarks = () => cloudMarks || revLocal();
 const revMark = (zh, v) => {
@@ -632,7 +633,7 @@ function renderPlacement(root){
   loadPlacement().then(() => {
     const box = root.querySelector('#plBox'); if(!box) return;
     box.className = ''; box.textContent = '';
-    plRender(box, { name: String(studentDoc.name || ''), onDone: placeSave, onExit: () => { placeOpen = false; render(); toTop(); } });
+    plRender(box, { lang, name: String(studentDoc.name || ''), onDone: placeSave, onExit: () => { placeOpen = false; render(); toTop(); } });
   }).catch(() => { placeOpen = false; render(); });
 }
 function levelsHtml(tot){
@@ -671,7 +672,7 @@ function renderLearn(root){
     const wrapBars = h => `<div class="rvbars">${h}</div>`;
     const spk = z => canSpeak() ? `<button class="spk" data-say="${escRaw(z)}" aria-label="${esc(LT('speak'))}">🔊</button>` : '';
     if(revSub === 'words'){
-      body = wrapBars(subBar) + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2><div class="wgrid">${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(w.es)}</div></div>`).join('')}</div></div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
+      body = wrapBars(subBar) + (tot.words.length ? `<div class="card"><h2>${esc(LT('wordsHead', { n: tot.words.length }))}</h2><div class="wgrid">${tot.words.map(w => `<div class="wrow"><div class="wz">${esc(w.zh)} ${spk(w.zh)}</div><div class="wp">${esc(w.py)}</div><div class="we">${esc(learnMean(w, lang))}</div></div>`).join('')}</div></div>` : `<div class="card center muted">${esc(LT('wordsNone'))}</div>`);
     }else if(revSub === 'points'){
       body = wrapBars(subBar) + (tot.points.length ? `<div class="card"><h2>${esc(LT('pointsHead', { n: tot.points.length }))}</h2>${tot.points.map(x => `<span class="lchip">${esc(x.n)}</span>`).join('')}</div>` : `<div class="card center muted">${esc(LT('pointsNone'))}</div>`);
     }else{
@@ -683,8 +684,8 @@ function renderLearn(root){
       else if(revIdx >= deck.length) body = tog + `<div class="card center"><div class="big">${esc(LT('revDone'))}</div><div style="margin-top:12px"><button class="btn" id="revAgain">${esc(LT('revAgain'))}</button></div></div>`;
       else{
         const w = deck[revIdx], e2z = revDir === 'e2z';
-        const front = e2z ? `<div class="z es">${esc(w.es)}</div>` : `<div class="z">${esc(w.zh)} ${spk(w.zh)}</div>`;
-        const back = !revShown ? '' : e2z ? `<div class="z">${esc(w.zh)} ${spk(w.zh)}</div><div class="e">${esc(w.py)}</div>` : `<div class="p">${esc(w.py)}</div><div class="e">${esc(w.es || '—')}</div>`;
+        const front = e2z ? `<div class="z es">${esc(learnMean(w, lang))}</div>` : `<div class="z">${esc(w.zh)} ${spk(w.zh)}</div>`;
+        const back = !revShown ? '' : e2z ? `<div class="z">${esc(w.zh)} ${spk(w.zh)}</div><div class="e">${esc(w.py)}</div>` : `<div class="p">${esc(w.py)}</div><div class="e">${esc(learnMean(w, lang) || '—')}</div>`;
         body = tog + `<div class="card rcard"><div class="muted">${esc(LT('revLeft', { n: deck.length - revIdx }))}</div>${front}<div class="back">${back}</div>
           <div style="margin-top:14px">${revShown ? `<button class="btn" id="revKnow">${esc(LT('revKnow'))}</button> <button class="btn quiet" id="revNotYet">${esc(LT('revNot'))}</button>` : `<button class="btn" id="revShow">${esc(LT('revShow'))}</button>`}</div></div>`;
       }
@@ -774,7 +775,7 @@ function renderSoft(){
   if(a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;
   render();
 }
-const boardTime = ts => { try{ return new Date(ts).toLocaleString(lang === 'es' ? 'es' : 'zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }catch(e){ return ''; } };
+const boardTime = ts => { try{ return new Date(ts).toLocaleString(pcLoc(lang), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }catch(e){ return ''; } };
 function boardCardHtml(dots){
   if(PREVIEW || !(bOk.board || bOk.wall || bOk.dm)) return '';
   const d = dots.board || dots.wall || dots.dm;

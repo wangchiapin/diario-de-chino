@@ -99,7 +99,21 @@ test('包堂顯示剩幾堂；單堂付費只顯示單堂付費；沒設定不�
 });
 test('瀏覽器語言判斷', () => {
   assert.strictEqual(C('pcDetectLang')('es-MX'), 'es'); assert.strictEqual(C('pcDetectLang')('zh-TW'), 'tc');
-  assert.strictEqual(C('pcDetectLang')('zh-CN'), 'sc'); assert.strictEqual(C('pcDetectLang')('en-US'), 'es');
+  assert.strictEqual(C('pcDetectLang')('zh-CN'), 'sc'); assert.strictEqual(C('pcDetectLang')('en-US'), 'en');
+  assert.strictEqual(C('pcDetectLang')('pt-BR'), 'es'); assert.strictEqual(C('pcDetectLang')('fr'), 'es');
+});
+test('英文介面文字：每個 key 都有英文，英文單字意思優先、沒填就退回西文', () => {
+  const I = C('PC_I18N');
+  Object.keys(I.es).forEach(k => assert.ok(I.en[k], 'core en 缺 ' + k));
+  assert.strictEqual(C('pcT')('en', 'hwTitle'), 'Homework');
+  const LI = C('LEARN_I18N'); Object.keys(LI.es).forEach(k => assert.ok(LI.en[k], 'learn en 缺 ' + k));
+  const BI = C('BOARD_I18N'); Object.keys(BI.es).forEach(k => assert.ok(BI.en[k], 'board en 缺 ' + k));
+  assert.strictEqual(C('learnMean')({ es: 'agua', en: 'water' }, 'en'), 'water');
+  assert.strictEqual(C('learnMean')({ es: 'agua' }, 'en'), 'agua');
+  assert.strictEqual(C('learnMean')({ es: 'agua', en: 'water' }, 'es'), 'agua');
+  const T = C('learnTotals')({}, { words: [{ zh: '水', py: 'shuǐ', es: 'agua', en: 'water' }] });
+  assert.strictEqual(T.words[0].en, 'water');
+  assert.strictEqual(C('nudSpan')('2024-01-05', '2026-11-17', 'en'), '2 years and 10 months');
 });
 test('三種語言的文字一個都沒少', () => {
   const keys = k => Object.keys(ctx.PC_I18N[k]).sort().join(',');

@@ -29,7 +29,26 @@ var LEARN_I18N = {
     abStart: 'Punto de partida fijado por tu profesor: {l}.',
     abLv: 'Nivel según tu vocabulario', abReached: 'Alcanzado', abLearning: 'Estudiando', abFew: 'Aún hay pocas palabras para estimar tu nivel.', abNone: 'todavía ninguno', abRef: 'Es solo una referencia basada en las palabras que has estudiado, no el resultado de un examen.', abLvName: 'Nivel {n}', abOf: '{a} de {b}',
     fEmpty: 'Todavía no hay materiales.', fOpen: 'Abrir',
-    types: { fill: 'Completar', cloze: 'Párrafo', order: 'Ordenar', choice: 'Opción múltiple', fix: 'Corregir', translate: 'Traducir al español', zh2es: 'Traducir al chino', match: 'Unir', sentence: 'Crear frases' }
+    types: { fill: 'Completar', cloze: 'Párrafo', order: 'Ordenar', choice: 'Opción múltiple', fix: 'Corregir', translate: 'Traducir al chino', zh2es: 'Traducir al español', match: 'Unir', sentence: 'Crear frases' }
+  },
+  en: {
+    learn: 'My learning', learnBtn: 'Open', learnBack: '‹ Back',
+    tLog: 'Classes', tReview: 'Review', tAbility: 'My level', tFiles: 'Materials',
+    logEmpty: 'No class records yet.', nextUp: 'Next class', logCount: '{n} classes recorded',
+    wordsHead: 'Words ({n})', pointsHead: 'Grammar ({n})', rvCards: 'Flashcards', rvWords: 'Word list', rvPoints: 'Grammar list', dirZE: 'Chinese → English', dirEZ: 'English → Chinese', speak: 'Listen',
+    wordsNone: 'No words yet.', pointsNone: 'No grammar points yet.', colWord: 'Word', colPy: 'Pinyin', colEs: 'Meaning',
+    revEmpty: 'No words to review yet. They will appear when you receive homework.', revShow: 'Show meaning', revKnow: 'I remember', revNot: 'Not yet',
+    revOnlyNot: 'Only the ones I don\'t remember yet', revAll: 'All', revDone: 'You finished this review!', revAgain: 'Review again', revLeft: '{n} left',
+    revNoNot: 'You have no words marked "Not yet". Well done!',
+    abHw: 'Graded homework', abWords: 'Words', abPoints: 'Grammar points', abClasses: 'Classes', abByType: 'Accuracy by exercise type', abTrend: 'Your latest homework',
+    abEmpty: 'Once your teacher grades your homework, you\'ll see your progress here.', abNote: 'Homework whose score your teacher chose to hide is not counted.',
+    abGLearned: 'Learned', abGCefr: 'Approximate level', abGFew: 'Not enough grammar points yet to estimate your level.',
+    abTestH: 'Level test', abTestD: 'A quick estimate of your Chinese level (about 20 questions). It is not an official exam.', abTestGo: 'Take the test',
+    abTestHist: 'My test results',
+    abStart: 'Starting point set by your teacher: {l}.',
+    abLv: 'Level based on your vocabulary', abReached: 'Reached', abLearning: 'Studying', abFew: 'Not enough words yet to estimate your level.', abNone: 'none yet', abRef: 'This is only a reference based on the words you have studied, not an exam result.', abLvName: 'Level {n}', abOf: '{a} of {b}',
+    fEmpty: 'No materials yet.', fOpen: 'Open',
+    types: { fill: 'Fill in', cloze: 'Cloze', order: 'Word order', choice: 'Multiple choice', fix: 'Fix the error', translate: 'Translate into Chinese', zh2es: 'Translate into Spanish', match: 'Matching', sentence: 'Make sentences' }
   },
   tc: {
     learn: '我的學習', learnBtn: '打開', learnBack: '‹ 返回',
@@ -71,14 +90,14 @@ var LEARN_I18N = {
   }
 };
 function learnT(lang, key, p) {
-  var l = lang === 'es' || lang === 'sc' ? lang : 'tc';
+  var l = lang === 'es' || lang === 'en' || lang === 'sc' ? lang : 'tc';
   var s = LEARN_I18N[l][key];
   if (s == null) s = LEARN_I18N.tc[key];
   if (typeof s !== 'string') return s;
   return s.replace(/\{(\w+)\}/g, function (m, k) { return p && p[k] != null ? p[k] : m; });
 }
 function learnTypeName(lang, type) {
-  var l = lang === 'es' || lang === 'sc' ? lang : 'tc';
+  var l = lang === 'es' || lang === 'en' || lang === 'sc' ? lang : 'tc';
   return LEARN_I18N[l].types[type] || type;
 }
 
@@ -100,9 +119,10 @@ function learnLogGroups(log) {
 /* ───────── 3. 複習 ───────── */
 /* marks：{ '做菜': 1 } 表示「還不熟」；沒有記錄的算「還沒標」。
    onlyNot=true 時只留標過「還不熟」的。回傳卡片陣列（照 mode 的洗牌種子打散；同一輪順序固定） */
-function learnDeck(words, marks, onlyNot, seed, dir) {
+function learnMean(w, lang) { return lang === 'en' && w && w.en ? w.en : (w && w.es) || ''; }
+function learnDeck(words, marks, onlyNot, seed, dir, lang) {
   var list = (words || []).filter(function (w) { return w && w.zh; });
-  if (dir === 'e2z') list = list.filter(function (w) { return w.es; });   // 西文→中文：沒有西文意思的單字沒辦法出
+  if (dir === 'e2z') list = list.filter(function (w) { return learnMean(w, lang); });   // 西文→中文：沒有西文意思的單字沒辦法出
   if (onlyNot) list = list.filter(function (w) { return marks && marks[w.zh] === 1; });
   function h(s) {   // 簡單雜湊＋最後再攪一次，種子差 1 順序也會明顯不同
     var x = 2166136261; s = String(s);
@@ -126,17 +146,18 @@ function learnTotals(hwDocs, list) {
   function ts(d) { return +(d && (d.assignedAt || d.submittedAt)) || 0; }
   ids.sort(function (a, b) { return ts(hwDocs[a]) - ts(hwDocs[b]) || (a < b ? -1 : 1); });
   var W = {}, Wo = [], P = {}, Po = [];
-  function addW(zh, es, t, src) {
+  function addW(zh, es, t, src, en) {
     zh = String(zh || '').trim(); if (!zh) return;
     var x = W[zh];
-    if (!x) { x = W[zh] = { zh: zh, py: '', es: '', t: t, src: src }; Wo.push(x); }
+    if (!x) { x = W[zh] = { zh: zh, py: '', es: '', en: '', t: t, src: src }; Wo.push(x); }
     if (!x.es && es) x.es = String(es).trim();
+    if (!x.en && en) x.en = String(en).trim();
   }
   function addP(n, t, src) { n = String(n || '').trim(); if (n && !P[n]) { P[n] = { n: n, t: t, src: src }; Po.push(P[n]); } }
   ids.forEach(function (id) {
     var d = hwDocs[id] || {}, t = ts(d);
     nudSplitPoints(d.grammar).forEach(function (n) { addP(n, t, 'hw'); });
-    (Array.isArray(d.vocab) ? d.vocab : []).forEach(function (v) { if (v) addW(v.zh, v.es, t, 'hw'); });
+    (Array.isArray(d.vocab) ? d.vocab : []).forEach(function (v) { if (v) addW(v.zh, v.es, t, 'hw', v.en); });
     (d.sections || []).forEach(function (sec) {
       (sec.items || []).forEach(function (it) { if (it && it.vocab) nudParseVocab(it.vocab).forEach(function (v) { addW(v.zh, v.es, t, 'hw'); }); });
     });
@@ -148,6 +169,7 @@ function learnTotals(hwDocs, list) {
     var x = W[zh];
     x.py = String(e.py || '').trim();
     if (String(e.es || '').trim()) x.es = String(e.es).trim();
+    if (String(e.en || '').trim()) x.en = String(e.en).trim();
     if (!had) x.t = +e.t || 0;
   });
   (Array.isArray(list.points) ? list.points : []).forEach(function (e) { if (e) addP(e.n, +e.t || 0, 'tc'); });

@@ -85,7 +85,8 @@ function plScore(ans) {
 }
 
 /* ---------- 畫面（西文） ---------- */
-var PL_T = {
+var PL_TX = {};
+PL_TX.es = {
   title: 'Test de nivel de chino', intro: 'Una estimación rápida de tu nivel. No es un examen oficial.',
   quick: 'Versión rápida', quickD: 'Unas 20 preguntas, 3–5 minutos', full: 'Versión completa', fullD: 'Unas 50 preguntas, 15–20 minutos',
   start: 'Empezar', q: 'Pregunta', of: 'de', dk: 'No sé', py: 'Pinyin', script: '简 / 繁',
@@ -96,6 +97,19 @@ var PL_T = {
   again: 'Repetir el test', exit: 'Volver', name: 'Tu nombre', nameReq: 'Escribe tu nombre para empezar.', saved: '✓ Resultado guardado. Tu profesor podrá verlo.', saving: 'Guardando…', saveErr: 'No se pudo guardar el resultado. Inténtalo de nuevo.', retry: 'Guardar de nuevo', below: 'Todavía por debajo de A1',
   lvl: 'Nivel', byLevel: 'Resultado por nivel', stage: 'Parte', loading: 'Cargando…'
 };
+/* 英文介面：只翻畫面文字，題目（單字選項是西文）維持原樣 */
+PL_TX.en = {
+  title: 'Chinese level test', intro: 'A quick estimate of your level. It is not an official exam. (The answer options are in Spanish.)',
+  quick: 'Quick version', quickD: 'About 20 questions, 3–5 minutes', full: 'Full version', fullD: 'About 50 questions, 15–20 minutes',
+  start: 'Start', q: 'Question', of: 'of', dk: 'I don\'t know', py: 'Pinyin', script: '简 / 繁',
+  meaning: 'What does it mean?', pick: 'Choose the correct option', read: 'Read the text and answer',
+  doneH: 'Your approximate level', tocflL: 'Equivalent to TOCFL level', right: 'Correct answers',
+  note: 'This is only a reference based on a few questions, not an exam result. Your teacher will confirm your level in class.',
+  copy: 'Copy result', copied: 'Copied!', send: 'Send to my teacher', sent: '✓ Sent to your teacher', sending: 'Sending…', sendErr: 'Could not send. Please try again.',
+  again: 'Take the test again', exit: 'Back', name: 'Your name', nameReq: 'Write your name to start.', saved: '✓ Result saved. Your teacher will be able to see it.', saving: 'Saving…', saveErr: 'Could not save the result. Please try again.', retry: 'Save again', below: 'Still below A1',
+  lvl: 'Level', byLevel: 'Result by level', stage: 'Part', loading: 'Loading…'
+};
+var PL_T = PL_TX.es;
 function plEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function plTidyPy(p) { return String(p || '').replace(/ ([，。？！、；：,.?!;:])/g, '$1').replace(/＿＿/g, '＿＿'); }
 function plResultText(r, st) {
@@ -117,6 +131,7 @@ function plCss() {
 /* opts：{ mode:'quick'|'full'|null（null 先讓使用者選）, name:名字, needName:要先填名字, onDone:function(紀錄)→Promise（測完自動呼叫一次）, onExit:function, rnd, bank } */
 function plRender(root, opts) {
   opts = opts || {};
+  PL_T = PL_TX[opts.lang] || PL_TX.es;
   plCss();
   var bank = opts.bank || window.PLACEMENT_BANK, rnd = opts.rnd || Math.random;
   var st = { mode: opts.mode || null, phase: 'pick', queue: [], i: 0, ans: [], est: 0, script: 's', pyUser: null, pyUsed: false, saveState: '', saved: false, stage: 1, name: opts.name || '' };
