@@ -31,16 +31,22 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{height:100vh;height:100dvh;box-sizing:border-box}
 .wrap{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;box-sizing:border-box}
 }
+.home{display:flex;flex-direction:column}
+.colA,.colB,.colC{display:contents}
+.hello .tzbox{display:none}
 /* 電腦版（寬螢幕）：首頁左右兩欄、其他頁面置中加寬、單字總表並排。手機版的規則都在上面，這裡不影響 */
 @media (min-width:1024px){
-.wrap{max-width:1080px}
+.wrap{max-width:1400px}
 #app>:not(.home):not(.pvbar){max-width:860px;margin-left:auto;margin-right:auto}
 .pvbar{max-width:860px;margin-left:auto;margin-right:auto}
 #app:has(.home)>.pvbar{max-width:none}
 .cal-grid .day{aspect-ratio:auto;height:44px}
-.home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;align-items:start}
-.home>.hello{grid-column:1/-1}
-.colR{position:sticky;top:12px}
+.home{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 18px;align-items:start}
+.colA,.colB,.colC{display:block}
+.home>.hello{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.hello .tzbox{display:flex;align-items:center;gap:8px}
+.hello .tzbox select{width:auto;max-width:260px;padding:6px 8px;font-size:14px}
+.tzcard{display:none}
 .wgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:32px}
 .wgrid .wrow:nth-child(-n+2){border-top:0}
 }
@@ -443,27 +449,29 @@ function renderHome(root){
   const srcLabel = tzSource() === 'teacher' ? T('tzTeacher') : tzSource() === 'device' ? T('tzDevice') : '';
 
   root.innerHTML = `<div class="home">
-    <div class="card hello"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div></div>
-    <div class="colL">
-    <div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div>
-    ${hwCardHtml()}
-    ${boardCardHtml(HOME_DOTS)}
-    ${learnCardHtml(HOME_DOTS)}
-    ${stats}
+    <div class="card hello"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div><label class="tzbox muted" title="${esc(srcLabel)}">${esc(T('timezone'))}<select id="tzSel2">${opts}</select></label></div>
+    <div class="colA">
+    <div class="it" style="order:1"><div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div></div>
+    <div class="it" style="order:5">${stats}</div>
     </div>
-    <div class="colR">
-    <div class="card">
+    <div class="colB">
+    <div class="it" style="order:4">${learnCardHtml(HOME_DOTS)}</div>
+    <div class="it" style="order:2">${hwCardHtml()}</div>
+    <div class="it" style="order:3">${boardCardHtml(HOME_DOTS)}</div>
+    </div>
+    <div class="colC">
+    <div class="it" style="order:6"><div class="card">
       <h2>${esc(T('calendar'))}</h2>
       <div class="cal-head"><button id="calPrev" aria-label="prev">‹</button><b>${esc(monthTitle)}</b><button id="calNext" aria-label="next">›</button></div>
       <div class="cal-grid">${grid}</div>
       <div class="legend"><span><i class="sw done"></i>${esc(T('legendDone'))}</span><span><i class="sw up"></i>${esc(T('legendNext'))}</span><span><i class="sw off"></i>${esc(T('legendOff'))}</span></div>
-    </div>
-    <div class="card"><h2>${esc(T('dayDetail'))} · ${esc(pcFmtDate(selDay, lang, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2>${detail}</div>
-    <div class="card">
+    </div></div>
+    <div class="it" style="order:7"><div class="card"><h2>${esc(T('dayDetail'))} · ${esc(pcFmtDate(selDay, lang, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2>${detail}</div></div>
+    <div class="it tzcard" style="order:8"><div class="card">
       <h2>${esc(T('timezone'))}</h2>
       <select id="tzSel">${opts}</select>
       <div class="muted" style="margin-top:6px">${esc(srcLabel)}</div>
-    </div>
+    </div></div>
     </div>
     </div>
     ${logoutBlock()}`;
@@ -472,7 +480,7 @@ function renderHome(root){
   root.querySelectorAll('.day').forEach(b => b.onclick = () => { selDay = b.dataset.d; calMonth = { y: +selDay.slice(0, 4), m: +selDay.slice(5, 7) }; render(); });
   $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
   $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
-  $('tzSel').onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); };
+  ['tzSel', 'tzSel2'].forEach(id => $(id).onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); });
   bindLogout(); bindHwCard(root); bindLearnCard(root); nudMaybeStart();
 }
 
