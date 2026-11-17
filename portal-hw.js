@@ -54,28 +54,30 @@ function hwBuildStudent(state) {
   var sections = hwActiveSections(state).map(function (sec) {
     var items = hwActiveItems(sec);
     var out = { id: sec.id, type: sec.type, bank: (sec.bank || []).slice(), items: [] };
+    if (state.meta && state.meta.wantEn) out.en = true;   // 這份練習單有英文版：英文學生的「中翻西」要翻成英文
     items.forEach(function (it) {
       var q = { id: it.id };
       switch (sec.type) {
-        case 'fill': q.zh = it.zh; if (cue && it.es) q.es = it.es; break;
+        case 'fill': q.zh = it.zh; if (cue && it.es) q.es = it.es; if (cue && it.en) q.en = it.en; break;
         case 'cloze': q.text = it.text; q.n = (it.answers || []).length; break;
-        case 'order': q.tokens = (it.tokens || []).slice(); if (cue && it.es) q.es = it.es; break;
+        case 'order': q.tokens = (it.tokens || []).slice(); if (cue && it.es) q.es = it.es; if (cue && it.en) q.en = it.en; break;
         case 'choice':
           if (cue && it.es) q.es = it.es;
+          if (cue && it.en) q.en = it.en;
           q.options = (it.options || []).map(function (t, i) { return { i: i, t: t }; }).filter(function (o) { return o.t; });
           break;
         case 'fix': q.wrong = it.wrong; break;
-        case 'translate': q.es = it.es; if (it.vocab) q.vocab = it.vocab; break;
-        case 'zh2es': q.zh = it.zh; if (it.vocab) q.vocab = it.vocab; break;
+        case 'translate': q.es = it.es; if (it.en) q.en = it.en; if (it.vocab) q.vocab = it.vocab; if (it.vocabEn) q.vocabEn = it.vocabEn; break;
+        case 'zh2es': q.zh = it.zh; if (it.vocab) q.vocab = it.vocab; if (it.vocabEn) q.vocabEn = it.vocabEn; break;
         case 'match': q.zh = it.zh; break;
-        case 'sentence': q.cue = it.cue; if (it.es) q.es = it.es; break;
+        case 'sentence': q.cue = it.cue; if (it.es) q.es = it.es; if (it.en) q.en = it.en; break;
       }
       out.items.push(q);
     });
-    if (sec.type === 'match') out.rights = hwMatchPerm(items).map(function (i) { return items[i].es; });   // 右欄只放西文，順序已打散
+    if (sec.type === 'match') { var pm = hwMatchPerm(items); out.rights = pm.map(function (i) { return items[i].es; }); if (pm.every(function (i) { return items[i].en; })) out.rightsEn = pm.map(function (i) { return items[i].en; }); }   // 右欄只放西文，順序已打散
     return out;
   });
-  return { title: state.meta && (state.meta.title || state.meta.grammar) || '', grammar: (state.meta && state.meta.grammar) || '', sections: sections, total: hwTotal(state) };
+  return { title: state.meta && (state.meta.title || state.meta.grammar) || '', titleEn: (state.meta && state.meta.titleEn) || '', grammar: (state.meta && state.meta.grammar) || '', sections: sections, total: hwTotal(state) };
 }
 
 /* ───────── 自動批改 ─────────
@@ -115,6 +117,12 @@ function hwAutoGrade(state, answers) {
 /* ───────── 批改：標準答案的文字、老師標記的安全過濾、批改結果 ───────── */
 function hwLetter(i) { return String.fromCharCode(65 + i); }
 /* 一題的標準答案（給學生看；批改完成時才寫進學生的資料） */
+/* 英文學生看的標準答案（只有中翻西、配對有不同的英文版；其他題型答案是中文，不用翻） */
+function hwKeyTextEn(type, it) {
+  if (type === 'zh2es') return String(it.answerEn || '');
+  if (type === 'match') return String(it.en || '');
+  return '';
+}
 function hwKeyText(type, it, sec, items) {
   switch (type) {
     case 'fill': case 'order': case 'translate': case 'zh2es': case 'sentence': return String(it.answer || '');
@@ -230,6 +238,6 @@ function hwKeyLines(state) {
 function hwAssignDoc(wid, state, now) {
   var s = hwBuildStudent(state);
   /* 生詞表（中文＋西文意思）一起存進去，學生頁的單字總表和卡片才有西文意思；拼音不存，學生頁自己算 */
-  var vocab = ((state && state.vocab) || []).map(function (v) { return { zh: String((v && v.zh) || '').trim(), es: String((v && v.es) || '').trim() }; }).filter(function (v) { return v.zh; });
-  return { v: 1, wid: wid, title: s.title, grammar: s.grammar, vocab: vocab, sections: s.sections, total: s.total, assignedAt: now, status: 'todo', answers: {} };
+  var vocab = ((state && state.vocab) || []).map(function (v) { return { zh: String((v && v.zh) || '').trim(), es: String((v && v.es) || '').trim(), en: String((v && v.en) || '').trim() }; }).filter(function (v) { return v.zh; });
+  return { v: 1, wid: wid, title: s.title, titleEn: s.titleEn || '', grammar: s.grammar, vocab: vocab, sections: s.sections, total: s.total, assignedAt: now, status: 'todo', answers: {} };
 }

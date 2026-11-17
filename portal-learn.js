@@ -159,7 +159,7 @@ function learnTotals(hwDocs, list) {
     nudSplitPoints(d.grammar).forEach(function (n) { addP(n, t, 'hw'); });
     (Array.isArray(d.vocab) ? d.vocab : []).forEach(function (v) { if (v) addW(v.zh, v.es, t, 'hw', v.en); });
     (d.sections || []).forEach(function (sec) {
-      (sec.items || []).forEach(function (it) { if (it && it.vocab) nudParseVocab(it.vocab).forEach(function (v) { addW(v.zh, v.es, t, 'hw'); }); });
+      (sec.items || []).forEach(function (it) { if (it && it.vocab) { var en = {}; nudParseVocab(it.vocabEn).forEach(function (v) { en[v.zh] = v.es; }); nudParseVocab(it.vocab).forEach(function (v) { addW(v.zh, v.es, t, 'hw', en[v.zh]); }); } });
     });
   });
   (Array.isArray(list.words) ? list.words : []).forEach(function (e) {

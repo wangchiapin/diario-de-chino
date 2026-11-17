@@ -252,11 +252,32 @@ test('派出作業時，生詞表（中文＋西文）一起存進去，學生�
   const S3 = { meta: { title: 't' }, vocab: [{ zh: '醫生', es: 'médico', esSrc: '醫生' }, { zh: '健康', es: '' }, { zh: '', es: 'x' }],
     sections: [{ id: 's1', type: 'fill', enabled: true, items: [{ id: 'f1', enabled: true, zh: '我__書。', answer: '買' }] }] };
   const d = C('hwAssignDoc')('w1', S3, 1);
-  assert.strictEqual(J(d.vocab), J([{ zh: '醫生', es: 'médico' }, { zh: '健康', es: '' }]));
+  assert.strictEqual(J(d.vocab), J([{ zh: '醫生', es: 'médico', en: '' }, { zh: '健康', es: '', en: '' }]));
   const w = C('learnTotals')({ w1: d }, {}).words;
   assert.strictEqual(w.find(x => x.zh === '醫生').es, 'médico');
   assert.ok(!JSON.stringify(d).includes('"answer"'));
   assert.strictEqual(J(C('hwAssignDoc')('w2', { sections: [] }, 1).vocab), '[]');   // 沒有生詞表也不會壞
+});
+
+test('練習單的英文欄位：發給學生時一起存，沒有英文的舊練習單照舊', () => {
+  const S4 = { meta: { title: 't', titleEn: 'T-en' }, vocab: [{ zh: '醫生', es: 'médico', en: 'doctor' }],
+    sections: [
+      { id: 's1', type: 'fill', enabled: true, items: [{ id: 'f1', enabled: true, zh: '我__書。', answer: '買', es: 'comprar', en: 'to buy' }] },
+      { id: 's2', type: 'zh2es', enabled: true, items: [{ id: 'z1', enabled: true, zh: '你好', answer: 'hola', answerEn: 'hello', vocab: '你好 hola', vocabEn: '你好 hello' }] },
+      { id: 's3', type: 'match', enabled: true, items: [{ id: 'm1', enabled: true, zh: '貓', es: 'gato', en: 'cat' }, { id: 'm2', enabled: true, zh: '狗', es: 'perro', en: 'dog' }] }] };
+  const d = C('hwAssignDoc')('w9', S4, 1);
+  assert.strictEqual(d.titleEn, 'T-en');
+  assert.strictEqual(d.vocab[0].en, 'doctor');
+  assert.strictEqual(d.sections[0].items[0].en, 'to buy');
+  assert.strictEqual(d.sections[1].items[0].vocabEn, '你好 hello');
+  assert.ok(!JSON.stringify(d).includes('"answerEn"'));
+  assert.strictEqual(d.sections[2].rightsEn.length, 2);
+  assert.strictEqual(C('hwKeyTextEn')('zh2es', S4.sections[1].items[0]), 'hello');
+  const w = C('learnTotals')({ w9: d }, {}).words;
+  assert.strictEqual(w.find(x => x.zh === '醫生').en, 'doctor');
+  assert.strictEqual(w.find(x => x.zh === '你好').en, 'hello');
+  const old = C('hwAssignDoc')('w8', { sections: [{ id: 's', type: 'fill', enabled: true, items: [{ id: 'a', enabled: true, zh: '__', answer: 'x', es: 'e' }] }] }, 1);
+  assert.strictEqual(old.sections[0].items[0].en, undefined);
 });
 
 console.log('\n彈跳視窗（練習題、激勵句、提醒）');

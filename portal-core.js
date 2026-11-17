@@ -192,7 +192,7 @@ var PC_I18N = {
     nudQ: 'Practice', nudEnc: 'Cheer up', nudRem: 'Reminder', nudClose: 'Close',
     notListedSent: 'We let your teacher know ({email}). Once they confirm, press "Check again".', recheck: 'Check again',
     hwT_fill: 'Fill in the blank with the right word', hwT_cloze: 'Complete the text with the right words', hwT_order: 'Put the words in order to make a sentence',
-    hwT_choice: 'Choose the correct sentence', hwT_fix: 'Write the correct sentence', hwT_translate: 'Translate into Chinese', hwT_zh2es: 'Translate into Spanish',
+    hwT_choice: 'Choose the correct sentence', hwT_fix: 'Write the correct sentence', hwT_translate: 'Translate into Chinese', hwT_zh2es: 'Translate into Spanish', hwT_zh2es_en: 'Translate into English',
     hwT_match: 'Match each word with its meaning', hwT_sentence: 'Write a sentence with the given word or structure'
   },
   tc: {

@@ -775,7 +775,7 @@ function gradeItems(sid, wid){
       else if(t === 'zh2es'){ q = esc(it.zh || ''); mine = a || ''; }
       else if(t === 'sentence'){ q = esc(it.cue || ''); es = it.es || ''; mine = a || ''; }
       else if(t === 'match'){ q = esc(it.zh || ''); const r = typeof a === 'number' && perm[a] != null ? items[perm[a]] : null; mine = r ? hwLetter(a) + '　' + r.es : ''; }
-      const row = { id: it.id, type: t, no: qi + 1, secNo: si, first: qi === 0, q, es, mine, key: hwKeyText(t, it), note: String(it.note || it.tip || ''), max: au.max, manual: !au.auto,
+      const row = { id: it.id, type: t, no: qi + 1, secNo: si, first: qi === 0, q, es, mine, key: hwKeyText(t, it), keyEn: hwKeyTextEn(t, it), note: String(it.note || it.tip || ''), max: au.max, manual: !au.auto,
         got: au.auto ? au.got : null, blanks: au.blanks ? au.blanks.slice() : null, mark: MANUAL[t] ? nl2br(mine) : '' };
       if(o){ if(o.got != null) row.got = o.got; if(o.blanks) row.blanks = o.blanks.slice(); if(typeof o.mark === 'string' && o.mark) row.mark = o.mark; }
       list.push(row);
@@ -973,6 +973,7 @@ async function gradeFinish(){
   const items = {};
   g.list.forEach(r => {
     const it = { got: r.got, max: r.max, key: r.key };
+    if(r.keyEn) it.keyEn = r.keyEn;
     if(r.note) it.note = r.note;
     if(r.blanks) it.blanks = r.blanks;
     if(r.manual) it.mark = hwCleanMark(r.mark);
