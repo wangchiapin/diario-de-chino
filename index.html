@@ -41,12 +41,14 @@ body{height:100vh;height:100dvh;box-sizing:border-box}
 .pvbar{max-width:860px;margin-left:auto;margin-right:auto}
 #app:has(.home)>.pvbar{max-width:none}
 .cal-grid .day{aspect-ratio:auto;height:44px}
-.home{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 18px;align-items:start}
+.home{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.5fr) minmax(0,.85fr);gap:0 18px;align-items:start}
 .colA,.colB,.colC{display:block}
 .home>.hello{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .hello .tzbox{display:flex;align-items:center;gap:8px}
 .hello .tzbox select{width:auto;max-width:260px;padding:6px 8px;font-size:14px}
 .tzcard{display:none}
+.hello .hi{font-size:22px;font-weight:700;color:var(--text)}
+.colB .card h2{font-size:19px;font-weight:700;color:var(--text);letter-spacing:0}
 .wgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:32px}
 .wgrid .wrow:nth-child(-n+2){border-top:0}
 }
@@ -143,6 +145,8 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .hwitem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
 .hwitem:first-of-type{border-top:0;padding-top:2px}
 .hwitem .t{font-weight:600}
+.hwitem .btn{white-space:nowrap}
+.hwdate{font-size:12px;margin:2px 0}
 .chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;margin-top:3px}
 .chip.todo{background:#e8e4db;color:#7b7467}.chip.submitted{background:#f0e2c3;color:#5a4624}.chip.graded{background:#dbe7da;color:#35553a}
 .btn{font:inherit;font-size:14px;padding:8px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;cursor:pointer}
@@ -387,6 +391,10 @@ function fmtMs(ms){
   return new Intl.DateTimeFormat(lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ms));
 }
 
+function fmtDay(ms){
+  return new Intl.DateTimeFormat(lang === 'es' ? 'es' : lang === 'sc' ? 'zh-CN' : 'zh-TW', { dateStyle: 'medium' }).format(new Date(ms));
+}
+
 function timesHtml(v, tz){
   if(v.allDay) return `<div class="time"><span>${esc(T('off'))}</span></div>`;
   const shift = v.dayShift === 0 ? '' : `<span class="tag">${esc(v.dayShift < 0 ? T('prevDay') : T('nextDay'))}</span>`;
@@ -449,7 +457,7 @@ function renderHome(root){
   const srcLabel = tzSource() === 'teacher' ? T('tzTeacher') : tzSource() === 'device' ? T('tzDevice') : '';
 
   root.innerHTML = `<div class="home">
-    <div class="card hello"><div class="muted">${esc(T('hello', { name: studentDoc.name || '' }))}</div><label class="tzbox muted" title="${esc(srcLabel)}">${esc(T('timezone'))}<select id="tzSel2">${opts}</select></label></div>
+    <div class="card hello"><div class="muted hi">${esc(T('hello', { name: studentDoc.name || '' }))}</div><label class="tzbox muted" title="${esc(srcLabel)}">${esc(T('timezone'))}<select id="tzSel2">${opts}</select></label></div>
     <div class="colA">
     <div class="it" style="order:1"><div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div></div>
     <div class="it" style="order:5">${stats}</div>
@@ -831,7 +839,7 @@ function hwCardHtml(){
   if(!ids.length) return '';
   return `<div class="card"><h2>${esc(T('hwTitle'))}</h2>` + ids.map(id => {
     const d = hwDocs[id];
-    return `<div class="hwitem"><div><div class="t">${esc(d.title || '—')}</div>${hwChip(d)}${d.status === 'graded' && d.result && !hwHideScore(d) ? ` <span class="muted">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</span>` : ''}</div>
+    return `<div class="hwitem"><div><div class="t">${esc(d.title || '—')}</div>${d.assignedAt ? `<div class="muted hwdate">${esc(T('hwPosted'))}：${esc(fmtDay(d.assignedAt))}</div>` : ''}${hwChip(d)}${d.status === 'graded' && d.result && !hwHideScore(d) ? ` <span class="muted">${esc(T('hwScore', { got: d.result.got, max: d.result.max }))}</span>` : ''}</div>
       <button class="btn ${d.status === 'todo' && !PREVIEW ? '' : 'quiet'}" data-hw="${esc(id)}">${esc(T(d.status === 'todo' && !PREVIEW ? 'hwStart' : 'hwView'))}</button></div>`;
   }).join('') + '</div>';
 }
