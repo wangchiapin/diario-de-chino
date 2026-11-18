@@ -1057,6 +1057,7 @@ const SV_TYPE_LABEL = { text: '開放填寫', single: '單選', multi: '複選',
 function svStuName(sid){ return (students[sid] || {}).name || sid; }
 function svSetMsg(text, ok){ svMsg = { text, ok }; }
 function svRoundEntries(rid){ return svCollect(rid, svRounds[rid] || {}, sv, svResps, svStuName); }
+function svIntroClean(it){ it = it || {}; return { zh: String(it.zh || '').trim(), es: String(it.es || '').trim(), en: String(it.en || '').trim() }; }
 function svDraftClean(){
   const d = JSON.parse(JSON.stringify(svEdit.draft));
   d.title = String(d.title || '').trim();
@@ -1068,7 +1069,7 @@ async function svSaveEdit(){
   if(err){ svSetMsg(err, false); return render(); }
   try{
     const id = svEdit.id, old = surveys[id] || {};
-    await setDoc(doc(db, 'portal', uid, 'surveys', id), { title: d.title, questions: d.questions, createdAt: old.createdAt || Date.now(), updatedAt: Date.now() });
+    await setDoc(doc(db, 'portal', uid, 'surveys', id), { title: d.title, intro: svIntroClean(d.intro), questions: d.questions, createdAt: old.createdAt || Date.now(), updatedAt: Date.now() });
     svEdit = null; svSetMsg('✓ 已儲存', true);
   }catch(e){ console.error(e); svSetMsg(e && e.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加問卷那幾段（見規則檔第十一批）' : '儲存失敗，請再試一次', false); }
   render();
@@ -1079,7 +1080,7 @@ async function svCreate(kind, fromId){
   if(kind === 'tpl') d = svTemplate();
   else if(kind === 'copy' && surveys[fromId]){ d = JSON.parse(JSON.stringify(surveys[fromId])); d.title = d.title + '（複製）'; }
   else d = { title: '新問卷', questions: [svBlankQ('text')] };
-  svEdit = { id, draft: { title: d.title, questions: d.questions }, isNew: true };
+  svEdit = { id, draft: { title: d.title, intro: svIntroClean(d.intro), questions: d.questions }, isNew: true };
   svSetMsg('', true); svPub = null; svView = null; render(); toTop();
 }
 async function svDelete(id){
@@ -1093,14 +1094,14 @@ async function svSend(){
   const pick = Object.keys(svPub.sel).filter(sid => svPub.sel[sid] && students[sid] && !students[sid].archived);
   if(!pick.length){ svSetMsg('請先勾選要發給哪些學生', false); return render(); }
   const err = svValidate(s); if(err){ svSetMsg(err, false); return render(); }
-  const rid = svNewId('r'), qs = svPublishQs(s), now = Date.now();
+  const rid = svNewId('r'), qs = svPublishQs(s), now = Date.now(), intro = svPublishIntro(s);
   let okN = 0, failN = 0;
   for(const sid of pick){
-    try{ await setDoc(doc(db, 'portal', uid, 'students', sid, 'sv', rid), { rid, title: s.title, qs, zh: svPub.zh, fl: svPub.fl, status: 'todo', answers: {}, assignedAt: now }); okN++; }
+    try{ await setDoc(doc(db, 'portal', uid, 'students', sid, 'sv', rid), Object.assign({ rid, title: s.title, qs, zh: svPub.zh, fl: svPub.fl, status: 'todo', answers: {}, assignedAt: now }, intro ? { intro } : {})); okN++; }
     catch(e){ console.error(e); failN++; }
   }
   if(okN){
-    try{ await setDoc(doc(db, 'portal', uid, 'svRounds', rid), { surveyId: svPub.id, title: s.title, qs, zh: svPub.zh, fl: svPub.fl, sids: pick, createdAt: now }); }catch(e){ console.error(e); failN++; }
+    try{ await setDoc(doc(db, 'portal', uid, 'svRounds', rid), Object.assign({ surveyId: svPub.id, title: s.title, qs, zh: svPub.zh, fl: svPub.fl, sids: pick, createdAt: now }, intro ? { intro } : {})); }catch(e){ console.error(e); failN++; }
   }
   svPub = null;
   svSetMsg(failN ? `發出 ${okN} 位，${failN} 件失敗（可能是規則還沒加）` : `✓ 已發給 ${okN} 位學生，到下面「已發布的問卷」看填寫狀況`, !failN);
@@ -1134,7 +1135,8 @@ async function svPublish(){
   if(!s){ svPub = null; return render(); }
   const err = svValidate(s); if(err){ svSetMsg(err, false); return render(); }
   const rid = svNewId('r'), now = Date.now();
-  const round = { surveyId: svPub.id, title: s.title, qs: svPublishQs(s), zh: svPub.zh, fl: svPub.fl, sids: [], pub: true, open: true, createdAt: now };
+  const intro = svPublishIntro(s);
+  const round = Object.assign({ surveyId: svPub.id, title: s.title, qs: svPublishQs(s), zh: svPub.zh, fl: svPub.fl, sids: [], pub: true, open: true, createdAt: now }, intro ? { intro } : {});
   try{
     await setDoc(doc(db, 'portal', uid, 'svPublic', rid), svPublicDoc(round));
     await setDoc(doc(db, 'portal', uid, 'svRounds', rid), round);
@@ -1244,6 +1246,10 @@ function svEditHtml(){
   const c = svConsentQ();
   return `<div class="card" id="svEdit"><h2>${svEdit.isNew ? '新問卷' : '編輯問卷'}</h2>
     <div class="row" style="margin-bottom:8px"><label class="small muted" style="min-width:64px">問卷名稱</label><input id="svTitle" value="${esc(d.title)}" maxlength="${SV_TITLE_MAX}" style="flex:1"></div>
+    <div class="svq" id="svIntroBox"><div class="row"><b>開頭</b><span class="muted small">學生填問卷之前會先看到這段話（三種語言都空白就不顯示）</span><span style="flex:1"></span><button class="tiny quiet" data-a="introdef">放入預設開頭</button></div>
+      <textarea class="nudta svta" data-ik="zh" placeholder="中文開頭（寫繁體，簡體會自動轉；可以換行）" maxlength="${SV_INTRO_MAX}" style="min-height:190px">${esc(d.intro.zh)}</textarea>
+      <textarea class="nudta svta" data-ik="es" placeholder="Español（可以空白）" maxlength="${SV_INTRO_MAX}" style="min-height:190px">${esc(d.intro.es)}</textarea>
+      <textarea class="nudta svta" data-ik="en" placeholder="English（可以空白）" maxlength="${SV_INTRO_MAX}" style="min-height:190px">${esc(d.intro.en)}</textarea></div>
     ${helpBox('svq', '每題可以填中文、西文、英文。發布時選「中文（繁或簡）＋外語（西文或英文）」，學生會看到中文和你選的那一種外語並列；選的外語那一欄如果空白，會改用另一種外語。最後一題「是否同意使用問卷內容」是固定的，會自動加在最後，不能刪。')}
     ${qh}
     <div class="row" style="margin:8px 0"><button class="tiny quiet" data-a="qadd">＋ 加一題</button></div>
@@ -1254,6 +1260,8 @@ function bindSvEdit(root){
   const box = root.querySelector('#svEdit'); if(!box || !svEdit) return;
   const d = svEdit.draft;
   $('svTitle').oninput = e => { d.title = e.target.value; };
+  box.querySelectorAll('#svIntroBox textarea[data-ik]').forEach(t => t.oninput = () => { d.intro[t.dataset.ik] = t.value; });
+  box.querySelector('#svIntroBox [data-a="introdef"]').onclick = () => { const cur = d.intro; if((cur.zh || cur.es || cur.en) && !confirm('目前的開頭會被預設開頭取代，確定嗎？')) return; d.intro = svDefaultIntro(); svMsg = null; render(); };
   box.querySelectorAll('.svq[data-qi]').forEach(card => {
     const i = +card.dataset.qi, q = d.questions[i];
     card.querySelectorAll('textarea[data-k]').forEach(t => t.oninput = () => { q[t.dataset.k] = t.value; });
@@ -1370,7 +1378,7 @@ function bindSv(root, active){
     const id = row.dataset.svid;
     row.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
       const a = b.dataset.a;
-      if(a === 'edit'){ svEdit = { id, draft: { title: surveys[id].title, questions: JSON.parse(JSON.stringify(surveys[id].questions || [])) } }; svMsg = null; svPub = null; render(); toTop(); }
+      if(a === 'edit'){ svEdit = { id, draft: { title: surveys[id].title, intro: svIntroClean(surveys[id].intro), questions: JSON.parse(JSON.stringify(surveys[id].questions || [])) } }; svMsg = null; svPub = null; render(); toTop(); }
       else if(a === 'copy') svCreate('copy', id);
       else if(a === 'del') svDelete(id);
       else if(a === 'pub'){ svPub = svPub && svPub.id === id ? null : { id, zh: 'tc', fl: 'es', sel: {} }; svMsg = null; render(); }

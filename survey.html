@@ -34,6 +34,12 @@ textarea{min-height:84px;resize:vertical}
 .err{color:#b3261e;font-size:14px;margin:6px 0}
 .row2{display:flex;gap:10px}.row2 .btn{flex:1}
 .center{text-align:center;padding:24px 8px}
+.sw{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px}
+.lang{display:flex;gap:4px;align-items:center}
+.lgl{font-size:12px;color:var(--mut);margin-right:2px}
+.lang button{border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:8px;padding:3px 10px;font-size:13px;cursor:pointer;font-family:inherit}
+.lang button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.intro{white-space:pre-line}
 </style>
 </head>
 <body>
@@ -61,22 +67,22 @@ function zhSimp(s){
   try{ if(!conv) conv = OpenCC.Converter({ from: 'tw', to: 'cn' }); return conv(s); }catch(e){ return s; }
 }
 
-let d = null, lang = 'es', name = '', ans = {}, confirming = false, sending = false, errKey = '', done = false;
+let d = null, lang = 'es', zhc = 'tc', name = '', ans = {}, confirming = false, sending = false, errKey = '', done = false;
 const T = (k, p) => svT(lang, k, p);
-const Z = s => d.zh === 'sc' ? zhSimp(String(s || '')) : String(s || '');
+const Z = s => zhc === 'sc' ? zhSimp(String(s || '')) : String(s || '');
 const DK = 'svd.' + rid;
 
 function saveDraft(){ LS.set(DK, JSON.stringify({ name, ans })); }
 function loadDraft(){ try{ const x = JSON.parse(LS.get(DK) || 'null'); if(x){ name = svCleanName(x.name); ans = x.ans && typeof x.ans === 'object' ? x.ans : {}; } }catch(e){} }
 
 function qHtml(q, no){
-  const P = svPick(q, d.fl), a = ans[q.id];
+  const P = svPick(q, lang), a = ans[q.id];
   let body = '';
   if(q.t === 'text') body = `<textarea data-sk="txt" data-id="${esc(q.id)}" maxlength="${SV_TEXT_MAX}" placeholder="${esc(T('svType'))}">${esc(a || '')}</textarea>`;
   else{
     const multi = q.t === 'multi';
     body = `<div class="muted" style="margin:2px 0">${esc(T(multi ? 'svPickMany' : 'svPick'))}</div>` + (q.opts || []).map(o => {
-      const OP = svPick(o, d.fl), on = multi ? Array.isArray(a) && a.indexOf(o.id) > -1 : a === o.id;
+      const OP = svPick(o, lang), on = multi ? Array.isArray(a) && a.indexOf(o.id) > -1 : a === o.id;
       return `<label class="opt"><input type="${multi ? 'checkbox' : 'radio'}" name="q_${esc(q.id)}" data-sk="${multi ? 'many' : 'one'}" data-id="${esc(q.id)}" value="${esc(o.id)}"${on ? ' checked' : ''}><span>${esc(Z(OP.zh))}${OP.fl ? `<span class="sub">${esc(OP.fl)}</span>` : ''}</span></label>`;
     }).join('');
   }
@@ -110,11 +116,18 @@ async function send(){
 }
 function render(){
   if(done){ app.innerHTML = `<div class="card center"><h1>✓</h1><div>${esc(T('svDone'))}</div></div>`; window.scrollTo(0, 0); return; }
+  const IP = d.intro ? svPick(d.intro, lang) : null;
+  const intro = IP && (IP.zh || IP.fl) ? `<div class="card intro">${IP.zh ? `<div>${esc(Z(IP.zh))}</div>` : ''}${IP.fl ? `<div class="muted" style="margin-top:10px;font-size:15px">${esc(IP.fl)}</div>` : ''}</div>` : '';
   app.innerHTML = `<div class="card"><h1>${esc(Z(d.title))}</h1><div class="muted">${esc(T('svDraftKept'))}</div>
+      <div class="sw"><div class="lang"><span class="lgl">${esc(T('svSwZh'))}</span><button data-zh="tc" class="${zhc === 'tc' ? 'on' : ''}">繁</button><button data-zh="sc" class="${zhc === 'sc' ? 'on' : ''}">简</button></div>
+        <div class="lang"><span class="lgl">${esc(T('svSwFl'))}</span><button data-fl="es" class="${lang === 'es' ? 'on' : ''}">ES</button><button data-fl="en" class="${lang === 'en' ? 'on' : ''}">EN</button></div></div>
       <div style="margin-top:10px"><b>${esc(T('svName'))}</b><input type="text" id="nm" maxlength="${SV_NAME_MAX}" placeholder="${esc(T('svNamePh'))}" value="${esc(name)}" autocomplete="name"></div></div>
+    ${intro}
     <div class="card">${(d.qs || []).map((q, i) => qHtml(q, i + 1)).join('')}</div>
     <div class="card" id="action"></div>`;
   drawAction();
+  app.querySelectorAll('[data-zh]').forEach(b => b.onclick = () => { zhc = b.dataset.zh; render(); });
+  app.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => { lang = b.dataset.fl; render(); });
   document.getElementById('nm').oninput = e => { name = e.target.value; saveDraft(); if(errKey === 'svNameReq' && svCleanName(name)){ errKey = ''; drawAction(); } };
   app.oninput = e => { const t = e.target; if(t.dataset && t.dataset.sk === 'txt'){ if(t.value) ans[t.dataset.id] = t.value; else delete ans[t.dataset.id]; saveDraft(); } };
   app.onchange = e => {
@@ -138,7 +151,7 @@ function showMsg(key){ app.innerHTML = `<div class="card center">${esc(svT(lang,
     if(!snap.exists()) return showMsg('svNotFound');
     d = snap.data();
   }catch(e){ console.error(e); return showMsg('svNotFound'); }
-  lang = d.fl === 'en' ? 'en' : 'es';
+  lang = d.fl === 'en' ? 'en' : 'es'; zhc = d.zh === 'sc' ? 'sc' : 'tc';
   if(Q.get('lang') === 'es' || Q.get('lang') === 'en') lang = Q.get('lang');
   document.title = Z(d.title);
   if(d.open === false) return showMsg('svClosed');

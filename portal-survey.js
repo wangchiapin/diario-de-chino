@@ -17,6 +17,7 @@ var SV_TEXT_MAX = 2000;      // 開放題每題最多字數
 var SV_TITLE_MAX = 60;
 var SV_Q_MAX = 60;           // 一份問卷最多幾題
 var SV_TYPES = ['text', 'single', 'multi', 'scale'];
+var SV_INTRO_MAX = 1000;     // 開頭每種語言最多幾個字
 var SV_NAME_MAX = 60;        // 公開連結：填寫者的名字最多幾個字
 
 var SV_I18N = {
@@ -56,10 +57,10 @@ var SV_I18N = {
 /* 公開連結頁（survey.html）用的字 */
 (function () {
   var add = {
-    es: { svName: 'Tu nombre', svNamePh: 'Escribe tu nombre', svNameReq: 'Escribe tu nombre antes de enviar.', svDone: '¡Gracias! Tu respuesta ya fue enviada.', svClosed: 'Esta encuesta ya está cerrada.', svNotFound: 'No se encontró la encuesta. Pide a tu profesor el enlace correcto.', svSendErr: 'No se pudo enviar. Revisa tu conexión e inténtalo de nuevo.', svDraftKept: 'Tus respuestas se guardan en este dispositivo mientras escribes.' },
-    en: { svName: 'Your name', svNamePh: 'Type your name', svNameReq: 'Please type your name before submitting.', svDone: 'Thank you! Your answers have been sent.', svClosed: 'This survey is closed.', svNotFound: 'Survey not found. Ask your teacher for the correct link.', svSendErr: 'Could not send. Check your connection and try again.', svDraftKept: 'Your answers are kept on this device while you write.' },
-    tc: { svName: '你的名字', svNamePh: '請寫下你的名字', svNameReq: '請先寫下你的名字再交出。', svDone: '謝謝你！你的回答已經送出。', svClosed: '這份問卷已經關閉了。', svNotFound: '找不到這份問卷，請向老師要正確的連結。', svSendErr: '送出失敗，請檢查網路後再試一次。', svDraftKept: '你填寫時，答案會暫存在這個裝置上。' },
-    sc: { svName: '你的名字', svNamePh: '请写下你的名字', svNameReq: '请先写下你的名字再交出。', svDone: '谢谢你！你的回答已经送出。', svClosed: '这份问卷已经关闭了。', svNotFound: '找不到这份问卷，请向老师要正确的链接。', svSendErr: '送出失败，请检查网络后再试一次。', svDraftKept: '你填写时，答案会暂存在这个装置上。' }
+    es: { svName: 'Tu nombre', svNamePh: 'Escribe tu nombre', svNameReq: 'Escribe tu nombre antes de enviar.', svDone: '¡Gracias! Tu respuesta ya fue enviada.', svClosed: 'Esta encuesta ya está cerrada.', svNotFound: 'No se encontró la encuesta. Pide a tu profesor el enlace correcto.', svSendErr: 'No se pudo enviar. Revisa tu conexión e inténtalo de nuevo.', svDraftKept: 'Tus respuestas se guardan en este dispositivo mientras escribes.', svSwZh: 'Caracteres chinos', svSwFl: 'Idioma' },
+    en: { svName: 'Your name', svNamePh: 'Type your name', svNameReq: 'Please type your name before submitting.', svDone: 'Thank you! Your answers have been sent.', svClosed: 'This survey is closed.', svNotFound: 'Survey not found. Ask your teacher for the correct link.', svSendErr: 'Could not send. Check your connection and try again.', svDraftKept: 'Your answers are kept on this device while you write.', svSwZh: 'Chinese characters', svSwFl: 'Language' },
+    tc: { svName: '你的名字', svNamePh: '請寫下你的名字', svNameReq: '請先寫下你的名字再交出。', svDone: '謝謝你！你的回答已經送出。', svClosed: '這份問卷已經關閉了。', svNotFound: '找不到這份問卷，請向老師要正確的連結。', svSendErr: '送出失敗，請檢查網路後再試一次。', svDraftKept: '你填寫時，答案會暫存在這個裝置上。', svSwZh: '中文字', svSwFl: '外語' },
+    sc: { svName: '你的名字', svNamePh: '请写下你的名字', svNameReq: '请先写下你的名字再交出。', svDone: '谢谢你！你的回答已经送出。', svClosed: '这份问卷已经关闭了。', svNotFound: '找不到这份问卷，请向老师要正确的链接。', svSendErr: '送出失败，请检查网络后再试一次。', svDraftKept: '你填写时，答案会暂存在这个装置上。', svSwZh: '中文字', svSwFl: '外语' }
   };
   Object.keys(add).forEach(function (l) { Object.keys(add[l]).forEach(function (k) { SV_I18N[l][k] = add[l][k]; }); });
 })();
@@ -93,12 +94,22 @@ function svScaleOpts(kind) {
 }
 function svOpts(rows) { return rows.map(function (r, i) { return { id: 'o' + (i + 1), zh: r[0], es: r[1], en: r[2] }; }); }
 
+/* 預設開頭（問卷最上面給學生看的話；老師可以在編輯畫面隨意改）。三種語言各一份。 */
+function svDefaultIntro() {
+  return {
+    zh: '謝謝你一直以來的學習！\n你已經完成一年的中文學習了，真的辛苦了。\n希望你可以花幾分鐘填寫這份問卷，給我一些回饋，讓我知道哪些地方對你有幫助、哪些地方還可以更好。你的每一個答案我都會認真看。\n預祝你接下來的學習一切順利，繼續加油！\n\nBen 老師',
+    es: '¡Gracias por tu aprendizaje durante todo este tiempo!\nYa completaste un año de estudio de chino, ¡felicidades por tu esfuerzo!\nTe agradecería que dedicaras unos minutos a llenar esta encuesta y me dieras tu opinión: así sabré qué te ha ayudado y qué podemos mejorar. Leeré con mucha atención cada una de tus respuestas.\n¡Te deseo mucho éxito en tu aprendizaje y que sigas adelante!\n\nProfesor Ben',
+    en: 'Thank you for your learning all this time!\nYou have completed a full year of studying Chinese, and I know it took real effort.\nI would be grateful if you could take a few minutes to fill in this survey and give me some feedback, so I know what has helped you and what we can do better. I will read every answer carefully.\nI wish you all the best with your studies. Keep up the great work!\n\nTeacher Ben'
+  };
+}
+
 /* 基本模板：最新版滿意度調查（開放回答版）＋學生日誌使用的問題。老師在後台可以隨便改。 */
 function svTemplate() {
   var n = 0;
   function q(t, zh, es, en, opts) { n++; var o = { id: 'q' + n, t: t, zh: zh, es: es, en: en }; if (opts) o.opts = opts; return o; }
   return {
     title: '課程滿意度調查',
+    intro: svDefaultIntro(),
     questions: [
       q('text', '你覺得課程內容的實用性如何？有哪些特別對你有幫助的地方？', '¿Qué opinas sobre la utilidad del contenido del curso? ¿Hay algo en particular que te haya sido de gran ayuda?', 'What do you think about the usefulness of the course content? Is there anything in particular that you found especially helpful?'),
       q('single', '你覺得課程的節奏如何？', '¿Qué opinas sobre el ritmo del curso?', 'What do you think about the pace of the course?', svOpts([['太快', 'Demasiado rápido', 'Too fast'], ['剛剛好', 'Justo', 'Just right'], ['太慢', 'Demasiado lento', 'Too slow']])),
@@ -137,6 +148,9 @@ function svBlankOpt() { return { id: svNewId('o'), zh: '', es: '', en: '' }; }
 function svValidate(sv) {
   if (!sv || !String(sv.title || '').trim()) return '請先幫問卷取個名字';
   if (String(sv.title).length > SV_TITLE_MAX) return '問卷名稱最多 ' + SV_TITLE_MAX + ' 個字';
+  var it = sv.intro || {};
+  var tooLong = ['zh', 'es', 'en'].filter(function (k) { return String(it[k] || '').length > SV_INTRO_MAX; });
+  if (tooLong.length) return '開頭太長了，每種語言最多 ' + SV_INTRO_MAX + ' 個字';
   var qs = sv.questions || [];
   if (!qs.length) return '至少要有一題';
   if (qs.length > SV_Q_MAX) return '一份問卷最多 ' + SV_Q_MAX + ' 題';
@@ -165,6 +179,13 @@ function svPublishQs(sv) {
   });
   qs.push(svConsentQ());
   return qs;
+}
+
+/* 發布用：開頭（三種語言都空白就是沒有開頭，回傳 null） */
+function svPublishIntro(sv) {
+  var it = sv && sv.intro || {}, out = {}, any = false;
+  ['zh', 'es', 'en'].forEach(function (k) { var v = String(it[k] || '').replace(/\r\n?/g, '\n').trim().slice(0, SV_INTRO_MAX); if (v) { out[k] = v; any = true; } });
+  return any ? out : null;
 }
 
 /* 顯示：中文＋外語。fl 要的外語沒有，就退到另一種外語，再沒有就只有中文。回傳 { zh, fl } */
@@ -247,7 +268,9 @@ function svExportRows(qs, entries) {
    - svResp/{回覆代號}     公開連結的回覆：{ rid, name, answers, ts, sid? }；任何人只能新增；老師讀、改 sid（對應到哪位學生）、刪 */
 function svCleanName(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, SV_NAME_MAX); }
 function svPublicDoc(round) {
-  return { title: round.title, qs: round.qs, zh: round.zh, fl: round.fl, open: true, createdAt: round.createdAt };
+  var d = { title: round.title, qs: round.qs, zh: round.zh, fl: round.fl, open: true, createdAt: round.createdAt };
+  if (round.intro) d.intro = round.intro;
+  return d;
 }
 function svPublicUrl(base, tid, rid) { return base + 'survey.html?t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(rid); }
 

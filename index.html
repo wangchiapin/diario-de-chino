@@ -1240,9 +1240,11 @@ function hwActionDraw(d){
 /* ───────── 問卷調查（老師在後台發布；學生作答後交出，跟作業同一套做法） ───────── */
 let svDocs = {}, svLoaded = false, unsubSv = null;
 let svOpen = null, svOpenStatus = null, svDraft = {}, svTimer = null, svSaveState = '', svConfirming = false;
+let svZhOv = null, svFlOv = null;   // 學生在問卷頁自己切換的「繁／簡」和「西文／英文」（只有這一次看問卷的畫面；預設是老師發布時選的）
 const SVT = (k, p) => uiS(svT(lang, k, p));
 /* 問卷文字：中文照「這次發布選的繁／簡」轉，不跟學生自己的中文字設定；外語照發布時選的 */
-const svZhS = (d, s) => uiS(d.zh === 'sc' ? zhSimp(String(s || '')) : String(s || ''));
+const svZhCur = d => svZhOv || d.zh, svFlCur = d => svFlOv || d.fl;
+const svZhS = (d, s) => uiS(svZhCur(d) === 'sc' ? zhSimp(String(s || '')) : String(s || ''));
 const svFlS = s => uiS(String(s || ''));
 
 function startSv(sid){
@@ -1273,7 +1275,7 @@ function svCardHtml(){
 function bindSvCard(root){ root.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => openSv(b.dataset.sv)); }
 function openSv(id){
   const d = svDocs[id]; if(!d) return;
-  svOpen = id; svOpenStatus = d.status; svConfirming = false; svSaveState = '';
+  svOpen = id; svOpenStatus = d.status; svConfirming = false; svSaveState = ''; svZhOv = null; svFlOv = null;
   svDraft = JSON.parse(JSON.stringify(d.answers || {}));
   render(); toTop();
 }
@@ -1296,13 +1298,13 @@ function svSetAnswer(qid, val){
   clearTimeout(svTimer); svTimer = setTimeout(svSave, 1200);
 }
 function svQHtml(d, q, no, dis){
-  const P = svPick(q, d.fl), a = svDraft[q.id], D = dis ? ' disabled' : '';
+  const P = svPick(q, svFlCur(d)), a = svDraft[q.id], D = dis ? ' disabled' : '';
   let body = '';
   if(q.t === 'text') body = `<textarea data-sk="txt" data-id="${esc(q.id)}" maxlength="${SV_TEXT_MAX}" placeholder="${esc(SVT('svType'))}"${D}>${escRaw(a || '')}</textarea>`;
   else{
     const multi = q.t === 'multi';
     body = `<div class="muted" style="font-size:12px;margin:2px 0">${esc(SVT(multi ? 'svPickMany' : 'svPick'))}</div>` + (q.opts || []).map(o => {
-      const OP = svPick(o, d.fl), on = multi ? Array.isArray(a) && a.indexOf(o.id) > -1 : a === o.id;
+      const OP = svPick(o, svFlCur(d)), on = multi ? Array.isArray(a) && a.indexOf(o.id) > -1 : a === o.id;
       return `<label class="opt"><input type="${multi ? 'checkbox' : 'radio'}" name="sv_${esc(q.id)}" data-sk="${multi ? 'many' : 'one'}" data-id="${esc(q.id)}" value="${esc(o.id)}"${on ? ' checked' : ''}${D}>
         <span>${esc(svZhS(d, OP.zh))}${OP.fl ? `<span class="muted" style="display:block;font-size:13px;line-height:1.3">${esc(svFlS(OP.fl))}</span>` : ''}</span></label>`;
     }).join('');
@@ -1312,13 +1314,22 @@ function svQHtml(d, q, no, dis){
 function renderSv(root){
   const d = svDocs[svOpen];
   const locked = d.status === 'submitted' || PREVIEW;
+  const zc = svZhCur(d), fc = svFlCur(d);
+  const IP = d.intro ? svPick(d.intro, fc) : null;
+  const intro = IP && (IP.zh || IP.fl) ? `<div class="card">${IP.zh ? `<div style="white-space:pre-line">${esc(svZhS(d, IP.zh))}</div>` : ''}${IP.fl ? `<div class="muted" style="white-space:pre-line;margin-top:10px">${esc(svFlS(IP.fl))}</div>` : ''}</div>` : '';
   let h = `<div class="card"><button class="btn quiet" id="svBack" style="padding:4px 14px;font-size:13px">‹ ${esc(SVT('svBack'))}</button>
     <h2 style="margin-top:12px">${esc(svZhS(d, d.title))}</h2><div>${svChip(d)}</div>
-    ${PREVIEW ? `<div class="msg">${esc(SVT('svPreviewRO'))}</div>` : d.status === 'submitted' ? `<div class="msg">${esc(SVT('svLocked'))}</div>` : ''}</div>`;
+    <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px">
+      <div class="lang"><span class="lgl">${esc(SVT('svSwZh'))}</span><button data-svzh="tc" class="${zc === 'tc' ? 'on' : ''}">繁</button><button data-svzh="sc" class="${zc === 'sc' ? 'on' : ''}">简</button></div>
+      <div class="lang"><span class="lgl">${esc(SVT('svSwFl'))}</span><button data-svfl="es" class="${fc === 'es' ? 'on' : ''}">ES</button><button data-svfl="en" class="${fc === 'en' ? 'on' : ''}">EN</button></div></div>
+    ${PREVIEW ? `<div class="msg">${esc(SVT('svPreviewRO'))}</div>` : d.status === 'submitted' ? `<div class="msg">${esc(SVT('svLocked'))}</div>` : ''}</div>${intro}`;
   h += `<div class="card">${(d.qs || []).map((q, i) => svQHtml(d, q, i + 1, locked)).join('')}</div>`;
   if(!locked) h += `<div class="card" id="svFoot"><div class="savemsg" id="svSave"></div><div id="svAction"></div></div>`;
+  else if(PREVIEW && d.status !== 'submitted') h += `<div class="card"><button class="btn" style="width:100%" disabled>${esc(SVT('svSubmit'))}</button></div>`;
   root.innerHTML = h;
   $('svBack').onclick = () => { clearTimeout(svTimer); if(svSaveState === 'saving') svSave(); svOpen = null; render(); toTop(); };
+  root.querySelectorAll('[data-svzh]').forEach(b => b.onclick = () => { svZhOv = b.dataset.svzh; render(); });
+  root.querySelectorAll('[data-svfl]').forEach(b => b.onclick = () => { svFlOv = b.dataset.svfl; render(); });
   if(locked) return;
   svShowSave(); svActionDraw(d);
   root.oninput = e => { const t = e.target; if(t.dataset.sk === 'txt') svSetAnswer(t.dataset.id, t.value); };

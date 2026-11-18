@@ -736,6 +736,23 @@ test('預設模板：17 題，對得上原本的滿意度調查（含「還有�
   assert.ok(t[5].en.indexOf('clearly and in an easy-to-understand way') > -1);
 });
 
+test('預設開頭：繁中、西文、英文都有，沒超過字數上限，在預設模板裡', () => {
+  const d = C('svDefaultIntro')(), t = C('svTemplate')();
+  ['zh', 'es', 'en'].forEach(k => { assert.ok(d[k].length > 40 && d[k].length <= C('SV_INTRO_MAX'), k); assert.strictEqual(t.intro[k], d[k]); });
+  assert.ok(d.zh.indexOf('一年') > -1 && d.zh.indexOf('繼續加油') > -1);
+  assert.strictEqual(C('svValidate')(t), '');
+});
+test('開頭太長：擋下來；三種語言都空白：發布時沒有開頭；只有部分語言：只帶有的', () => {
+  assert.ok(C('svValidate')({ title: 'a', intro: { zh: 'x'.repeat(1001) }, questions: [{ id: 'q', t: 'text', zh: 'a' }] }).indexOf('開頭太長') === 0);
+  assert.strictEqual(C('svPublishIntro')({ intro: { zh: ' ', es: '', en: '' } }), null);
+  assert.strictEqual(C('svPublishIntro')({}), null);
+  assert.strictEqual(J(C('svPublishIntro')({ intro: { zh: ' 嗨\r\n你好 ', es: '', en: 'Hi' } })), J({ zh: '嗨\n你好', en: 'Hi' }));
+});
+test('公開版會帶開頭，沒有開頭就不帶這個欄位', () => {
+  assert.strictEqual(J(C('svPublicDoc')({ title: 'T', qs: [], zh: 'tc', fl: 'es', createdAt: 1, intro: { zh: '嗨' } }).intro), J({ zh: '嗨' }));
+  assert.ok(!('intro' in C('svPublicDoc')({ title: 'T', qs: [], zh: 'tc', fl: 'es', createdAt: 1 })));
+});
+
 console.log('\n問卷：公開連結、合併回覆、匯出、翻譯');
 test('公開版只含題目和 open，不含老師資料；連結帶老師代號和發布代號', () => {
   const round = { surveyId: 'x', title: 'T', qs: [{ id: 'q1' }], zh: 'tc', fl: 'es', sids: ['s1'], pub: true, createdAt: 5 };

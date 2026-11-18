@@ -1154,6 +1154,8 @@ def survey_tests(browser, base):
     check('問卷分頁：還沒有問卷，有「用基本模板建立」', '還沒有問卷' in page.inner_text('#app') and page.locator('[data-a=newTpl]').count() == 1)
     page.click('[data-a=newTpl]'); page.wait_for_timeout(200)
     check('編輯畫面：模板名稱、17 題、固定最後一題', page.input_value('#svTitle') == '課程滿意度調查' and page.locator('.svq[data-qi]').count() == 17 and '是否同意我使用問卷內容' in page.inner_text('#svEdit'))
+    check('編輯畫面：有「開頭」三欄，預設開頭已填好（繁中、西文、英文）', '謝謝你一直以來的學習' in page.input_value('#svIntroBox textarea[data-ik=zh]') and '¡Gracias por tu aprendizaje' in page.input_value('#svIntroBox textarea[data-ik=es]') and 'Thank you for your learning' in page.input_value('#svIntroBox textarea[data-ik=en]'))
+    page.fill('#svIntroBox textarea[data-ik=zh]', '謝謝你一直以來的學習！\n已經一年了，請幫我填問卷。')
     page.fill('#svTitle', '2026 年底滿意度調查')
     if os.environ.get('SHOTS'): page.set_viewport_size({'width': 1100, 'height': 900}); page.screenshot(path='/tmp/shots/admin_edit.png')
     page.fill('.svq[data-qi="0"] textarea[data-k=zh]', '你覺得課程內容的實用性如何？（改過）')
@@ -1169,9 +1171,10 @@ def survey_tests(browser, base):
     check('儲存：寫進 surveys，回到清單', len(keys) == 1 and '2026 年底滿意度調查' in page.inner_text('#app') and page.locator('#svEdit').count() == 0)
     sdoc = page.evaluate("window.__fb.store['%s']" % keys[0])
     check('問卷內容：18 題（不含固定題）、第一題是改過的', len(sdoc['questions']) == 18 and sdoc['questions'][0]['zh'].endswith('（改過）'), len(sdoc['questions']))
+    check('開頭：存進問卷（中文是改過的、西文英文還是預設）', sdoc['intro']['zh'] == '謝謝你一直以來的學習！\n已經一年了，請幫我填問卷。' and sdoc['intro']['es'].startswith('¡Gracias') and sdoc['intro']['en'].startswith('Thank you'), sdoc.get('intro'))
     # 複製
     page.click('.hwrow[data-svid] [data-a=copy]'); page.wait_for_timeout(200)
-    check('複製：名稱後面加（複製）、是新問卷', page.input_value('#svTitle') == '2026 年底滿意度調查（複製）')
+    check('複製：名稱後面加（複製）、是新問卷、開頭也複製', page.input_value('#svTitle') == '2026 年底滿意度調查（複製）' and '已經一年了' in page.input_value('#svIntroBox textarea[data-ik=zh]'))
     page.click('#svCancel') if False else None
     page.once('dialog', lambda d: d.accept()); page.click('#svCancel'); page.wait_for_timeout(100)
     check('取消編輯：不會多一份問卷', len([k for k in page.evaluate('Object.keys(window.__fb.store)') if k.startswith(P + 'surveys/')]) == 1)
@@ -1187,6 +1190,8 @@ def survey_tests(browser, base):
     check('發出：只寫給被勾選的 Pedro，另外記一筆發布紀錄', len(svk) == 1 and svk[0].startswith(P + 'students/s1/sv/') and len(rk) == 1, (svk, rk))
     d1 = page.evaluate("window.__fb.store['%s']" % svk[0])
     check('學生那份：未交、答案空、簡體＋英文、19 題、最後是 consent', d1['status'] == 'todo' and d1['answers'] == {} and d1['zh'] == 'sc' and d1['fl'] == 'en' and len(d1['qs']) == 19 and d1['qs'][-1]['id'] == 'consent', d1.get('status'))
+    rr = page.evaluate("window.__fb.store['%s']" % rk[0])
+    check('學生那份和發布紀錄都帶著開頭', d1.get('intro', {}).get('zh', '').startswith('謝謝你一直以來的學習') and rr.get('intro', {}).get('en', '').startswith('Thank you'), (d1.get('intro'), rr.get('intro')))
     check('清單：已發布 1 筆、已交 0／1', '已交 0／1' in page.inner_text('#app'))
     page.click('.hwrow[data-rid] [data-a=res]'); page.wait_for_timeout(200)
     check('看結果：沒人交，顯示 Pedro 未填', '未填' in page.inner_text('#svRes') and '還沒有回答' in page.inner_text('#svRes'))
@@ -1208,7 +1213,19 @@ def survey_tests(browser, base):
     check('題目：中文用簡體（這次發布選的）、外語用英文', '你觉得课程内容的实用性如何' in txt and 'What do you think about the usefulness' in txt and '¿Qué' not in txt, txt[:400])
     check('量表和複選的選項顯示：簡體中文＋英文', '很好' in txt and 'Very good' in txt and 'Class log and vocabulary review' in txt and '上课纪录与单字复习' in txt)
     check('最後一題：是否同意', '是否同意我使用问卷内容' in txt and 'Do you agree' in txt)
-    page.fill('textarea[data-id=q1]', 'Muy útil'); page.check('input[name=sv_q2][value=o2]')
+    check('開頭：簡體中文＋英文，在題目前面', '谢谢你一直以来的学习' in txt and '已经一年了' in txt and 'Thank you for your learning' in txt and txt.index('谢谢你一直以来的学习') < txt.index('你觉得课程内容的实用性如何'), txt[:500])
+    check('問卷頁上方有「繁／简」「ES／EN」切換，預設是發布時選的（简、EN）', page.locator('[data-svzh=sc].on').count() == 1 and page.locator('[data-svfl=en].on').count() == 1)
+    page.click('[data-svzh=tc]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('切到繁：題目、開頭、選項都變繁體', '你覺得課程內容的實用性如何' in txt and '謝謝你一直以來的學習' in txt and '上課紀錄與單字複習' in txt and '问卷' not in txt, txt[:300])
+    page.click('[data-svfl=es]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('切到 ES：題目、選項、開頭的外語都變西文', '¿Qué opinas sobre la utilidad' in txt and 'Registro de clases' in txt and '¡Gracias por tu aprendizaje' in txt and 'What do you think' not in txt and page.locator('[data-svfl=es].on').count() == 1, txt[:300])
+    page.click('[data-svzh=sc]'); page.click('[data-svfl=en]'); page.wait_for_timeout(100)
+    check('切回簡＋EN', '你觉得课程内容的实用性如何' in page.inner_text('#app') and 'What do you think about the usefulness' in page.inner_text('#app'))
+    page.fill('textarea[data-id=q1]', 'Muy útil'); page.click('[data-svzh=tc]'); page.wait_for_timeout(100)
+    check('切換繁簡：已經寫的答案還在', page.input_value('textarea[data-id=q1]') == 'Muy útil')
+    page.check('input[name=sv_q2][value=o2]')
     q12 = [q for q in svdocs[path]['qs'] if q['t'] == 'multi'][0]['id']; q11 = [q for q in svdocs[path]['qs'] if q['t'] == 'scale'][0]['id']
     page.check('input[name=sv_%s][value=o1]' % q11)
     page.check('input[name=sv_%s][value=o2]' % q12); page.check('input[name=sv_%s][value=o4]' % q12)
@@ -1391,6 +1408,33 @@ def survey_public_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def survey_preview_tests(browser, base):
+    print('\n問卷調查：老師預覽（看得到送出鈕，但不能按）')
+    P = 'portal/%s/' % TID
+    qs = [{'id': 'q1', 't': 'text', 'zh': '你覺得課程如何？', 'es': '¿Qué te parece?', 'en': 'How is it?'}]
+    doc_ = {'rid': 'r1', 'title': '預覽用問卷', 'qs': qs, 'zh': 'tc', 'fl': 'es', 'status': 'todo', 'answers': {}, 'assignedAt': 1, 'intro': {'zh': '一年了，謝謝你。', 'es': 'Gracias por un año.'}}
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    ctx, page, errs = new_page(browser, base_state({P + 'students/s1/sv/r1': doc_}, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(500)
+    page.click('[data-sv]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    check('預覽：看到開頭和切換鈕', '一年了，謝謝你。' in txt and 'Gracias por un año.' in txt and page.locator('[data-svzh]').count() == 2 and page.locator('[data-svfl]').count() == 2, txt[:300])
+    check('預覽：看得到「交出問卷」，但是灰的、不能按；題目也不能填', page.locator('button:has-text("交出問卷"), button:has-text("Enviar encuesta")').count() == 1 and page.locator('#app button[disabled]').count() >= 1 and page.locator('textarea[data-id=q1]').is_disabled(), txt[-200:])
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 公開頁：開頭和切換
+    pub = {'title': '公開問卷', 'qs': qs, 'zh': 'tc', 'fl': 'es', 'open': True, 'createdAt': 1, 'intro': {'zh': '一年了，謝謝你。\n請幫我填問卷。', 'es': 'Gracias por un año.', 'en': 'Thanks for a year.'}}
+    ctx, page, errs = new_page(browser, base_state({P + 'svPublic/r1': pub}))
+    page.goto(base + 'survey.html?t=%s&r=r1' % TID); page.wait_for_timeout(400)
+    txt = page.inner_text('#app')
+    check('公開頁：有開頭（中文＋西文），在題目前面，有切換鈕', '一年了，謝謝你。' in txt and 'Gracias por un año.' in txt and txt.index('Gracias por un año.') < txt.index('¿Qué te parece?') and page.locator('[data-zh]').count() == 2 and page.locator('[data-fl]').count() == 2, txt[:300])
+    page.fill('#nm', 'Luis'); page.fill('textarea[data-id=q1]', 'bien')
+    page.click('[data-fl=en]'); page.click('[data-zh=sc]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('公開頁：切 EN＋简：開頭外語、題目、介面都變，名字和答案不會不見', 'Thanks for a year.' in txt and 'How is it?' in txt and '你觉得课程如何' in txt and 'Your name' in txt and page.input_value('#nm') == 'Luis' and page.input_value('textarea[data-id=q1]') == 'bien', txt[:300])
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -1412,6 +1456,7 @@ with sync_playwright() as p:
     bb_admin_tests(browser, base)
     survey_tests(browser, base)
     survey_public_tests(browser, base)
+    survey_preview_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)
