@@ -1247,6 +1247,150 @@ def survey_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def survey_public_tests(browser, base):
+    import json, zipfile
+    print('\n問卷調查：公開連結（建立、公開頁填寫、後台對應學生、彙整表、Excel、翻譯）')
+    P = 'portal/%s/' % TID
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    opt = lambda i, zh, es: {'id': i, 'zh': zh, 'es': es, 'en': es + ' EN'}
+    qs = [
+        {'id': 'q1', 't': 'text', 'zh': '你覺得課程如何？', 'es': '¿Qué te parece el curso?', 'en': 'How is the course?'},
+        {'id': 'q2', 't': 'single', 'zh': '節奏', 'es': 'Ritmo', 'en': 'Pace', 'opts': [opt('o1', '太快', 'Rápido'), opt('o2', '剛剛好', 'Justo')]},
+        {'id': 'q3', 't': 'multi', 'zh': '功能', 'es': 'Funciones', 'en': 'Features', 'opts': [opt('o1', '作業', 'Tareas'), opt('o2', '單字', 'Vocabulario')]},
+        {'id': 'consent', 't': 'consent', 'zh': '是否同意？', 'es': '¿Estás de acuerdo?', 'en': 'Do you agree?', 'opts': [{'id': 'y', 'zh': '同意', 'es': 'Sí', 'en': 'Yes'}, {'id': 'n', 'zh': '不同意', 'es': 'No', 'en': 'No'}]},
+    ]
+    survey = {'title': 'Mini 問卷', 'questions': qs[:3], 'createdAt': 1, 'updatedAt': 2}
+    stu = lambda n: {'v': 1, 'name': n, 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []}
+    # 1. 後台：建立公開連結
+    store = {P + 'students/s1': stu('Pedro'), P + 'students/s2': stu('Liz'), P + 'surveys/sa': survey}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'sv')
+    page.click('.hwrow[data-svid] [data-a=pub]'); page.wait_for_timeout(100)
+    page.check('input[name=svzh][value=sc]'); page.check('input[name=svfl][value=en]')
+    check('發布面板有「建立公開連結」', page.locator('[data-a=pubLink]').count() == 1)
+    page.click('[data-a=pubLink]'); page.wait_for_timeout(400)
+    keys = page.evaluate('Object.keys(window.__fb.store)')
+    pk = [k for k in keys if k.startswith(P + 'svPublic/')]; rk = [k for k in keys if k.startswith(P + 'svRounds/')]
+    check('建立公開連結：寫 svPublic（開放中）和 svRounds（pub），沒有寫給任何學生', len(pk) == 1 and len(rk) == 1 and not [k for k in keys if '/sv/' in k], (pk, rk))
+    pub = page.evaluate("window.__fb.store['%s']" % pk[0]); rnd = page.evaluate("window.__fb.store['%s']" % rk[0])
+    check('公開版：只有題目和 open；簡體＋英文；4 題（含固定最後一題）', sorted(pub.keys()) == ['createdAt', 'fl', 'open', 'qs', 'title', 'zh'] and pub['open'] is True and pub['zh'] == 'sc' and pub['fl'] == 'en' and len(pub['qs']) == 4 and pub['qs'][-1]['id'] == 'consent', pub.keys())
+    check('發布紀錄：pub、沒有學生', rnd['pub'] is True and rnd['sids'] == [] and rnd['open'] is True)
+    rid = pk[0].split('/')[-1]
+    link = page.input_value('#svLink')
+    check('結果畫面有連結：survey.html?t=老師&r=發布', ('survey.html?t=%s&r=%s' % (TID, rid)) in link and '開放中' in page.inner_text('#svRes'), link)
+    check('清單：公開連結、收到 0 份', '公開連結' in page.inner_text('#app') and '收到 0 份' in page.inner_text('#app'))
+    page.click('[data-a=toggleopen]'); page.wait_for_timeout(300)
+    check('關閉填寫：svPublic 和 svRounds 的 open 都變 false', page.evaluate("window.__fb.store['%s'].open" % pk[0]) is False and page.evaluate("window.__fb.store['%s'].open" % rk[0]) is False and '已關閉' in page.inner_text('#svRes'))
+    page.click('[data-a=toggleopen]'); page.wait_for_timeout(200)
+    check('重新開放', page.evaluate("window.__fb.store['%s'].open" % pk[0]) is True)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 2. 公開頁：學生填寫
+    pubdoc = {'title': 'Mini 問卷', 'qs': qs, 'zh': 'sc', 'fl': 'es', 'open': True, 'createdAt': 5}
+    ctx, page, errs = new_page(browser, base_state({P + 'svPublic/r1': pubdoc}))
+    page.goto(base + 'survey.html?t=%s&r=r1' % TID); page.wait_for_timeout(400)
+    txt = page.inner_text('#app')
+    check('公開頁：標題轉簡體，題目有中文＋西文，要寫名字', 'Mini 问卷' in txt and '你觉得课程如何？' in txt and '¿Qué te parece el curso?' in txt and 'Tu nombre' in txt, txt[:300])
+    check('選項：簡體中文＋西文', '太快' in txt and 'Rápido' in txt and '单字' in txt, txt[:600])
+    page.click('#submit'); page.wait_for_timeout(100)
+    check('沒寫名字按交出：提醒，不會送出', 'Escribe tu nombre antes de enviar' in page.inner_text('#action') and not [k for k in page.evaluate('Object.keys(window.__fb.store)') if '/svResp/' in k])
+    page.fill('#nm', '  Luis   Pérez '); page.fill('textarea[data-id=q1]', 'Muy útil\ngracias')
+    page.check('input[name=q_q2][value=o2]'); page.check('input[name=q_q3][value=o1]'); page.check('input[name=q_q3][value=o2]'); page.uncheck('input[name=q_q3][value=o1]')
+    page.check('input[name=q_consent][value=y]')
+    page.reload(); page.wait_for_timeout(400)
+    check('重新整理：名字和答案還在（暫存在這個裝置）', page.input_value('#nm') == 'Luis Pérez' and page.input_value('textarea[data-id=q1]') == 'Muy útil\ngracias' and page.is_checked('input[name=q_q2][value=o2]'))
+    page.click('#submit'); page.wait_for_timeout(100)
+    check('按交出：出現確認', '¿Enviar la encuesta?' in page.inner_text('#action'))
+    page.click('#no'); page.click('#submit'); page.click('#yes'); page.wait_for_timeout(400)
+    rks = [k for k in page.evaluate('Object.keys(window.__fb.store)') if '/svResp/' in k]
+    check('送出：新增一筆 svResp', len(rks) == 1 and rks[0].startswith(P + 'svResp/'), rks)
+    r = page.evaluate("window.__fb.store['%s']" % rks[0])
+    check('回覆內容：只有 rid、name、answers、ts；名字整理過', sorted(r.keys()) == ['answers', 'name', 'rid', 'ts'] and r['rid'] == 'r1' and r['name'] == 'Luis Pérez', r)
+    check('答案：文字、單選、複選、同意', r['answers'] == {'q1': 'Muy útil\ngracias', 'q2': 'o2', 'q3': ['o2'], 'consent': 'y'}, r['answers'])
+    check('送出後：顯示謝謝，暫存清掉', '¡Gracias!' in page.inner_text('#app') and page.evaluate("localStorage.getItem('svd.r1')") is None)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+    # 英文版、關閉、找不到
+    ctx, page, errs = new_page(browser, base_state({P + 'svPublic/r1': dict(pubdoc, fl='en', zh='tc')}))
+    page.goto(base + 'survey.html?t=%s&r=r1' % TID); page.wait_for_timeout(300)
+    txt = page.inner_text('#app')
+    check('英文版：介面和題目是英文、中文維持繁體', 'Your name' in txt and 'How is the course?' in txt and '你覺得課程如何？' in txt and '单字' not in txt, txt[:200]); ctx.close()
+    ctx, page, errs = new_page(browser, base_state({P + 'svPublic/r1': dict(pubdoc, open=False)}))
+    page.goto(base + 'survey.html?t=%s&r=r1' % TID); page.wait_for_timeout(300)
+    check('已關閉：顯示已關閉，沒有題目', 'ya está cerrada' in page.inner_text('#app') and page.locator('textarea').count() == 0); ctx.close()
+    ctx, page, errs = new_page(browser, base_state({}))
+    page.goto(base + 'survey.html?t=%s&r=nada' % TID); page.wait_for_timeout(300)
+    check('找不到：提示向老師要連結', 'No se encontró' in page.inner_text('#app')); ctx.close()
+    ctx, page, errs = new_page(browser, base_state({}))
+    page.goto(base + 'survey.html'); page.wait_for_timeout(300)
+    check('沒有帶參數：提示向老師要連結', 'No se encontró' in page.inner_text('#app') and not errs, errs); ctx.close()
+
+    # 3. 後台：對應學生、彙整表、Excel、翻譯
+    rnd = {'surveyId': 'sa', 'title': 'Mini 問卷', 'qs': qs, 'zh': 'tc', 'fl': 'es', 'sids': ['s1'], 'pub': True, 'open': True, 'createdAt': 1760000000000}
+    store = {P + 'students/s1': stu('Pedro'), P + 'students/s2': stu('Liz'), P + 'surveys/sa': survey, P + 'svRounds/r1': rnd, P + 'svPublic/r1': pubdoc,
+             P + 'students/s1/sv/r1': {'rid': 'r1', 'title': 'Mini 問卷', 'qs': qs, 'zh': 'tc', 'fl': 'es', 'status': 'submitted', 'answers': {'q1': '很好，我喜歡', 'q2': 'o1', 'q3': ['o1', 'o2'], 'consent': 'y'}, 'assignedAt': 1, 'submittedAt': 1760000100000},
+             P + 'svResp/x1': {'rid': 'r1', 'name': 'Luis', 'answers': {'q1': 'Muy útil, gracias', 'q2': 'o2', 'consent': 'n'}, 'ts': 1760000200000},
+             P + 'svResp/x2': {'rid': 'r1', 'name': 'Ana', 'answers': {'q1': 'The classes are fun', 'q3': ['o2']}, 'ts': 1760000300000},
+             P + 'svResp/x9': {'rid': 'otra', 'name': 'Nadie', 'answers': {}, 'ts': 1}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com'; try{ delete self.Translator; }catch(e){}")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'sv')
+    check('清單：公開連結、收到 3 份（學生 1＋公開 2）', '收到 3 份' in page.inner_text('#app'), page.inner_text('#app')[-300:])
+    page.click('.hwrow[data-rid] [data-a=res]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#svRes')
+    check('逐題：學生和公開的回答都在，標示公開連結', 'Pedro' in txt and 'Luis（公開連結）' in txt and 'Ana（公開連結）' in txt and 'Nadie' not in txt, txt[:500])
+    check('公開回覆有「對應學生」下拉', page.locator('#svRes select[data-a=match]').count() == 2)
+    page.select_option('#svRes select[data-a=match][data-id=x1]', 's2'); page.wait_for_timeout(300)
+    check('選對應學生：寫進 svResp 的 sid', page.evaluate("window.__fb.store['%ssvResp/x1'].sid" % P) == 's2')
+    check('對應後：名字顯示「Liz（公開連結：Luis）」', 'Liz-OtraAlumna（公開連結：Luis）' in page.inner_text('#svRes') or 'Liz（公開連結：Luis）' in page.inner_text('#svRes'), page.inner_text('#svRes')[:400])
+    page.select_option('#svRes select[data-a=match][data-id=x1]', ''); page.wait_for_timeout(300)
+    check('改回「不對應」', page.evaluate("window.__fb.store['%ssvResp/x1'].sid" % P) == '' and 'Luis（公開連結）' in page.inner_text('#svRes'))
+    check('文字回答旁有 Google 翻譯連結（中文的沒有）', page.locator('#svRes a.svg').count() == 2 and 'translate.google.com' in page.get_attribute('#svRes a.svg', 'href') and 'sl=es' in page.get_attribute('#svRes a.svg', 'href'))
+    page.click('[data-a=trall]'); page.wait_for_timeout(200)
+    check('沒有 Chrome 內建翻譯：提示用 Google 翻譯', '沒有內建翻譯' in page.inner_text('#svTrMsg'), page.inner_text('#svTrMsg'))
+    page.click('#svRes [data-a=mode][data-m=tb]'); page.wait_for_timeout(150)
+    ths = page.locator('.svtbl thead th').count(); trs = page.locator('.svtbl tbody tr').count()
+    check('彙整表：欄＝時間＋名字＋4 題，列＝3 份', ths == 2 + 4 and trs == 3, (ths, trs))
+    ttxt = page.inner_text('.svtbl')
+    check('彙整表：選項顯示中文、複選用頓號、文字完整', '太快' in ttxt and '作業、單字' in ttxt and '很好，我喜歡' in ttxt and 'Muy útil, gracias' in ttxt, ttxt[:500])
+    if os.environ.get('SHOTS'): page.set_viewport_size({'width': 1100, 'height': 900}); page.screenshot(path='/tmp/shots/admin_table.png', full_page=True)
+    with page.expect_download() as dl: page.click('[data-a=xlsx]')
+    d = dl.value; path = '/tmp/svdl.xlsx'; d.save_as(path)
+    z = zipfile.ZipFile(path); sheet = z.read('xl/worksheets/sheet1.xml').decode('utf-8')
+    check('匯出 Excel：檔名是 .xlsx、是合法 zip、裡面有三份回覆', d.suggested_filename.endswith('.xlsx') and 'Mini 問卷' in d.suggested_filename and sheet.count('<row ') == 4 and 'Luis（公開連結）' in sheet and '很好，我喜歡' in sheet, d.suggested_filename)
+    try:
+        import openpyxl
+        ws = openpyxl.load_workbook(path).active
+        check('Excel 用 openpyxl 打得開：4 列、第一列是標題', ws.max_row == 4 and ws['A1'].value == '填寫時間' and ws['B2'].value == 'Pedro')
+    except ImportError:
+        pass
+    page.once('dialog', lambda dd: dd.accept()); page.click('#svRes [data-a=delresp][data-id=x2]'); page.wait_for_timeout(300)
+    check('刪除一份公開回覆', P + 'svResp/x2' not in page.evaluate('Object.keys(window.__fb.store)') and 'Ana' not in page.inner_text('#svRes'))
+    page.once('dialog', lambda dd: dd.accept()); page.click('.hwrow[data-rid] [data-a=delr]'); page.wait_for_timeout(400)
+    ks = page.evaluate('Object.keys(window.__fb.store)')
+    check('刪除這次發布：svPublic、svRounds、學生那份、這次的公開回覆都刪；別次的回覆留著', not [k for k in ks if k.startswith(P + 'svPublic/') or k.startswith(P + 'svRounds/') or '/sv/' in k or k == P + 'svResp/x1'] and P + 'svResp/x9' in ks, ks)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 4. Chrome 內建翻譯（用假的 Translator 測流程）
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("""window.__fb.autoLogin = 'teacher@example.com';
+      window.__trcalls = [];
+      window.Translator = { availability: async o => { window.__trcalls.push(['av', o.sourceLanguage, o.targetLanguage]); return o.sourceLanguage === 'xx' ? 'unavailable' : 'available'; },
+        create: async o => ({ translate: async t => '[中]' + t }) };""")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'sv'); page.click('.hwrow[data-rid] [data-a=res]'); page.wait_for_timeout(200)
+    page.click('[data-a=trall]'); page.wait_for_timeout(500)
+    txt = page.inner_text('#svRes'); calls = page.evaluate('window.__trcalls')
+    check('Chrome 翻譯：外語回答出現「譯：」，中文回答不翻', '譯：[中]Muy útil, gracias' in txt and '譯：[中]The classes are fun' in txt and '[中]很好' not in txt, txt[:600])
+    check('Chrome 翻譯：目標語言是繁體中文 zh-Hant，來源用發布時的外語（es）', calls and all(c[2] == 'zh-Hant' for c in calls) and calls[0][1] == 'es', calls)
+    check('翻完顯示翻譯了幾則', '已翻譯 2 則' in page.inner_text('#svTrMsg'), page.inner_text('#svTrMsg'))
+    page.click('#svRes [data-a=mode][data-m=tb]'); page.wait_for_timeout(150)
+    check('彙整表裡也看得到譯文', '譯：[中]Muy útil' in page.inner_text('.svtbl'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -1267,6 +1411,7 @@ with sync_playwright() as p:
     board_tests(browser, base)
     bb_admin_tests(browser, base)
     survey_tests(browser, base)
+    survey_public_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

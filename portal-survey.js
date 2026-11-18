@@ -17,6 +17,7 @@ var SV_TEXT_MAX = 2000;      // 開放題每題最多字數
 var SV_TITLE_MAX = 60;
 var SV_Q_MAX = 60;           // 一份問卷最多幾題
 var SV_TYPES = ['text', 'single', 'multi', 'scale'];
+var SV_NAME_MAX = 60;        // 公開連結：填寫者的名字最多幾個字
 
 var SV_I18N = {
   es: {
@@ -52,6 +53,16 @@ var SV_I18N = {
     svType: '请写下你的回答…', svPick: '请选一个', svPickMany: '可以复选', svYesOpt: '同意', svNoOpt: '不同意'
   }
 };
+/* 公開連結頁（survey.html）用的字 */
+(function () {
+  var add = {
+    es: { svName: 'Tu nombre', svNamePh: 'Escribe tu nombre', svNameReq: 'Escribe tu nombre antes de enviar.', svDone: '¡Gracias! Tu respuesta ya fue enviada.', svClosed: 'Esta encuesta ya está cerrada.', svNotFound: 'No se encontró la encuesta. Pide a tu profesor el enlace correcto.', svSendErr: 'No se pudo enviar. Revisa tu conexión e inténtalo de nuevo.', svDraftKept: 'Tus respuestas se guardan en este dispositivo mientras escribes.' },
+    en: { svName: 'Your name', svNamePh: 'Type your name', svNameReq: 'Please type your name before submitting.', svDone: 'Thank you! Your answers have been sent.', svClosed: 'This survey is closed.', svNotFound: 'Survey not found. Ask your teacher for the correct link.', svSendErr: 'Could not send. Check your connection and try again.', svDraftKept: 'Your answers are kept on this device while you write.' },
+    tc: { svName: '你的名字', svNamePh: '請寫下你的名字', svNameReq: '請先寫下你的名字再交出。', svDone: '謝謝你！你的回答已經送出。', svClosed: '這份問卷已經關閉了。', svNotFound: '找不到這份問卷，請向老師要正確的連結。', svSendErr: '送出失敗，請檢查網路後再試一次。', svDraftKept: '你填寫時，答案會暫存在這個裝置上。' },
+    sc: { svName: '你的名字', svNamePh: '请写下你的名字', svNameReq: '请先写下你的名字再交出。', svDone: '谢谢你！你的回答已经送出。', svClosed: '这份问卷已经关闭了。', svNotFound: '找不到这份问卷，请向老师要正确的链接。', svSendErr: '送出失败，请检查网络后再试一次。', svDraftKept: '你填写时，答案会暂存在这个装置上。' }
+  };
+  Object.keys(add).forEach(function (l) { Object.keys(add[l]).forEach(function (k) { SV_I18N[l][k] = add[l][k]; }); });
+})();
 function svT(lang, key, p) {
   var l = lang === 'es' || lang === 'en' || lang === 'sc' ? lang : 'tc';
   var s = SV_I18N[l][key];
@@ -227,4 +238,67 @@ function svExportRows(qs, entries) {
     return [e.when || '', e.who || ''].concat((qs || []).map(function (q) { return svAnswerText(q, (e.answers || {})[q.id]); }));
   });
   return [head].concat(rows);
+}
+
+
+/* ===== 公開連結（沒有用學生日誌的學生）=====
+   - svPublic/{發布代號}   任何人拿到連結都讀得到的那一份：{ title, qs, zh, fl, open:true|false, createdAt }（不放老師和學生的資料）
+   - svResp/{回覆代號}     公開連結的回覆：{ rid, name, answers, ts, sid? }；任何人只能新增；老師讀、改 sid（對應到哪位學生）、刪 */
+function svCleanName(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, SV_NAME_MAX); }
+function svPublicDoc(round) {
+  return { title: round.title, qs: round.qs, zh: round.zh, fl: round.fl, open: true, createdAt: round.createdAt };
+}
+function svPublicUrl(base, tid, rid) { return base + 'survey.html?t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(rid); }
+
+/* 把一次發布的所有回覆合在一起：學生日誌裡交出的＋公開連結的。
+   studentDocs：{ 學生代號: { 發布代號: 那份 } }；resps：[{ id, rid, name, answers, ts, sid? }]；nameOf(sid)：學生名字
+   回傳 [{ key, kind:'student'|'public', sid, who, ts, status:'todo'|'submitted', answers, id? }] */
+function svCollect(rid, round, studentDocs, resps, nameOf) {
+  var out = [];
+  ((round && round.sids) || []).forEach(function (sid) {
+    var d = (studentDocs[sid] || {})[rid];
+    if (!d) return;
+    out.push({ key: 's:' + sid, kind: 'student', sid: sid, who: nameOf(sid), ts: d.submittedAt || d.assignedAt || 0, status: d.status === 'submitted' ? 'submitted' : 'todo', answers: d.answers || {} });
+  });
+  (resps || []).filter(function (r) { return r.rid === rid; }).sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); }).forEach(function (r) {
+    var matched = r.sid ? nameOf(r.sid) : '';
+    out.push({ key: 'p:' + r.id, kind: 'public', id: r.id, sid: r.sid || '', who: matched ? matched + '（公開連結：' + r.name + '）' : r.name + '（公開連結）', name: r.name, ts: r.ts || 0, status: 'submitted', answers: r.answers || {} });
+  });
+  return out;
+}
+
+/* ===== 匯出 Excel（.xlsx）=====
+   不靠任何外掛：只產生 xlsx 裡面需要的幾個 XML 檔（{ 路徑: 內容 }），網頁再用 JSZip 包成一個檔案。
+   rows：二維陣列（第一列是標題）；全部存成文字。 */
+function svXmlEsc(s) {
+  return String(s == null ? '' : s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+}
+function svColName(i) { var s = ''; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+function svSheetName(s) { return (String(s || '').replace(/[\[\]\*\?\/\\:]/g, ' ').trim() || '問卷').slice(0, 31); }
+function svXlsxFiles(rows, sheetName) {
+  var cols = 0; rows.forEach(function (r) { if (r.length > cols) cols = r.length; });
+  var colsXml = '<cols>';
+  for (var c = 0; c < cols; c++) colsXml += '<col min="' + (c + 1) + '" max="' + (c + 1) + '" width="' + (c < 2 ? 22 : 40) + '" customWidth="1"/>';
+  colsXml += '</cols>';
+  var data = rows.map(function (r, ri) {
+    var cells = r.map(function (v, ci) {
+      return '<c r="' + svColName(ci) + (ri + 1) + '" t="inlineStr" s="' + (ri === 0 ? 1 : 0) + '"><is><t xml:space="preserve">' + svXmlEsc(v) + '</t></is></c>';
+    }).join('');
+    return '<row r="' + (ri + 1) + '">' + cells + '</row>';
+  }).join('');
+  var f = {};
+  f['[Content_Types].xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>';
+  f['_rels/.rels'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  f['xl/workbook.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + svXmlEsc(svSheetName(sheetName)) + '" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  f['xl/_rels/workbook.xml.rels'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  f['xl/styles.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  f['xl/worksheets/sheet1.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' + colsXml + '<sheetData>' + data + '</sheetData></worksheet>';
+  return f;
+}
+
+/* ===== 翻譯學生的回答 =====
+   先用 Chrome 內建翻譯（電腦版 Chrome 138 以上；學生回答的語言→繁體中文）；不能用就開 Google 翻譯。 */
+function svLooksChinese(text) { var m = String(text || '').match(/[㐀-鿿]/g); return !!m && m.length >= Math.max(2, String(text).replace(/\s/g, '').length * 0.3); }
+function svGoogleTranslateUrl(text, sl) {
+  return 'https://translate.google.com/?sl=' + (sl || 'auto') + '&tl=zh-TW&op=translate&text=' + encodeURIComponent(String(text || '').slice(0, 1500));
 }

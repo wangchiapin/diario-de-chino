@@ -117,6 +117,14 @@ td.em{min-width:260px}
 .svo{display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:6px;margin:4px 0}
 .svo input{font-size:14px;padding:6px 8px}
 .svans{padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.svtr{color:var(--sub);font-size:13px;margin-top:2px;padding-left:8px;border-left:3px solid var(--line)}
+.svg{font-size:12px;white-space:nowrap}
+.svresp{padding:4px 0;border-top:1px solid var(--line)}
+.svtblw{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
+.svtbl{border-collapse:collapse;font-size:13px;min-width:100%}
+.svtbl th,.svtbl td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left;min-width:120px}
+.svtbl th{position:sticky;top:0;background:#f3efe5;z-index:1}
+.svtbl td:nth-child(-n+2),.svtbl th:nth-child(-n+2){min-width:90px}
 .svbar{display:grid;grid-template-columns:minmax(80px,200px) 1fr 92px;gap:8px;align-items:center;margin:3px 0;font-size:14px}
 .svtrack{display:block;background:#e8e4db;border-radius:6px;height:12px;overflow:hidden}
 .svtrack i{display:block;height:100%;background:var(--accent)}
@@ -182,7 +190,7 @@ let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || '
 const helpOpen = new Set();
 function helpBox(k, inner){ return `<details class="help" data-hk="${k}" ${helpOpen.has(k) ? 'open' : ''}><summary>說明</summary><div class="hb muted small">${inner}</div></details>`; }
 document.addEventListener('toggle', e => { const d = e.target; if(d && d.classList && d.classList.contains('help')){ if(d.open) helpOpen.add(d.dataset.hk); else helpOpen.delete(d.dataset.hk); } }, true);
-let surveys = {}, svRounds = {}, sv = {}, svUnsubs = {}, svEdit = null, svMsg = null, svPub = null, svView = null;   // 問卷：surveys 老師的問卷；svRounds 發布紀錄；sv：學生代號 → { 發布代號 → 學生那份 }
+let surveys = {}, svRounds = {}, sv = {}, svUnsubs = {}, svEdit = null, svMsg = null, svPub = null, svView = null, svResps = [], svMode = 'q', svTr = {}, svTrMsg = '';   // 問卷：surveys 老師的問卷；svRounds 發布紀錄；sv：學生代號 → { 發布代號 → 學生那份 }
 let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = {};
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
@@ -1048,10 +1056,7 @@ const placementUrl = () => location.href.split('#')[0].split('?')[0].replace(/[^
 const SV_TYPE_LABEL = { text: '開放填寫', single: '單選', multi: '複選', scale: '量表（單選，會算平均）' };
 function svStuName(sid){ return (students[sid] || {}).name || sid; }
 function svSetMsg(text, ok){ svMsg = { text, ok }; }
-function svRoundEntries(rid){
-  const r = svRounds[rid] || {};
-  return (r.sids || []).map(sid => ({ sid, d: (sv[sid] || {})[rid] })).filter(x => x.d);
-}
+function svRoundEntries(rid){ return svCollect(rid, svRounds[rid] || {}, sv, svResps, svStuName); }
 function svDraftClean(){
   const d = JSON.parse(JSON.stringify(svEdit.draft));
   d.title = String(d.title || '').trim();
@@ -1102,10 +1107,14 @@ async function svSend(){
   render();
 }
 async function svDeleteRound(rid){
-  const entries = svRoundEntries(rid), done = entries.filter(x => x.d.status === 'submitted').length;
-  if(!confirm(`刪除這次發布？${done ? `已經有 ${done} 位交出的回覆會一起刪掉，` : ''}無法復原。`)) return;
+  const entries = svRoundEntries(rid), done = entries.filter(x => x.status === 'submitted').length;
+  if(!confirm(`刪除這次發布？${done ? `已經有 ${done} 份交出的回覆會一起刪掉，` : ''}無法復原。`)) return;
   try{
-    for(const x of entries) await deleteDoc(doc(db, 'portal', uid, 'students', x.sid, 'sv', rid));
+    for(const x of entries){
+      if(x.kind === 'student') await deleteDoc(doc(db, 'portal', uid, 'students', x.sid, 'sv', rid));
+      else await deleteDoc(doc(db, 'portal', uid, 'svResp', x.id));
+    }
+    if(svRounds[rid] && svRounds[rid].pub) await deleteDoc(doc(db, 'portal', uid, 'svPublic', rid));
     await deleteDoc(doc(db, 'portal', uid, 'svRounds', rid));
     if(svView === rid) svView = null;
     svSetMsg('已刪除', true);
@@ -1115,6 +1124,106 @@ async function svDeleteRound(rid){
 async function svReopen(sid, rid){
   if(!confirm('讓這位學生重新填寫？他之前的答案會保留，可以修改後再交出。')) return;
   try{ await updateDoc(doc(db, 'portal', uid, 'students', sid, 'sv', rid), { status: 'todo' }); }catch(e){ console.error(e); svSetMsg('操作失敗', false); render(); }
+}
+
+
+/* ───── 公開連結（給沒有用學生日誌的學生）───── */
+const svLinkUrl = rid => svPublicUrl(location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, ''), uid, rid);
+async function svPublish(){
+  const s = surveys[svPub.id];
+  if(!s){ svPub = null; return render(); }
+  const err = svValidate(s); if(err){ svSetMsg(err, false); return render(); }
+  const rid = svNewId('r'), now = Date.now();
+  const round = { surveyId: svPub.id, title: s.title, qs: svPublishQs(s), zh: svPub.zh, fl: svPub.fl, sids: [], pub: true, open: true, createdAt: now };
+  try{
+    await setDoc(doc(db, 'portal', uid, 'svPublic', rid), svPublicDoc(round));
+    await setDoc(doc(db, 'portal', uid, 'svRounds', rid), round);
+    svPub = null; svView = rid; svSetMsg('✓ 已建立公開連結，下面「結果」裡可以複製連結給學生', true);
+  }catch(e){ console.error(e); svSetMsg('建立失敗（可能是規則還沒加：svPublic、svResp）', false); }
+  render();
+}
+async function svToggleOpen(rid){
+  const r = svRounds[rid]; if(!r) return;
+  const open = r.open === false;
+  try{
+    await updateDoc(doc(db, 'portal', uid, 'svPublic', rid), { open });
+    await updateDoc(doc(db, 'portal', uid, 'svRounds', rid), { open });
+  }catch(e){ console.error(e); svSetMsg('操作失敗', false); render(); }
+}
+async function svMatch(id, sid){
+  try{ await updateDoc(doc(db, 'portal', uid, 'svResp', id), { sid }); }catch(e){ console.error(e); svSetMsg('對應失敗', false); render(); }
+}
+async function svDelResp(id){
+  if(!confirm('刪除這份回覆？無法復原。')) return;
+  try{ await deleteDoc(doc(db, 'portal', uid, 'svResp', id)); }catch(e){ console.error(e); svSetMsg('刪除失敗', false); render(); }
+}
+
+/* ───── 匯出 Excel ───── */
+async function svExport(rid){
+  const r = svRounds[rid]; if(!r) return;
+  const done = svRoundEntries(rid).filter(x => x.status === 'submitted');
+  if(!done.length){ svSetMsg('還沒有已交出的回覆可以匯出', false); return render(); }
+  try{
+    await loadJs('vendor/jszip.min.js');
+    const rows = svExportRows(r.qs, done.map(e => ({ when: fmtTime(e.ts), who: e.who, answers: e.answers })));
+    const zip = new JSZip(), files = svXlsxFiles(rows, r.title);
+    Object.keys(files).forEach(k => zip.file(k, files[k]));
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
+    const d = new Date(r.createdAt || Date.now()), p = n => String(n).padStart(2, '0');
+    const name = (String(r.title).replace(/[\\\/:*?"<>|]/g, ' ').trim() || '問卷') + '_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '.xlsx';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    svSetMsg('✓ 已匯出 ' + name, true);
+  }catch(e){ console.error(e); svSetMsg('匯出失敗', false); }
+  render();
+}
+
+/* ───── 把學生的回答翻成繁體中文（Chrome 內建翻譯；不能用就用每則旁邊的 Google 翻譯連結）───── */
+const svTrCache = {};
+let svDet = null;
+const svHasChromeTr = () => 'Translator' in self;
+async function svDetect(text, fb){
+  try{
+    if(!('LanguageDetector' in self)) return fb;
+    if(!svDet){ if((await LanguageDetector.availability()) === 'unavailable') return fb; svDet = await LanguageDetector.create(); }
+    const res = await svDet.detect(text), top = res && res[0];
+    return top && top.confidence > 0.5 ? top.detectedLanguage : fb;
+  }catch(e){ return fb; }
+}
+async function svTranslator(sl){
+  if(svTrCache[sl]) return svTrCache[sl];
+  const o = { sourceLanguage: sl, targetLanguage: 'zh-Hant' };
+  try{
+    if((await Translator.availability(o)) === 'unavailable') return null;
+    o.monitor = m => m.addEventListener('downloadprogress', e => { svTrMsg = '正在下載翻譯模型 ' + Math.round(e.loaded * 100) + '%（只有第一次）'; const el = document.getElementById('svTrMsg'); if(el) el.textContent = svTrMsg; });
+    return svTrCache[sl] = await Translator.create(o);
+  }catch(e){ console.error(e); return null; }
+}
+async function svTrRun(rid, qid){
+  const r = svRounds[rid]; if(!r) return;
+  if(!svHasChromeTr()){ svTrMsg = '這個瀏覽器沒有內建翻譯（要電腦版 Chrome 138 以上）。請點每則回答旁邊的「Google 翻譯」。'; return render(); }
+  const items = [];
+  svRoundEntries(rid).filter(e => e.status === 'submitted').forEach(e => r.qs.forEach(q => {
+    if(q.t !== 'text' || (qid && q.id !== qid)) return;
+    const a = e.answers[q.id];
+    if(typeof a === 'string' && a.trim() && !svLooksChinese(a)) items.push({ k: rid + '|' + e.key + '|' + q.id, text: a });
+  }));
+  const todo = items.filter(x => svTr[x.k] == null);
+  if(!todo.length){ svTrMsg = items.length ? '都已經翻譯好了' : '沒有需要翻譯的回答'; return render(); }
+  svTrMsg = '翻譯中…'; render();
+  const fb = r.fl === 'en' ? 'en' : 'es';
+  let ok = 0, bad = 0;
+  for(const x of todo){
+    try{
+      const sl = await svDetect(x.text, fb);
+      if(sl === 'zh' || sl === 'zh-Hant'){ continue; }
+      const tr = await svTranslator(sl);
+      if(!tr){ bad++; continue; }
+      svTr[x.k] = await tr.translate(x.text); ok++;
+    }catch(e){ console.error(e); bad++; }
+  }
+  svTrMsg = `已翻譯 ${ok} 則` + (bad ? `，${bad} 則 Chrome 翻不了，請用旁邊的「Google 翻譯」` : '');
+  render();
 }
 
 function svEditHtml(){
@@ -1175,27 +1284,49 @@ function bindSvEdit(root){
   $('svCancel').onclick = () => { if(!confirm('不儲存，直接離開？')) return; svEdit = null; svMsg = null; render(); };
 }
 
+function svAnsHtml(rid, e, q, text, r){
+  const t = svTr[rid + '|' + e.key + '|' + q.id];
+  return nl2br(text) + (t ? `<div class="svtr">譯：${nl2br(t)}</div>` : '')
+    + (svLooksChinese(text) ? '' : ` <a class="svg" href="${esc(svGoogleTranslateUrl(text, r.fl))}" target="_blank" rel="noopener">Google 翻譯 ↗</a>`);
+}
 function svResultsHtml(rid, active){
   const r = svRounds[rid]; if(!r) return '';
-  const entries = svRoundEntries(rid), done = entries.filter(x => x.d.status === 'submitted');
-  const T = svTally(r.qs, done.map(x => ({ answers: x.d.answers, sid: x.sid })));
-  const chips = entries.map(x => `<span class="small">${esc(svStuName(x.sid))} <span class="chip ${x.d.status === 'submitted' ? 'graded' : 'todo'}">${x.d.status === 'submitted' ? '已交' : '未填'}</span>${x.d.status === 'submitted' ? `<button class="tiny quiet" data-a="reopen" data-sid="${esc(x.sid)}">退回</button>` : ''}</span>`).join('　');
-  const qh = r.qs.map((q, i) => {
-    const t = T[q.id] || { n: 0 };
-    let body = '';
-    if(q.t === 'text'){
-      body = (t.texts || []).length ? t.texts.map(x => `<div class="svans"><b>${esc(svStuName(x.entry.sid))}</b>　${nl2br(x.text)}</div>`).join('') : '<div class="muted small">還沒有回答</div>';
-    }else{
-      body = (q.opts || []).map(o => {
-        const n = (t.counts || {})[o.id] || 0, pct = t.n ? Math.round(n / t.n * 100) : 0;
-        return `<div class="svbar"><span class="svbl">${esc(o.zh)}</span><span class="svtrack"><i style="width:${pct}%"></i></span><span class="svbn">${n}（${pct}%）</span></div>`;
-      }).join('') + (t.avg != null ? `<div class="muted small">平均 ${t.avg}（1＝「${esc(q.opts[0].zh)}」，${q.opts.length}＝「${esc(q.opts[q.opts.length - 1].zh)}」）</div>` : '');
-    }
-    return `<div class="svq"><div><b>${i + 1}. ${esc(q.zh)}</b> <span class="muted small">${esc(SV_TYPE_LABEL[q.t] || (q.t === 'consent' ? '是否同意' : ''))}・${t.n} 人回答</span></div>${body}</div>`;
-  }).join('');
+  const entries = svRoundEntries(rid), done = entries.filter(x => x.status === 'submitted');
+  const T = svTally(r.qs, done.map(x => Object.assign({ entry: x }, x)));
+  const stuOpts = cur => '<option value="">（不對應）</option>' + Object.keys(students).filter(sid => !students[sid].archived || sid === cur)
+    .sort((x, y) => String(students[x].name).localeCompare(String(students[y].name))).map(sid => `<option value="${esc(sid)}"${sid === cur ? ' selected' : ''}>${esc(students[sid].name)}</option>`).join('');
+  const stuEntries = entries.filter(x => x.kind === 'student'), pubEntries = entries.filter(x => x.kind === 'public');
+  const chips = stuEntries.map(x => `<span class="small">${esc(x.who)} <span class="chip ${x.status === 'submitted' ? 'graded' : 'todo'}">${x.status === 'submitted' ? '已交' : '未填'}</span>${x.status === 'submitted' ? `<button class="tiny quiet" data-a="reopen" data-sid="${esc(x.sid)}">退回</button>` : ''}</span>`).join('　');
+  const pubRows = pubEntries.map(x => `<div class="svresp small"><b>${esc(x.name)}</b> <span class="muted">${esc(fmtTime(x.ts))}</span>　對應學生 <select data-a="match" data-id="${esc(x.id)}">${stuOpts(x.sid)}</select> <button class="tiny quiet" data-a="delresp" data-id="${esc(x.id)}">刪除</button></div>`).join('');
+  const link = r.pub ? `<div class="row" style="margin:6px 0"><input id="svLink" readonly value="${esc(svLinkUrl(rid))}" style="flex:1;min-width:200px"><button class="tiny" data-a="copylink">複製連結</button><button class="tiny quiet" data-a="toggleopen">${r.open === false ? '重新開放' : '關閉填寫'}</button><span class="chip ${r.open === false ? 'todo' : 'graded'}">${r.open === false ? '已關閉' : '開放中'}</span></div>` : '';
+  let body = '';
+  if(svMode === 'tb'){
+    const rowsH = done.map(e => `<tr><td>${esc(fmtTime(e.ts))}</td><td>${esc(e.who)}</td>${r.qs.map(q => `<td>${q.t === 'text' ? svAnsHtml(rid, e, q, e.answers[q.id] || '', r) : esc(svAnswerText(q, e.answers[q.id]))}</td>`).join('')}</tr>`).join('');
+    body = done.length ? `<div class="svtblw"><table class="svtbl"><thead><tr><th>時間</th><th>學生／名字</th>${r.qs.map((q, i) => `<th title="${esc(q.zh)}">${i + 1}. ${esc(q.zh.length > 16 ? q.zh.slice(0, 16) + '…' : q.zh)}</th>`).join('')}</tr></thead><tbody>${rowsH}</tbody></table></div>` : '<div class="muted small">還沒有已交出的回覆</div>';
+  }else{
+    body = r.qs.map((q, i) => {
+      const t = T[q.id] || { n: 0 };
+      let b = '';
+      if(q.t === 'text'){
+        b = (t.texts || []).length ? t.texts.map(x => `<div class="svans"><b>${esc(x.entry.who)}</b>　${svAnsHtml(rid, x.entry, q, x.text, r)}</div>`).join('') : '<div class="muted small">還沒有回答</div>';
+      }else{
+        b = (q.opts || []).map(o => {
+          const n = (t.counts || {})[o.id] || 0, pct = t.n ? Math.round(n / t.n * 100) : 0;
+          return `<div class="svbar"><span class="svbl">${esc(o.zh)}</span><span class="svtrack"><i style="width:${pct}%"></i></span><span class="svbn">${n}（${pct}%）</span></div>`;
+        }).join('') + (t.avg != null ? `<div class="muted small">平均 ${t.avg}（1＝「${esc(q.opts[0].zh)}」，${q.opts.length}＝「${esc(q.opts[q.opts.length - 1].zh)}」）</div>` : '');
+      }
+      return `<div class="svq"><div><b>${i + 1}. ${esc(q.zh)}</b> <span class="muted small">${esc(SV_TYPE_LABEL[q.t] || (q.t === 'consent' ? '是否同意' : ''))}・${t.n} 人回答</span>${q.t === 'text' && t.n ? ` <button class="tiny quiet" data-a="trq" data-qid="${esc(q.id)}">翻譯這題</button>` : ''}</div>${b}</div>`;
+    }).join('');
+  }
   return `<div class="card" id="svRes"><div class="row"><h2 style="margin:0">${esc(r.title)} · 結果</h2><span style="flex:1"></span><button class="tiny quiet" data-a="resClose">收起</button></div>
-    <div class="muted small" style="margin:4px 0">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡體' : '繁體'} ＋ ${r.fl === 'en' ? 'English' : 'Español'}　已交 ${done.length}／${entries.length}</div>
-    <div style="margin:6px 0 10px">${chips}</div>${qh}</div>`;
+    <div class="muted small" style="margin:4px 0">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡體' : '繁體'} ＋ ${r.fl === 'en' ? 'English' : 'Español'}　${r.pub ? '公開連結' : ''}　已交 ${done.length}／${entries.length}</div>
+    ${link}
+    <div class="row" style="margin:6px 0"><button class="tiny ${svMode === 'q' ? '' : 'quiet'}" data-a="mode" data-m="q">逐題看</button><button class="tiny ${svMode === 'tb' ? '' : 'quiet'}" data-a="mode" data-m="tb">彙整表</button><span style="flex:1"></span>
+      <button class="tiny" data-a="xlsx">匯出 Excel</button><button class="tiny quiet" data-a="trall">翻譯全部回答（中文）</button></div>
+    <div class="small muted" id="svTrMsg">${esc(svTrMsg)}</div>
+    ${chips ? `<div style="margin:6px 0 10px">${chips}</div>` : ''}
+    ${pubRows ? `<div class="svpub"><div class="muted small" style="margin:6px 0 2px">公開連結收到的回覆：幫每份選是哪位學生（可以不選）</div>${pubRows}</div>` : ''}
+    ${body}</div>`;
 }
 function svHtml(active){
   if(svEdit) return svEditHtml();
@@ -1203,7 +1334,7 @@ function svHtml(active){
   const rids = Object.keys(svRounds).sort((a, b) => (svRounds[b].createdAt || 0) - (svRounds[a].createdAt || 0));
   let h = `<div class="card"><h2>問卷調查</h2>
     <div class="row"><button class="tiny" data-a="newTpl">＋ 用基本模板建立新問卷</button><button class="tiny quiet" data-a="newBlank">＋ 空白問卷</button></div>
-    ${helpBox('sv0', '基本模板是最新版的課程滿意度調查，再加上「學生日誌使用」的問題。建立後可以隨意改題目、改名字、刪題、加題。每年想改，就「複製」一份再改，或是用模板建立新問卷。發布給學生時，問卷會複製一份給他們，之後你再改問卷，不會影響已經發出去的。')}
+    ${helpBox('sv0', '基本模板是最新版的課程滿意度調查，再加上「學生日誌使用」的問題。建立後可以隨意改題目、改名字、刪題、加題。每年想改，就「複製」一份再改，或是用模板建立新問卷。發布給學生時，問卷會複製一份給他們，之後你再改問卷，不會影響已經發出去的。沒有用學生日誌的學生，可以按「建立公開連結」，把連結傳給他們，他們不用登入、要寫名字；你再到結果裡幫每份回覆選是哪位學生。')}
     <div class="small ${svMsg && svMsg.ok ? 'ok' : 'err'}">${esc(svMsg ? svMsg.text : '')}</div>`;
   if(!sids.length) h += '<div class="muted small" style="margin-top:6px">還沒有問卷，按上面的「用基本模板建立新問卷」開始。</div>';
   sids.forEach(id => {
@@ -1214,7 +1345,7 @@ function svHtml(active){
       h += `<div style="margin-top:8px"><div class="row small"><span class="muted">中文</span><label><input type="radio" name="svzh" value="tc" ${svPub.zh === 'tc' ? 'checked' : ''}> 繁體</label><label><input type="radio" name="svzh" value="sc" ${svPub.zh === 'sc' ? 'checked' : ''}> 簡體</label>
         <span class="muted" style="margin-left:10px">外語</span><label><input type="radio" name="svfl" value="es" ${svPub.fl === 'es' ? 'checked' : ''}> Español</label><label><input type="radio" name="svfl" value="en" ${svPub.fl === 'en' ? 'checked' : ''}> English</label></div>
         <div class="picks" style="margin-top:6px">${active.map(sid => `<label><input type="checkbox" data-sid="${esc(sid)}" ${svPub.sel[sid] ? 'checked' : ''}>${esc(students[sid].name)}${!roster[sid] ? '（還沒填電子郵件）' : ''}</label>`).join('')}</div>
-        <div class="row" style="margin-top:6px"><button class="tiny quiet" data-a="all">全選</button><button class="tiny" data-a="send">發出</button></div></div>`;
+        <div class="row" style="margin-top:6px"><button class="tiny quiet" data-a="all">全選</button><button class="tiny" data-a="send">發給勾選的學生</button><span class="muted small">或</span><button class="tiny" data-a="pubLink">建立公開連結（給沒用日誌的學生）</button></div></div>`;
     }
     h += '</div>';
   });
@@ -1222,8 +1353,8 @@ function svHtml(active){
   h += `<div class="card"><h2>已發布的問卷（${rids.length}）</h2>`;
   if(!rids.length) h += '<div class="muted small">還沒有發布過。</div>';
   rids.forEach(rid => {
-    const r = svRounds[rid], en = svRoundEntries(rid), done = en.filter(x => x.d.status === 'submitted').length;
-    h += `<div class="hwrow" data-rid="${esc(rid)}"><div class="row"><b>${esc(r.title)}</b><span class="muted small">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡' : '繁'}＋${r.fl === 'en' ? 'EN' : 'ES'}　已交 ${done}／${en.length}</span>
+    const r = svRounds[rid], en = svRoundEntries(rid), done = en.filter(x => x.status === 'submitted').length;
+    h += `<div class="hwrow" data-rid="${esc(rid)}"><div class="row"><b>${esc(r.title)}</b><span class="muted small">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡' : '繁'}＋${r.fl === 'en' ? 'EN' : 'ES'}　${r.pub ? `公開連結（${r.open === false ? '已關閉' : '開放中'}）　收到 ${done} 份` : `已交 ${done}／${en.length}`}</span>
       <button class="tiny quiet" data-a="res">${svView === rid ? '收起結果' : '看結果'}</button><button class="tiny quiet" data-a="delr">刪除</button></div></div>`;
   });
   h += '</div>';
@@ -1245,6 +1376,7 @@ function bindSv(root, active){
       else if(a === 'pub'){ svPub = svPub && svPub.id === id ? null : { id, zh: 'tc', fl: 'es', sel: {} }; svMsg = null; render(); }
       else if(a === 'all'){ active.forEach(sid => { svPub.sel[sid] = true; }); render(); }
       else if(a === 'send') svSend();
+      else if(a === 'pubLink') svPublish();
     });
     row.querySelectorAll('input[name="svzh"]').forEach(i => i.onchange = () => { svPub.zh = i.value; });
     row.querySelectorAll('input[name="svfl"]').forEach(i => i.onchange = () => { svPub.fl = i.value; });
@@ -1259,6 +1391,14 @@ function bindSv(root, active){
   });
   pane.querySelectorAll('#svRes [data-a="resClose"]').forEach(b => b.onclick = () => { svView = null; render(); });
   pane.querySelectorAll('#svRes [data-a="reopen"]').forEach(b => b.onclick = () => svReopen(b.dataset.sid, svView));
+  pane.querySelectorAll('#svRes [data-a="mode"]').forEach(b => b.onclick = () => { svMode = b.dataset.m; render(); });
+  pane.querySelectorAll('#svRes [data-a="xlsx"]').forEach(b => b.onclick = () => svExport(svView));
+  pane.querySelectorAll('#svRes [data-a="trall"]').forEach(b => b.onclick = () => svTrRun(svView, ''));
+  pane.querySelectorAll('#svRes [data-a="trq"]').forEach(b => b.onclick = () => svTrRun(svView, b.dataset.qid));
+  pane.querySelectorAll('#svRes [data-a="toggleopen"]').forEach(b => b.onclick = () => svToggleOpen(svView));
+  pane.querySelectorAll('#svRes [data-a="copylink"]').forEach(b => b.onclick = async () => { try{ await navigator.clipboard.writeText(svLinkUrl(svView)); b.textContent = '已複製'; }catch(e){ const i = $('svLink'); if(i) i.select(); } });
+  pane.querySelectorAll('#svRes select[data-a="match"]').forEach(sel => sel.onchange = () => svMatch(sel.dataset.id, sel.value));
+  pane.querySelectorAll('#svRes [data-a="delresp"]').forEach(b => b.onclick = () => svDelResp(b.dataset.id));
 }
 
 function render(){
@@ -1394,7 +1534,7 @@ function syncHw(){
       err => console.error(err));
   });
 }
-function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; Object.keys(svUnsubs).forEach(id => svUnsubs[id]()); svUnsubs = {}; sv = {}; surveys = {}; svRounds = {}; svEdit = null; svPub = null; svView = null; svMsg = null; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; bbPosts = []; bbWall = []; bbDm = []; placements = []; notes = {}; noteDraft = {}; members = {}; membersLoaded = false; membersErr = false; dmSeen = {}; }
+function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; Object.keys(svUnsubs).forEach(id => svUnsubs[id]()); svUnsubs = {}; sv = {}; surveys = {}; svRounds = {}; svResps = []; svTr = {}; svTrMsg = ''; svEdit = null; svPub = null; svView = null; svMsg = null; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; bbPosts = []; bbWall = []; bbDm = []; placements = []; notes = {}; noteDraft = {}; members = {}; membersLoaded = false; membersErr = false; dmSeen = {}; }
 function start(){
   stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
@@ -1409,6 +1549,7 @@ function start(){
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'dmSeen'), s => { dmSeen = s.exists() ? s.data() : {}; renderSoftA(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'surveys'), snap => { surveys = {}; snap.forEach(d => surveys[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'svRounds'), snap => { svRounds = {}; snap.forEach(d => svRounds[d.id] = d.data()); render(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'svResp'), snap => { svResps = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'placements'), snap => { placements = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'notes'), snap => { notes = {}; snap.forEach(d => notes[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'gmap'), d => { gmap = d.exists() ? (d.data().map || {}) : {}; render(); }, err => console.error(err)));

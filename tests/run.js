@@ -728,5 +728,57 @@ test('問卷文字：四種語言的 key 一樣齊全', () => {
   assert.strictEqual(C('svT')('es', 'svRequiredMsg', { n: 3 }), 'Falta contestar: 3');
 });
 
+console.log('\n問卷：公開連結、合併回覆、匯出、翻譯');
+test('公開版只含題目和 open，不含老師資料；連結帶老師代號和發布代號', () => {
+  const round = { surveyId: 'x', title: 'T', qs: [{ id: 'q1' }], zh: 'tc', fl: 'es', sids: ['s1'], pub: true, createdAt: 5 };
+  const d = C('svPublicDoc')(round);
+  assert.strictEqual(J(Object.keys(d).sort()), J(['createdAt', 'fl', 'open', 'qs', 'title', 'zh']));
+  assert.strictEqual(d.open, true);
+  assert.strictEqual(C('svPublicUrl')('https://x.io/a/', 'UID1', 'r 1'), 'https://x.io/a/survey.html?t=UID1&r=r%201');
+});
+test('名字：去空白、合併空白、最多 60 字', () => {
+  assert.strictEqual(C('svCleanName')('  Ana   María '), 'Ana María');
+  assert.strictEqual(C('svCleanName')(null), '');
+  assert.strictEqual(C('svCleanName')('a'.repeat(100)).length, 60);
+});
+test('合併回覆：學生日誌交出的＋公開連結的；公開的可對應到學生；只算這次發布的', () => {
+  const round = { sids: ['s1', 's2'] };
+  const docs = { s1: { r1: { status: 'submitted', answers: { q1: 'a' }, submittedAt: 10, assignedAt: 1 } }, s2: { r1: { status: 'todo', answers: {}, assignedAt: 2 }, r2: { status: 'submitted', answers: {} } } };
+  const resps = [{ id: 'x1', rid: 'r1', name: 'Luis', answers: { q1: 'b' }, ts: 30 }, { id: 'x2', rid: 'r1', name: 'Ana', answers: {}, ts: 20, sid: 's2' }, { id: 'x3', rid: 'r9', name: 'Otro', answers: {}, ts: 1 }];
+  const nameOf = sid => ({ s1: '王一', s2: '李二' }[sid] || sid);
+  const e = C('svCollect')('r1', round, docs, resps, nameOf);
+  assert.strictEqual(e.length, 4);
+  assert.strictEqual(e[0].who, '王一'); assert.strictEqual(e[0].status, 'submitted'); assert.strictEqual(e[0].ts, 10);
+  assert.strictEqual(e[1].status, 'todo');
+  assert.strictEqual(e[2].name, 'Ana'); assert.strictEqual(e[2].who, '李二（公開連結：Ana）'); assert.strictEqual(e[2].sid, 's2');   // 時間較早的先
+  assert.strictEqual(e[3].who, 'Luis（公開連結）'); assert.strictEqual(e[3].kind, 'public'); assert.strictEqual(e[3].sid, '');
+  assert.ok(e.every(x => x.key));
+});
+test('合併回覆：沒有任何回覆也不會出錯', () => {
+  assert.strictEqual(C('svCollect')('r1', undefined, {}, [], s => s).length, 0);
+});
+test('Excel：欄位字母 A、Z、AA；特殊符號和控制字元會處理；第一列粗體並凍結', () => {
+  const c = C('svColName');
+  assert.strictEqual(c(0), 'A'); assert.strictEqual(c(25), 'Z'); assert.strictEqual(c(26), 'AA'); assert.strictEqual(c(701), 'ZZ');
+  const f = C('svXlsxFiles')([['時間', '名字'], ['a<b & "c"', 'x\u0001y\n換行']], '問卷/1:*?');
+  ['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/worksheets/sheet1.xml'].forEach(k => assert.ok(f[k], '缺 ' + k));
+  const sh = f['xl/worksheets/sheet1.xml'];
+  assert.ok(sh.indexOf('a&lt;b &amp; &quot;c&quot;') > -1);
+  assert.ok(sh.indexOf('\u0001') < 0);
+  assert.ok(sh.indexOf('r="B2"') > -1 && sh.indexOf('s="1"') > -1 && sh.indexOf('state="frozen"') > -1);
+  assert.ok(f['xl/workbook.xml'].indexOf('name="問卷 1   "') < 0 && /sheet name="[^\[\]*?\/\\:]+"/.test(f['xl/workbook.xml']));
+});
+test('Excel：工作表名稱最多 31 字，空的用「問卷」', () => {
+  assert.strictEqual(C('svSheetName')('a'.repeat(50)).length, 31);
+  assert.strictEqual(C('svSheetName')(''), '問卷');
+});
+test('翻譯：中文不用翻；Google 翻譯連結帶來源語言、目標繁體、文字有編碼', () => {
+  const L = C('svLooksChinese');
+  assert.strictEqual(L('我覺得很好'), true); assert.strictEqual(L('Muy bien'), false); assert.strictEqual(L('Muy bien 好'), false); assert.strictEqual(L(''), false);
+  const u = C('svGoogleTranslateUrl')('Hola, ¿qué tal?', 'es');
+  assert.ok(u.indexOf('sl=es') > -1 && u.indexOf('tl=zh-TW') > -1 && u.indexOf(encodeURIComponent('Hola, ¿qué tal?')) > -1);
+  assert.ok(C('svGoogleTranslateUrl')('x'.repeat(5000)).length < 1700);
+});
+
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);

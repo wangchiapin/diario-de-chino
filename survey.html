@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Encuesta · 問卷調查</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+:root{--bg:#f7f4ec;--fg:#2d2a24;--card:#fff;--line:#e3ddcc;--mut:#7a7466;--acc:#3f6b4f}
+@media (prefers-color-scheme: dark){:root{--bg:#1f1d19;--fg:#ece7dc;--card:#2a2722;--line:#3d392f;--mut:#a39d8e;--acc:#7fb591}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang TC",sans-serif;padding:16px;line-height:1.5}
+.wrap{max-width:620px;margin:0 auto}
+.brand{text-align:center;font-size:13px;color:var(--mut);margin:6px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+h1{font-size:20px;margin:0 0 4px}
+.muted{color:var(--mut);font-size:13px}
+.q{padding:12px 0;border-top:1px solid var(--line)}
+.q:first-child{border-top:0}
+.q .zh{font-size:16px;font-weight:600}
+.q .fl{font-size:14px;color:var(--mut);margin-top:2px}
+.q .no{margin-right:4px}
+textarea,input[type=text]{width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:6px}
+textarea{min-height:84px;resize:vertical}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:8px 4px;cursor:pointer}
+.opt input{margin-top:5px}
+.opt .sub{display:block;font-size:13px;color:var(--mut);line-height:1.3}
+.btn{display:block;width:100%;font:inherit;font-weight:600;color:#fff;background:var(--acc);border:0;border-radius:10px;padding:12px;cursor:pointer}
+.btn.quiet{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.btn:disabled{opacity:.5}
+.msg{background:rgba(63,107,79,.12);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:14px}
+.err{color:#b3261e;font-size:14px;margin:6px 0}
+.row2{display:flex;gap:10px}.row2 .btn{flex:1}
+.center{text-align:center;padding:24px 8px}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="brand">Diario de chino · 每天一分鐘</div><div id="app"></div></div>
+<script src="vendor/opencc-t2cn.js"></script>
+<script src="portal-survey.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* 沒有用學生日誌的學生，用老師給的連結填問卷：不用登入，一定要寫名字。
+   連結：survey.html?t={老師代號}&r={發布代號}　題目讀 portal/{t}/svPublic/{r}，回覆新增到 portal/{t}/svResp */
+const Q = new URLSearchParams(location.search), tid = Q.get('t') || '', rid = Q.get('r') || '';
+const db = getFirestore(initializeApp({
+  apiKey: "AIzaSyDB6zYAHvi0oTkObv-qDnP6nn0UUnscby0", authDomain: "moneybook-50481.firebaseapp.com", projectId: "moneybook-50481",
+  storageBucket: "moneybook-50481.firebasestorage.app", messagingSenderId: "549256761796", appId: "1:549256761796:web:254332f109e7b8ad871491"
+}));
+const app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
+
+let conv = null;
+function zhSimp(s){
+  if(typeof OpenCC === 'undefined' || !/[㐀-鿿]/.test(s)) return s;
+  try{ if(!conv) conv = OpenCC.Converter({ from: 'tw', to: 'cn' }); return conv(s); }catch(e){ return s; }
+}
+
+let d = null, lang = 'es', name = '', ans = {}, confirming = false, sending = false, errKey = '', done = false;
+const T = (k, p) => svT(lang, k, p);
+const Z = s => d.zh === 'sc' ? zhSimp(String(s || '')) : String(s || '');
+const DK = 'svd.' + rid;
+
+function saveDraft(){ LS.set(DK, JSON.stringify({ name, ans })); }
+function loadDraft(){ try{ const x = JSON.parse(LS.get(DK) || 'null'); if(x){ name = svCleanName(x.name); ans = x.ans && typeof x.ans === 'object' ? x.ans : {}; } }catch(e){} }
+
+function qHtml(q, no){
+  const P = svPick(q, d.fl), a = ans[q.id];
+  let body = '';
+  if(q.t === 'text') body = `<textarea data-sk="txt" data-id="${esc(q.id)}" maxlength="${SV_TEXT_MAX}" placeholder="${esc(T('svType'))}">${esc(a || '')}</textarea>`;
+  else{
+    const multi = q.t === 'multi';
+    body = `<div class="muted" style="margin:2px 0">${esc(T(multi ? 'svPickMany' : 'svPick'))}</div>` + (q.opts || []).map(o => {
+      const OP = svPick(o, d.fl), on = multi ? Array.isArray(a) && a.indexOf(o.id) > -1 : a === o.id;
+      return `<label class="opt"><input type="${multi ? 'checkbox' : 'radio'}" name="q_${esc(q.id)}" data-sk="${multi ? 'many' : 'one'}" data-id="${esc(q.id)}" value="${esc(o.id)}"${on ? ' checked' : ''}><span>${esc(Z(OP.zh))}${OP.fl ? `<span class="sub">${esc(OP.fl)}</span>` : ''}</span></label>`;
+    }).join('');
+  }
+  return `<div class="q"><div class="zh"><span class="no">${no}.</span>${esc(Z(P.zh))}</div>${P.fl ? `<div class="fl">${esc(P.fl)}</div>` : ''}${body}</div>`;
+}
+function actionHtml(){
+  if(!confirming) return `<button class="btn" id="submit">${esc(T('svSubmit'))}</button>`;
+  const n = svUnansweredCount(d.qs, ans);
+  return `<div class="msg">${esc(T('svConfirm'))}${n ? ' ' + esc(T('svRequiredMsg', { n })) : ''}</div>
+    <div class="row2"><button class="btn quiet" id="no">${esc(T('svNo'))}</button><button class="btn" id="yes"${sending ? ' disabled' : ''}>${esc(T(sending ? 'svSaving' : 'svYes'))}</button></div>`;
+}
+function drawAction(){
+  const box = document.getElementById('action'); if(!box) return;
+  box.innerHTML = actionHtml() + (errKey ? `<div class="err">${esc(T(errKey))}</div>` : '');
+  const s = document.getElementById('submit'), no = document.getElementById('no'), yes = document.getElementById('yes');
+  if(s) s.onclick = () => {
+    if(!svCleanName(name)){ errKey = 'svNameReq'; drawAction(); const n = document.getElementById('nm'); if(n){ n.focus(); n.scrollIntoView({ block: 'center' }); } return; }
+    errKey = ''; confirming = true; drawAction();
+  };
+  if(no) no.onclick = () => { confirming = false; errKey = ''; drawAction(); };
+  if(yes) yes.onclick = send;
+}
+async function send(){
+  if(sending) return;
+  const nm = svCleanName(name); if(!nm){ errKey = 'svNameReq'; confirming = false; return drawAction(); }
+  sending = true; errKey = ''; drawAction();
+  try{
+    await addDoc(collection(db, 'portal', tid, 'svResp'), { rid, name: nm, answers: svCleanAnswers(d.qs, ans), ts: Date.now() });
+    LS.del(DK); done = true; render();
+  }catch(e){ console.error(e); sending = false; errKey = 'svSendErr'; drawAction(); }
+}
+function render(){
+  if(done){ app.innerHTML = `<div class="card center"><h1>✓</h1><div>${esc(T('svDone'))}</div></div>`; window.scrollTo(0, 0); return; }
+  app.innerHTML = `<div class="card"><h1>${esc(Z(d.title))}</h1><div class="muted">${esc(T('svDraftKept'))}</div>
+      <div style="margin-top:10px"><b>${esc(T('svName'))}</b><input type="text" id="nm" maxlength="${SV_NAME_MAX}" placeholder="${esc(T('svNamePh'))}" value="${esc(name)}" autocomplete="name"></div></div>
+    <div class="card">${(d.qs || []).map((q, i) => qHtml(q, i + 1)).join('')}</div>
+    <div class="card" id="action"></div>`;
+  drawAction();
+  document.getElementById('nm').oninput = e => { name = e.target.value; saveDraft(); if(errKey === 'svNameReq' && svCleanName(name)){ errKey = ''; drawAction(); } };
+  app.oninput = e => { const t = e.target; if(t.dataset && t.dataset.sk === 'txt'){ if(t.value) ans[t.dataset.id] = t.value; else delete ans[t.dataset.id]; saveDraft(); } };
+  app.onchange = e => {
+    const t = e.target, k = t.dataset && t.dataset.sk, id = t.dataset && t.dataset.id;
+    if(k === 'one'){ ans[id] = t.value; saveDraft(); }
+    else if(k === 'many'){
+      const cur = Array.isArray(ans[id]) ? ans[id].slice() : [], i = cur.indexOf(t.value);
+      if(t.checked && i < 0) cur.push(t.value); else if(!t.checked && i > -1) cur.splice(i, 1);
+      if(cur.length) ans[id] = cur; else delete ans[id];
+      saveDraft();
+    }
+  };
+}
+function showMsg(key){ app.innerHTML = `<div class="card center">${esc(svT(lang, key))}</div>`; }
+
+(async function init(){
+  lang = (Q.get('lang') === 'en') ? 'en' : 'es';
+  if(!tid || !rid){ return showMsg('svNotFound'); }
+  try{
+    const snap = await getDoc(doc(db, 'portal', tid, 'svPublic', rid));
+    if(!snap.exists()) return showMsg('svNotFound');
+    d = snap.data();
+  }catch(e){ console.error(e); return showMsg('svNotFound'); }
+  lang = d.fl === 'en' ? 'en' : 'es';
+  if(Q.get('lang') === 'es' || Q.get('lang') === 'en') lang = Q.get('lang');
+  document.title = Z(d.title);
+  if(d.open === false) return showMsg('svClosed');
+  loadDraft();
+  render();
+})();
+</script>
+</body>
+</html>
