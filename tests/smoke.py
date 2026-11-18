@@ -132,7 +132,7 @@ def base_state(extra_store=None, users=None):
     import json
     store = {
         'portal/%s/students/s1' % TID: {
-            'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'package', 'remaining': 3, 'taught': 12, 'tz': 'America/Mexico_City',
+            'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'package', 'remaining': 3, 'taught': 12, 'since': '2026-02-13', 'tz': 'America/Mexico_City',
             'updatedAt': 1760000000000,
             'lessons': [
                 {'d': day(-3), 's': '10:00', 'e': '11:00', 'x': 0},
@@ -183,10 +183,12 @@ def student_tests(browser, base):
     check('看到自己的名字', 'Pedro' in txt, txt[:200])
     check('包堂：顯示剩 3 堂', '3 clases' in txt and 'Clases restantes' in txt)
     check('已上 12 堂', '12 clases' in txt)
+    check('起始上課日期＋上了多久（西語）', 'Inicio de clases' in txt and 'Tiempo estudiando' in txt and '2026' in txt, txt)
     check('下一堂課：台灣 10:00–11:00，墨西哥 前一天 20:00–21:00', '10:00–11:00' in txt and '20:00–21:00' in txt and 'día anterior' in txt, txt)
     check('看不到別的學生', 'OtraAlumna' not in page.content())
     check('月曆有三種標記（已上、還沒上、請假）', page.locator('.day.st-done').count() >= 1 and page.locator('.day.st-up').count() >= 1 and page.locator('.day.st-off').count() >= 1)
     page.click('#langBar button[data-l=tc]'); txt = page.inner_text('#app')
+    check('切繁體：起始上課日期、上了多久', '起始上課日期' in txt and '上了多久' in txt and '2026年2月13日' in txt, txt)
     check('切繁體：剩餘堂數、台灣時間、你的當地時間、前一天', '剩餘堂數' in txt and '台灣時間' in txt and '你的當地時間' in txt and '前一天' in txt)
     # 換時區：改成台灣 → 兩個時間一樣
     page.select_option('#tzSel', 'Asia/Taipei'); page.wait_for_timeout(100)

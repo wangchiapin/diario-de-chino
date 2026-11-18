@@ -542,6 +542,12 @@ function renderHome(root){
   const taught = `<div class="card"><h2>${esc(T('taught'))}</h2><div class="big">${esc(T(pcUnitKey(lang, studentDoc.taught || 0), { n: studentDoc.taught || 0 }))}</div></div>`;
   const payCard = pay ? `<div class="card"><h2>${esc(pay.label)}</h2><div class="big">${esc(pay.value)}</div></div>` : '';
   const stats = pay ? `<div class="two grid2">${payCard}${taught}</div>` : taught;
+  /* 起始上課日期＋上了多久（老師沒填起始日期就整排不顯示） */
+  const sinceIso = /^\d{4}-\d{2}-\d{2}$/.test(String(studentDoc.since || '')) ? studentDoc.since : '';
+  const spanTxt = sinceIso ? nudSpan(sinceIso, todayLocal, lang) : '';
+  const sinceCard = sinceIso ? `<div class="card"><h2>${esc(T('startedOn'))}</h2><div class="big">${esc(pcFmtDate(sinceIso, lang, { year: 'numeric', month: 'long', day: 'numeric' }))}</div></div>` : '';
+  const spanCard = spanTxt ? `<div class="card"><h2>${esc(T('studyTime'))}</h2><div class="big">${esc(spanTxt)}</div></div>` : '';
+  const stats2 = sinceCard ? `<div class="two grid2">${sinceCard}${spanCard}</div>` : '';
 
   /* 月曆 */
   const cells = pcMonthGrid(calMonth.y, calMonth.m);
@@ -569,7 +575,7 @@ function renderHome(root){
     <div class="card hello"><div class="muted hi">${esc(T('hello', { name: studentDoc.name || '' }))}</div><label class="tzbox muted" title="${esc(srcLabel)}">${esc(T('timezone'))}<select id="tzSel2">${opts}</select></label></div>
     <div class="colA">
     <div class="it" style="order:1"><div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div></div>
-    <div class="it" style="order:5">${stats}</div>
+    <div class="it" style="order:5">${stats}${stats2}</div>
     </div>
     <div class="colB">
     <div class="it" style="order:4">${learnCardHtml(HOME_DOTS)}</div>

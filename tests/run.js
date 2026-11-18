@@ -647,5 +647,18 @@ test('發給學生的作業：練習單選了拼音／注音才帶 rb，沒選�
   assert.strictEqual('rb' in C('hwAssignDoc')('w', st({}), 1), false);
 });
 
+console.log('\n起始上課日期與上了多久');
+test('四種語言都有「起始上課日期」「上了多久」文字', () => {
+  ['tc', 'sc', 'es', 'en'].forEach(l => {
+    assert.ok(C('pcT')(l, 'startedOn') !== 'startedOn', l + ' startedOn');
+    assert.ok(C('pcT')(l, 'studyTime') !== 'studyTime', l + ' studyTime');
+  });
+});
+test('上了多久：2026-02-13 到 2026-11-18 = 9 個月；不到一個月顯示天數', () => {
+  assert.strictEqual(C('nudSpan')('2026-02-13', '2026-11-18', 'tc'), '9 個月');
+  assert.strictEqual(C('nudSpan')('2026-11-01', '2026-11-18', 'tc'), '17 天');
+  assert.strictEqual(C('nudSpan')('', '2026-11-18', 'tc'), '');
+});
+
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);
