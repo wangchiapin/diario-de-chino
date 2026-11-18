@@ -14,6 +14,7 @@ vm.runInContext(fs.readFileSync(path.join(root, 'portal-hw.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-nudge.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-learn.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-board.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-survey.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-pinyin.js'), 'utf8') + ';this.symToZhuyin = symToZhuyin;', ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
@@ -658,6 +659,73 @@ test('上了多久：2026-02-13 到 2026-11-18 = 9 個月；不到一個月顯�
   assert.strictEqual(C('nudSpan')('2026-02-13', '2026-11-18', 'tc'), '9 個月');
   assert.strictEqual(C('nudSpan')('2026-11-01', '2026-11-18', 'tc'), '17 天');
   assert.strictEqual(C('nudSpan')('', '2026-11-18', 'tc'), '');
+});
+
+console.log('\n問卷調查');
+test('基本模板：通過檢查、每題都有中西英、選項也有', () => {
+  const t = C('svTemplate')();
+  assert.strictEqual(C('svValidate')(t), '');
+  assert.ok(t.questions.length >= 15);
+  t.questions.forEach(q => {
+    ['zh', 'es', 'en'].forEach(k => assert.ok(q[k], q.id + ' 缺 ' + k));
+    (q.opts || []).forEach(o => ['zh', 'es', 'en'].forEach(k => assert.ok(o[k], q.id + '/' + o.id + ' 缺 ' + k)));
+    assert.ok(q.t === 'text' || (q.opts && q.opts.length >= 2), q.id);
+  });
+  const ids = t.questions.map(q => q.id); assert.strictEqual(new Set(ids).size, ids.length);
+});
+test('發布：最後一題固定是「是否同意」，外語空白的欄位會去掉', () => {
+  const sv = { title: 'x', questions: [{ id: 'q1', t: 'text', zh: '你好', es: ' ', en: 'Hi' }] };
+  const qs = C('svPublishQs')(sv);
+  assert.strictEqual(qs.length, 2); assert.strictEqual(qs[1].id, 'consent'); assert.strictEqual(qs[1].t, 'consent');
+  assert.strictEqual('es' in qs[0], false); assert.strictEqual(qs[0].en, 'Hi');
+  assert.strictEqual(sv.questions.length, 1);   // 沒動到原本的問卷
+});
+test('檢查：沒名字、沒題目、沒中文題目、選擇題少於 2 個選項都會擋', () => {
+  const V = C('svValidate');
+  assert.ok(V({ title: '', questions: [] }));
+  assert.ok(V({ title: 'a', questions: [] }));
+  assert.ok(V({ title: 'a', questions: [{ id: 'q1', t: 'text', zh: '' }] }));
+  assert.ok(V({ title: 'a', questions: [{ id: 'q1', t: 'single', zh: 'x', opts: [{ id: 'o1', zh: 'a' }] }] }));
+  assert.ok(V({ title: 'a', questions: [{ id: 'q1', t: 'single', zh: 'x', opts: [{ id: 'o1', zh: 'a' }, { id: 'o2', zh: '' }] }] }));
+  assert.strictEqual(V({ title: 'a', questions: [{ id: 'q1', t: 'single', zh: 'x', opts: [{ id: 'o1', zh: 'a' }, { id: 'o2', zh: 'b' }] }] }), '');
+});
+test('新增空白題：選擇題預設有選項、量表預設五段', () => {
+  assert.strictEqual(C('svBlankQ')('scale').opts.length, 5);
+  assert.strictEqual(C('svBlankQ')('single').opts.length, 2);
+  assert.strictEqual(C('svBlankQ')('text').opts, undefined);
+  assert.strictEqual(C('svBlankQ')('???').t, 'text');
+});
+test('外語顯示：要的外語沒有就退到另一種', () => {
+  const P = C('svPick');
+  assert.strictEqual(J(P({ zh: '你', es: 'tú', en: 'you' }, 'en')), J({ zh: '你', fl: 'you' }));
+  assert.strictEqual(J(P({ zh: '你', es: 'tú' }, 'en')), J({ zh: '你', fl: 'tú' }));
+  assert.strictEqual(J(P({ zh: '你' }, 'es')), J({ zh: '你', fl: '' }));
+});
+test('答案整理：不存在的選項、別題的答案、超長文字都處理掉', () => {
+  const qs = [{ id: 'a', t: 'text' }, { id: 'b', t: 'single', opts: [{ id: 'o1' }, { id: 'o2' }] }, { id: 'c', t: 'multi', opts: [{ id: 'o1' }, { id: 'o2' }] }];
+  const out = C('svCleanAnswers')(qs, { a: '  hola \r\n', b: 'zzz', c: ['o1', 'o1', 'x', 'o2'], d: 'extra' });
+  assert.strictEqual(J(out), J({ a: 'hola', c: ['o1', 'o2'] }));
+  assert.strictEqual(C('svCleanAnswers')(qs, { a: 'x'.repeat(5000) }).a.length, 2000);
+  assert.strictEqual(C('svUnansweredCount')(qs, { a: 'hi', b: 'o1' }), 1);
+});
+test('彙整：單選／複選人數、量表平均、開放題列出', () => {
+  const qs = [{ id: 'a', t: 'text' }, { id: 'b', t: 'single', opts: [{ id: 'o1' }, { id: 'o2' }] }, { id: 'c', t: 'multi', opts: [{ id: 'o1' }, { id: 'o2' }] }, { id: 'd', t: 'scale', opts: [{ id: 'o1' }, { id: 'o2' }, { id: 'o3' }] }];
+  const es = [{ answers: { a: 'x', b: 'o1', c: ['o1', 'o2'], d: 'o1' } }, { answers: { b: 'o1', c: ['o2'], d: 'o3' } }, { answers: { a: 'y', b: 'o2' } }];
+  const r = C('svTally')(qs, es);
+  assert.strictEqual(r.a.n, 2); assert.strictEqual(r.a.texts.length, 2);
+  assert.strictEqual(J(r.b.counts), J({ o1: 2, o2: 1 }));
+  assert.strictEqual(J(r.c.counts), J({ o1: 1, o2: 2 }));
+  assert.strictEqual(r.d.avg, 2); assert.strictEqual(r.d.n, 2);
+});
+test('匯出：標題列＋每份回覆一列，選項用中文、複選用頓號', () => {
+  const qs = [{ id: 'a', t: 'text', zh: '好嗎' }, { id: 'c', t: 'multi', zh: '功能', opts: [{ id: 'o1', zh: '作業' }, { id: 'o2', zh: '單字' }] }];
+  const rows = C('svExportRows')(qs, [{ when: '2026/11/18', who: 'Pedro', answers: { a: 'bien', c: ['o1', 'o2'] } }]);
+  assert.strictEqual(J(rows[0]), J(['填寫時間', '學生／名字', '1. 好嗎', '2. 功能']));
+  assert.strictEqual(J(rows[1]), J(['2026/11/18', 'Pedro', 'bien', '作業、單字']));
+});
+test('問卷文字：四種語言的 key 一樣齊全', () => {
+  const I = C('SV_I18N'); Object.keys(I.es).forEach(k => { ['en', 'tc', 'sc'].forEach(l => assert.ok(I[l][k], l + ' 缺 ' + k)); });
+  assert.strictEqual(C('svT')('es', 'svRequiredMsg', { n: 3 }), 'Falta contestar: 3');
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');

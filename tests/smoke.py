@@ -271,7 +271,7 @@ def preview_tests(browser, base):
     txt = page.inner_text('#app')
     check('老師預覽：看到「老師預覽」橫幅與學生姓名', '老師預覽' in txt and 'Pedro' in txt, txt[:200])
     check('預覽看到跟學生一樣的內容（剩 3 堂、12 堂、月曆）', '3 clases' in txt and '12 clases' in txt and page.locator('.day.st-done').count() >= 1)
-    check('預覽直接讀老師自己路徑下的那位學生（不查對照表）', page.evaluate('window.__fb.reads.length') == 0 and sorted(page.evaluate("window.__fb.subs.map(s => s.ref.path)")) == sorted(['portal/%s/students/s1' % TID, 'portal/%s/students/s1/hw' % TID]))
+    check('預覽直接讀老師自己路徑下的那位學生（不查對照表）', page.evaluate('window.__fb.reads.length') == 0 and sorted(page.evaluate("window.__fb.subs.map(s => s.ref.path)")) == sorted(['portal/%s/students/s1' % TID, 'portal/%s/students/s1/hw' % TID, 'portal/%s/students/s1/sv' % TID]))
     check('預覽沒有登出按鈕', page.locator('#btnLogout').count() == 0)
     page.select_option('#tzSel', 'Asia/Taipei'); page.wait_for_timeout(100)
     check('預覽改時區不會存起來', page.evaluate("localStorage.getItem('dc.tz.%s')" % TID) is None)
@@ -775,7 +775,7 @@ def admin_tabs_tests(browser, base):
     ctx, page, errs = new_page(browser, base_state(store, teacher))
     page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
     page.goto(base + 'admin.html'); page.wait_for_timeout(700)
-    check('七個分頁：學生、作業、單字、測驗、公布、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '測驗', '公布', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 7, page.inner_text('#tabbar'))
+    check('八個分頁：學生、作業、單字、測驗、問卷、公布、彈跳視窗、設定', [x.strip().rstrip('0123456789') for x in page.inner_text('#tabbar').split('\n') if x.strip() and not x.strip().isdigit()] == ['學生', '作業', '單字', '測驗', '問卷', '公布', '彈跳視窗', '設定'] and page.locator('#tabbar button').count() == 8, page.inner_text('#tabbar'))
     check('預設在「學生」：看得到對照表，看不到作業和發布帳號', page.is_visible('tr[data-id=s1]') and not page.is_visible('.hwrow') and not page.is_visible('#tidShow'))
     check('作業分頁有紅點數字（1 份等批改）', page.inner_text('#tabbar [data-t=hw] .bd') == '1')
     box = page.locator('#tabbar').bounding_box()
@@ -1138,6 +1138,115 @@ def bb_admin_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+
+def survey_tests(browser, base):
+    import json
+    print('\n問卷調查：後台建立、發布，學生填寫，後台看結果')
+    P = 'portal/%s/' % TID
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    stu = lambda n: {'v': 1, 'name': n, 'archived': False, 'pay': 'single', 'taught': 1, 'tz': '', 'lessons': []}
+    store = {P + 'students/s1': stu('Pedro'), P + 'students/s2': stu('Liz'),
+             P + 'roster/s1': {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}}}
+    ctx, page, errs = new_page(browser, base_state(store, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'sv')
+    check('問卷分頁：還沒有問卷，有「用基本模板建立」', '還沒有問卷' in page.inner_text('#app') and page.locator('[data-a=newTpl]').count() == 1)
+    page.click('[data-a=newTpl]'); page.wait_for_timeout(200)
+    check('編輯畫面：模板名稱、16 題、固定最後一題', page.input_value('#svTitle') == '課程滿意度調查' and page.locator('.svq[data-qi]').count() == 16 and '是否同意我使用問卷內容' in page.inner_text('#svEdit'))
+    page.fill('#svTitle', '2026 年底滿意度調查')
+    if os.environ.get('SHOTS'): page.set_viewport_size({'width': 1100, 'height': 900}); page.screenshot(path='/tmp/shots/admin_edit.png')
+    page.fill('.svq[data-qi="0"] textarea[data-k=zh]', '你覺得課程內容的實用性如何？（改過）')
+    page.click('[data-a=qadd]'); page.wait_for_timeout(100)
+    check('加一題：多一題空白題', page.locator('.svq[data-qi]').count() == 17)
+    page.click('#svSave'); page.wait_for_timeout(200)
+    check('空白的題目擋下來：提醒第 17 題沒有中文', '第 17 題' in page.inner_text('#svEdit'), page.inner_text('#svEdit')[-200:])
+    page.fill('.svq[data-qi="16"] textarea[data-k=zh]', '其他想說的？')
+    page.click('.svq[data-qi="16"] [data-a=qup]'); page.wait_for_timeout(100)
+    check('上移：新題跑到第 16 題的位置', page.input_value('.svq[data-qi="15"] textarea[data-k=zh]') == '其他想說的？')
+    page.click('#svSave'); page.wait_for_timeout(300)
+    keys = [k for k in page.evaluate('Object.keys(window.__fb.store)') if k.startswith(P + 'surveys/')]
+    check('儲存：寫進 surveys，回到清單', len(keys) == 1 and '2026 年底滿意度調查' in page.inner_text('#app') and page.locator('#svEdit').count() == 0)
+    sdoc = page.evaluate("window.__fb.store['%s']" % keys[0])
+    check('問卷內容：17 題（不含固定題）、第一題是改過的', len(sdoc['questions']) == 17 and sdoc['questions'][0]['zh'].endswith('（改過）'), len(sdoc['questions']))
+    # 複製
+    page.click('.hwrow[data-svid] [data-a=copy]'); page.wait_for_timeout(200)
+    check('複製：名稱後面加（複製）、是新問卷', page.input_value('#svTitle') == '2026 年底滿意度調查（複製）')
+    page.click('#svCancel') if False else None
+    page.once('dialog', lambda d: d.accept()); page.click('#svCancel'); page.wait_for_timeout(100)
+    check('取消編輯：不會多一份問卷', len([k for k in page.evaluate('Object.keys(window.__fb.store)') if k.startswith(P + 'surveys/')]) == 1)
+    # 發布
+    page.click('.hwrow[data-svid] [data-a=pub]'); page.wait_for_timeout(100)
+    page.click('[data-a=send]'); page.wait_for_timeout(200)
+    check('沒勾學生就按發出：提醒', '請先勾選' in page.inner_text('#app'))
+    page.click('.hwrow[data-svid] [data-a=pub]'); page.click('.hwrow[data-svid] [data-a=pub]'); page.wait_for_timeout(100)
+    page.check('input[name=svzh][value=sc]'); page.check('input[name=svfl][value=en]'); page.check('.picks input[data-sid=s1]')
+    page.click('[data-a=send]'); page.wait_for_timeout(400)
+    allk = page.evaluate('Object.keys(window.__fb.store)')
+    svk = [k for k in allk if '/sv/' in k]; rk = [k for k in allk if k.startswith(P + 'svRounds/')]
+    check('發出：只寫給被勾選的 Pedro，另外記一筆發布紀錄', len(svk) == 1 and svk[0].startswith(P + 'students/s1/sv/') and len(rk) == 1, (svk, rk))
+    d1 = page.evaluate("window.__fb.store['%s']" % svk[0])
+    check('學生那份：未交、答案空、簡體＋英文、18 題、最後是 consent', d1['status'] == 'todo' and d1['answers'] == {} and d1['zh'] == 'sc' and d1['fl'] == 'en' and len(d1['qs']) == 18 and d1['qs'][-1]['id'] == 'consent', d1.get('status'))
+    check('清單：已發布 1 筆、已交 0／1', '已交 0／1' in page.inner_text('#app'))
+    page.click('.hwrow[data-rid] [data-a=res]'); page.wait_for_timeout(200)
+    check('看結果：沒人交，顯示 Pedro 未填', '未填' in page.inner_text('#svRes') and '還沒有回答' in page.inner_text('#svRes'))
+    check('沒有錯誤訊息', not errs, errs)
+    st = page.evaluate('window.__fb.store'); ctx.close()
+
+    # 學生填寫
+    svdocs = {k: v for k, v in st.items() if '/sv/' in k}
+    path = list(svdocs.keys())[0]
+    ctx, page, errs = new_page(browser, base_state(dict(svdocs, **{P + 'students/s1': stu('Pedro'), P + 'roster/s1': {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}}})))
+    page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+    page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
+    page.click('#langBar button[data-l=tc]')
+    txt = page.inner_text('#app')
+    check('首頁有問卷卡片：標題（簡體）、還沒填、開始填寫', '问卷调查' not in txt and '2026 年底满意度调查' in txt and '還沒填' in txt and '開始填寫' in txt, txt[:300])
+    page.click('[data-sv]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#app')
+    if os.environ.get('SHOTS'): page.screenshot(path='/tmp/shots/stu_sv.png', full_page=True)
+    check('題目：中文用簡體（這次發布選的）、外語用英文', '你觉得课程内容的实用性如何' in txt and 'What do you think about the usefulness' in txt and '¿Qué' not in txt, txt[:400])
+    check('量表和複選的選項顯示：簡體中文＋英文', '很好' in txt and 'Very good' in txt and 'Class log and vocabulary review' in txt and '上课纪录与单字复习' in txt)
+    check('最後一題：是否同意', '是否同意我使用问卷内容' in txt and 'Do you agree' in txt)
+    page.fill('textarea[data-id=q1]', 'Muy útil'); page.check('input[name=sv_q2][value=o2]')
+    q12 = [q for q in svdocs[path]['qs'] if q['t'] == 'multi'][0]['id']; q11 = [q for q in svdocs[path]['qs'] if q['t'] == 'scale'][0]['id']
+    page.check('input[name=sv_%s][value=o1]' % q11)
+    page.check('input[name=sv_%s][value=o2]' % q12); page.check('input[name=sv_%s][value=o4]' % q12)
+    page.check('input[name=sv_consent][value=y]'); page.wait_for_timeout(1700)
+    ans = page.evaluate("window.__fb.store['%s'].answers" % path)
+    check('自動存檔：文字、單選、量表、複選、同意都存進去', ans.get('q1') == 'Muy útil' and ans.get('q2') == 'o2' and ans.get(q11) == 'o1' and ans.get(q12) == ['o2', 'o4'] and ans.get('consent') == 'y', ans)
+    check('狀態還是未交', page.evaluate("window.__fb.store['%s'].status" % path) == 'todo')
+    page.click('#svSubmit'); page.wait_for_timeout(100)
+    check('交出前確認：提示還有幾題沒回答', '還有' in page.inner_text('#svAction') and '題沒回答' in page.inner_text('#svAction'), page.inner_text('#svAction'))
+    page.click('#svYes'); page.wait_for_timeout(400)
+    d2 = page.evaluate("window.__fb.store['%s']" % path)
+    check('交出：狀態 submitted、有交出時間', d2['status'] == 'submitted' and d2.get('submittedAt'))
+    page.click('#svBack'); page.wait_for_timeout(100)
+    page.click('[data-sv]'); page.wait_for_timeout(200)
+    check('交出後：鎖住（不能改）、顯示已交出', page.locator('textarea[data-id=q1]').is_disabled() and '交出了' in page.inner_text('#app') and page.locator('#svSubmit').count() == 0)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 後台看結果
+    store2 = dict(st); store2[path] = d2
+    ctx, page, errs = new_page(browser, base_state(store2, teacher))
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'admin.html'); page.wait_for_timeout(600)
+    tab(page, 'sv')
+    check('後台：已交 1／1', '已交 1／1' in page.inner_text('#app'))
+    page.click('.hwrow[data-rid] [data-a=res]'); page.wait_for_timeout(200)
+    txt = page.inner_text('#svRes')
+    if os.environ.get('SHOTS'): page.set_viewport_size({'width': 1100, 'height': 1200}); page.screenshot(path='/tmp/shots/admin_res.png', full_page=True)
+    check('結果：開放題列出學生名字和回答', 'Pedro' in txt and 'Muy útil' in txt)
+    check('結果：量表算平均、複選看到各選項人數', '平均 1' in txt and '作業' in txt and '1（100%）' in txt, txt[:600])
+    check('結果：同意使用內容 1 人', '同意' in txt)
+    page.once('dialog', lambda d: d.accept()); page.click('#svRes [data-a=reopen]'); page.wait_for_timeout(300)
+    check('退回重填：狀態改回 todo，答案保留', page.evaluate("window.__fb.store['%s'].status" % path) == 'todo' and page.evaluate("window.__fb.store['%s'].answers.q1" % path) == 'Muy útil')
+    page.once('dialog', lambda d: d.accept()); page.click('.hwrow[data-rid] [data-a=delr]'); page.wait_for_timeout(400)
+    ks = page.evaluate('Object.keys(window.__fb.store)')
+    check('刪除發布：學生那份和發布紀錄都刪掉，問卷本身留著', not [k for k in ks if '/sv/' in k or '/svRounds/' in k] and [k for k in ks if '/surveys/' in k])
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -1157,6 +1266,7 @@ with sync_playwright() as p:
     placement_tests(browser, base)
     board_tests(browser, base)
     bb_admin_tests(browser, base)
+    survey_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

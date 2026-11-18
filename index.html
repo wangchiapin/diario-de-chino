@@ -195,6 +195,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 .hwq input.blank{width:5.5em;text-align:center;margin:0 3px}
 .hwq textarea{width:100%;min-height:64px;margin-top:6px;resize:vertical}
 .hwq .opt{display:flex;gap:10px;align-items:center;padding:5px 0;font-size:17px}
+.hwq input[type=checkbox]{width:20px;height:20px;flex:none;margin:0;padding:0;accent-color:#7a6a50}
 .hwq input[type=radio]{width:20px;height:20px;flex:none;margin:0;padding:0;accent-color:#7a6a50}
 .hwq .opt b{flex:none}
 .rv{margin:6px 0 2px;padding:8px 10px;border-radius:8px;font-size:14px;line-height:1.7}
@@ -244,6 +245,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <script src="portal-nudge.js"></script>
 <script src="portal-learn.js"></script>
 <script src="portal-board.js"></script>
+<script src="portal-survey.js"></script>
 <script src="portal-pinyin.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -518,6 +520,7 @@ function renderHome(root){
   if(studentDoc.archived){ root.innerHTML = `<div class="card center">${esc(T('archived'))}</div>${logoutBlock()}`; bindLogout(); return; }
 
   if(hwOpen && hwDocs[hwOpen]) return renderHw(root);
+  if(svOpen && svDocs[svOpen]) return renderSv(root);
   if(learnOpen) return renderLearn(root);
   if(boardOpen) return renderBoard(root);
   loadMaterials(); loadLearnData();
@@ -579,7 +582,7 @@ function renderHome(root){
     </div>
     <div class="colB">
     <div class="it" style="order:4">${learnCardHtml(HOME_DOTS)}</div>
-    <div class="it" style="order:2">${hwCardHtml()}</div>
+    <div class="it" style="order:2">${hwCardHtml()}${svCardHtml()}</div>
     <div class="it" style="order:3">${boardCardHtml(HOME_DOTS)}</div>
     </div>
     <div class="colC">
@@ -604,7 +607,7 @@ function renderHome(root){
   $('calPrev').onclick = () => { calMonth = calMonth.m === 1 ? { y: calMonth.y - 1, m: 12 } : { y: calMonth.y, m: calMonth.m - 1 }; render(); };
   $('calNext').onclick = () => { calMonth = calMonth.m === 12 ? { y: calMonth.y + 1, m: 1 } : { y: calMonth.y, m: calMonth.m + 1 }; render(); };
   ['tzSel', 'tzSel2'].forEach(id => $(id).onchange = e => { tzSetting = e.target.value; if(!PREVIEW) LS.set('dc.tz.' + tid, tzSetting); selDay = null; render(); });
-  bindLogout(); bindHwCard(root); bindLearnCard(root); nudMaybeStart();
+  bindLogout(); bindHwCard(root); bindSvCard(root); bindLearnCard(root); nudMaybeStart();
 }
 
 /* ───────── 學習分頁：上課紀錄、已學清單、複習、能力、教材 ───────── */
@@ -1234,6 +1237,119 @@ function hwActionDraw(d){
   }
 }
 
+/* ───────── 問卷調查（老師在後台發布；學生作答後交出，跟作業同一套做法） ───────── */
+let svDocs = {}, svLoaded = false, unsubSv = null;
+let svOpen = null, svOpenStatus = null, svDraft = {}, svTimer = null, svSaveState = '', svConfirming = false;
+const SVT = (k, p) => uiS(svT(lang, k, p));
+/* 問卷文字：中文照「這次發布選的繁／簡」轉，不跟學生自己的中文字設定；外語照發布時選的 */
+const svZhS = (d, s) => uiS(d.zh === 'sc' ? zhSimp(String(s || '')) : String(s || ''));
+const svFlS = s => uiS(String(s || ''));
+
+function startSv(sid){
+  if(unsubSv){ unsubSv(); unsubSv = null; }
+  svDocs = {}; svLoaded = false; svOpen = null;
+  unsubSv = onSnapshot(collection(db, 'portal', tid, 'students', sid, 'sv'),
+    snap => {
+      svDocs = {}; snap.forEach(d => svDocs[d.id] = d.data()); svLoaded = true;
+      if(svOpen && !svDocs[svOpen]) svOpen = null;
+      if(svOpen && svDocs[svOpen].status === svOpenStatus) return;   // 正在填寫：自己存檔造成的更新不重畫
+      if(hwOpen) return;   // 正在寫作業：不要因為問卷有更新就把作業的輸入框洗掉（回到首頁時會重畫）
+      render();
+    },
+    err => { console.error(err); svLoaded = true; render(); });
+}
+function stopSv(){ if(unsubSv){ unsubSv(); unsubSv = null; } svDocs = {}; svLoaded = false; svOpen = null; clearTimeout(svTimer); }
+const svChip = d => `<span class="chip ${d.status === 'submitted' ? 'submitted' : 'todo'}">${esc(SVT(d.status === 'submitted' ? 'svStDone' : 'svStTodo'))}</span>`;
+
+function svCardHtml(){
+  const ids = Object.keys(svDocs).sort((a, b) => (svDocs[b].assignedAt || 0) - (svDocs[a].assignedAt || 0));
+  if(!ids.length) return '';
+  return `<div class="card"><h2>${esc(SVT('svTitle'))}</h2>` + ids.map(id => {
+    const d = svDocs[id], todo = d.status !== 'submitted' && !PREVIEW;
+    return `<div class="hwitem"><div><div class="t">${esc(svZhS(d, d.title))}</div>${d.assignedAt ? `<div class="muted hwdate">${esc(SVT('svPosted'))}：${esc(fmtDay(d.assignedAt))}</div>` : ''}${svChip(d)}</div>
+      <button class="btn ${todo ? '' : 'quiet'}" data-sv="${esc(id)}">${esc(SVT(todo ? 'svStart' : 'svView'))}</button></div>`;
+  }).join('') + '</div>';
+}
+function bindSvCard(root){ root.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => openSv(b.dataset.sv)); }
+function openSv(id){
+  const d = svDocs[id]; if(!d) return;
+  svOpen = id; svOpenStatus = d.status; svConfirming = false; svSaveState = '';
+  svDraft = JSON.parse(JSON.stringify(d.answers || {}));
+  render(); toTop();
+}
+function svShowSave(){
+  const el = $('svSave'); if(!el) return;
+  el.textContent = svSaveState === 'saving' ? SVT('svSaving') : svSaveState === 'saved' ? SVT('svSaved') : svSaveState === 'err' ? SVT('svSaveErr') : '';
+  el.className = 'savemsg' + (svSaveState === 'err' ? ' err' : '');
+}
+async function svSave(extra){
+  const id = svOpen, d = svDocs[id]; if(!id || !d || PREVIEW) return;
+  try{
+    await updateDoc(doc(db, 'portal', tid, 'students', studentId, 'sv', id), Object.assign({ answers: svCleanAnswers(d.qs, svDraft) }, extra || {}));
+    svSaveState = 'saved'; svShowSave(); return true;
+  }catch(err){ console.error(err); svSaveState = 'err'; svShowSave(); return false; }
+}
+function svSetAnswer(qid, val){
+  if(val === '' || val == null || (Array.isArray(val) && !val.length)) delete svDraft[qid]; else svDraft[qid] = val;
+  if(PREVIEW) return;
+  svSaveState = 'saving'; svShowSave();
+  clearTimeout(svTimer); svTimer = setTimeout(svSave, 1200);
+}
+function svQHtml(d, q, no, dis){
+  const P = svPick(q, d.fl), a = svDraft[q.id], D = dis ? ' disabled' : '';
+  let body = '';
+  if(q.t === 'text') body = `<textarea data-sk="txt" data-id="${esc(q.id)}" maxlength="${SV_TEXT_MAX}" placeholder="${esc(SVT('svType'))}"${D}>${escRaw(a || '')}</textarea>`;
+  else{
+    const multi = q.t === 'multi';
+    body = `<div class="muted" style="font-size:12px;margin:2px 0">${esc(SVT(multi ? 'svPickMany' : 'svPick'))}</div>` + (q.opts || []).map(o => {
+      const OP = svPick(o, d.fl), on = multi ? Array.isArray(a) && a.indexOf(o.id) > -1 : a === o.id;
+      return `<label class="opt"><input type="${multi ? 'checkbox' : 'radio'}" name="sv_${esc(q.id)}" data-sk="${multi ? 'many' : 'one'}" data-id="${esc(q.id)}" value="${esc(o.id)}"${on ? ' checked' : ''}${D}>
+        <span>${esc(svZhS(d, OP.zh))}${OP.fl ? `<span class="muted" style="display:block;font-size:13px;line-height:1.3">${esc(svFlS(OP.fl))}</span>` : ''}</span></label>`;
+    }).join('');
+  }
+  return `<div class="hwq" style="padding:12px 0;border-top:1px solid var(--line)"><div class="zh"><span class="no">${no}.</span>${esc(svZhS(d, P.zh))}</div>${P.fl ? `<div class="es">${esc(svFlS(P.fl))}</div>` : ''}${body}</div>`;
+}
+function renderSv(root){
+  const d = svDocs[svOpen];
+  const locked = d.status === 'submitted' || PREVIEW;
+  let h = `<div class="card"><button class="btn quiet" id="svBack" style="padding:4px 14px;font-size:13px">‹ ${esc(SVT('svBack'))}</button>
+    <h2 style="margin-top:12px">${esc(svZhS(d, d.title))}</h2><div>${svChip(d)}</div>
+    ${PREVIEW ? `<div class="msg">${esc(SVT('svPreviewRO'))}</div>` : d.status === 'submitted' ? `<div class="msg">${esc(SVT('svLocked'))}</div>` : ''}</div>`;
+  h += `<div class="card">${(d.qs || []).map((q, i) => svQHtml(d, q, i + 1, locked)).join('')}</div>`;
+  if(!locked) h += `<div class="card" id="svFoot"><div class="savemsg" id="svSave"></div><div id="svAction"></div></div>`;
+  root.innerHTML = h;
+  $('svBack').onclick = () => { clearTimeout(svTimer); if(svSaveState === 'saving') svSave(); svOpen = null; render(); toTop(); };
+  if(locked) return;
+  svShowSave(); svActionDraw(d);
+  root.oninput = e => { const t = e.target; if(t.dataset.sk === 'txt') svSetAnswer(t.dataset.id, t.value); };
+  root.onchange = e => {
+    const t = e.target, k = t.dataset.sk, id = t.dataset.id;
+    if(k === 'one') svSetAnswer(id, t.value);
+    else if(k === 'many'){
+      const cur = Array.isArray(svDraft[id]) ? svDraft[id].slice() : [], i = cur.indexOf(t.value);
+      if(t.checked && i < 0) cur.push(t.value); else if(!t.checked && i > -1) cur.splice(i, 1);
+      svSetAnswer(id, cur);
+    }
+  };
+}
+function svActionDraw(d){
+  const box = $('svAction'); if(!box) return;
+  if(!svConfirming){
+    box.innerHTML = `<button class="btn" id="svSubmit" style="width:100%">${esc(SVT('svSubmit'))}</button>`;
+    $('svSubmit').onclick = () => { svConfirming = true; svActionDraw(d); };
+  }else{
+    const n = svUnansweredCount(d.qs, svDraft);
+    box.innerHTML = `<div class="msg" style="margin:0 0 10px">${esc(SVT('svConfirm'))}${n ? ' ' + esc(SVT('svRequiredMsg', { n })) : ''}</div>
+      <div style="display:flex;gap:10px"><button class="btn quiet" id="svNo" style="flex:1">${esc(SVT('svNo'))}</button><button class="btn" id="svYes" style="flex:1">${esc(SVT('svYes'))}</button></div>`;
+    $('svNo').onclick = () => { svConfirming = false; svActionDraw(d); };
+    $('svYes').onclick = async () => {
+      clearTimeout(svTimer); $('svYes').disabled = true;
+      const ok = await svSave({ status: 'submitted', submittedAt: Date.now() });
+      if(!ok){ svConfirming = false; svActionDraw(d); }
+    };
+  }
+}
+
 /* ───────── 資料：先用 Email 找到自己是哪位學生，再即時讀自己那一份 ───────── */
 let rosterState = 'loading', authReady = false;
 
@@ -1249,7 +1365,7 @@ async function startRoster(){
     rosterState = 'ok';
     tzSetting = LS.get('dc.tz.' + tid) || null;
     if(unsubDoc) unsubDoc();
-    startHw(studentId); startBoard(studentId);
+    startHw(studentId); startSv(studentId); startBoard(studentId);
     unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', studentId),
       s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
       err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
@@ -1262,7 +1378,7 @@ async function startRoster(){
 
 function startPreview(user){
   tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
-  startHw(PREVIEW);
+  startHw(PREVIEW); startSv(PREVIEW);
   getDoc(doc(db, 'portal', tid, 'roster', PREVIEW)).then(s => { rosterData = s.exists() ? s.data() : null; }).catch(() => { rosterData = null; }).then(() => { rosterReady = true; render(); });
   unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
     s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
@@ -1273,7 +1389,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
-  stopHw(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; placeOpen = false; placeHist = null; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
+  stopHw(); stopSv(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; placeOpen = false; placeHist = null; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
   if(TRYHW){ if(user) startTry(user); else render(); return; }

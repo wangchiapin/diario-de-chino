@@ -110,6 +110,18 @@ td.em{min-width:260px}
 .vw td:last-child button{padding:5px 12px;font-size:13px}
 .vw td{padding:6px 6px}
 }
+.svq{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;background:#fff}
+.svq.lock{background:#f3efe5}
+.svq .svta{width:100%;min-height:44px;margin-top:6px}
+.svopts{margin-top:6px}
+.svo{display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:6px;margin:4px 0}
+.svo input{font-size:14px;padding:6px 8px}
+.svans{padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.svbar{display:grid;grid-template-columns:minmax(80px,200px) 1fr 92px;gap:8px;align-items:center;margin:3px 0;font-size:14px}
+.svtrack{display:block;background:#e8e4db;border-radius:6px;height:12px;overflow:hidden}
+.svtrack i{display:block;height:100%;background:var(--accent)}
+.svbn{text-align:right;color:var(--sub);font-size:13px}
+@media (max-width:640px){.svo{grid-template-columns:1fr}.svbar{grid-template-columns:90px 1fr 80px}}
 .tabbar button{background:transparent;color:var(--accent);position:relative}
 .tabbar button.on{background:var(--accent);color:#fff}
 .tabbar .bd{display:inline-block;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;text-align:center;margin-left:5px;padding:0 4px}
@@ -143,6 +155,7 @@ td.em{min-width:260px}
 <script src="grammar-map.js"></script>
 <script src="portal-pinyin.js"></script>
 <script src="portal-board.js"></script>
+<script src="portal-survey.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -169,6 +182,7 @@ let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || '
 const helpOpen = new Set();
 function helpBox(k, inner){ return `<details class="help" data-hk="${k}" ${helpOpen.has(k) ? 'open' : ''}><summary>說明</summary><div class="hb muted small">${inner}</div></details>`; }
 document.addEventListener('toggle', e => { const d = e.target; if(d && d.classList && d.classList.contains('help')){ if(d.open) helpOpen.add(d.dataset.hk); else helpOpen.delete(d.dataset.hk); } }, true);
+let surveys = {}, svRounds = {}, sv = {}, svUnsubs = {}, svEdit = null, svMsg = null, svPub = null, svView = null;   // 問卷：surveys 老師的問卷；svRounds 發布紀錄；sv：學生代號 → { 發布代號 → 學生那份 }
 let nudCfg = null, nudDraft = null, nudOpen = false, nudMsg = null, nudRowMsg = {};
 let uid = null, students = {}, roster = {}, studentsLoaded = false, rosterLoaded = false, loadErr = '';
 let unsubs = [];
@@ -1030,9 +1044,227 @@ async function gradeRedo(){
 }
 
 const placementUrl = () => location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, '') + 'placement.html' + (uid ? '?t=' + uid : '');
+/* ───────── 問卷調查 ───────── */
+const SV_TYPE_LABEL = { text: '開放填寫', single: '單選', multi: '複選', scale: '量表（單選，會算平均）' };
+function svStuName(sid){ return (students[sid] || {}).name || sid; }
+function svSetMsg(text, ok){ svMsg = { text, ok }; }
+function svRoundEntries(rid){
+  const r = svRounds[rid] || {};
+  return (r.sids || []).map(sid => ({ sid, d: (sv[sid] || {})[rid] })).filter(x => x.d);
+}
+function svDraftClean(){
+  const d = JSON.parse(JSON.stringify(svEdit.draft));
+  d.title = String(d.title || '').trim();
+  d.questions.forEach(q => { if(q.t === 'text') delete q.opts; });
+  return d;
+}
+async function svSaveEdit(){
+  const d = svDraftClean(), err = svValidate(d);
+  if(err){ svSetMsg(err, false); return render(); }
+  try{
+    const id = svEdit.id, old = surveys[id] || {};
+    await setDoc(doc(db, 'portal', uid, 'surveys', id), { title: d.title, questions: d.questions, createdAt: old.createdAt || Date.now(), updatedAt: Date.now() });
+    svEdit = null; svSetMsg('✓ 已儲存', true);
+  }catch(e){ console.error(e); svSetMsg(e && e.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加問卷那幾段（見規則檔第十一批）' : '儲存失敗，請再試一次', false); }
+  render();
+}
+async function svCreate(kind, fromId){
+  const id = svNewId('s');
+  let d;
+  if(kind === 'tpl') d = svTemplate();
+  else if(kind === 'copy' && surveys[fromId]){ d = JSON.parse(JSON.stringify(surveys[fromId])); d.title = d.title + '（複製）'; }
+  else d = { title: '新問卷', questions: [svBlankQ('text')] };
+  svEdit = { id, draft: { title: d.title, questions: d.questions }, isNew: true };
+  svSetMsg('', true); svPub = null; svView = null; render(); toTop();
+}
+async function svDelete(id){
+  if(!confirm('刪除這份問卷？（已經發布出去的不受影響）')) return;
+  try{ await deleteDoc(doc(db, 'portal', uid, 'surveys', id)); svSetMsg('已刪除', true); }catch(e){ console.error(e); svSetMsg('刪除失敗', false); }
+  render();
+}
+async function svSend(){
+  const s = surveys[svPub.id];
+  if(!s){ svPub = null; return render(); }
+  const pick = Object.keys(svPub.sel).filter(sid => svPub.sel[sid] && students[sid] && !students[sid].archived);
+  if(!pick.length){ svSetMsg('請先勾選要發給哪些學生', false); return render(); }
+  const err = svValidate(s); if(err){ svSetMsg(err, false); return render(); }
+  const rid = svNewId('r'), qs = svPublishQs(s), now = Date.now();
+  let okN = 0, failN = 0;
+  for(const sid of pick){
+    try{ await setDoc(doc(db, 'portal', uid, 'students', sid, 'sv', rid), { rid, title: s.title, qs, zh: svPub.zh, fl: svPub.fl, status: 'todo', answers: {}, assignedAt: now }); okN++; }
+    catch(e){ console.error(e); failN++; }
+  }
+  if(okN){
+    try{ await setDoc(doc(db, 'portal', uid, 'svRounds', rid), { surveyId: svPub.id, title: s.title, qs, zh: svPub.zh, fl: svPub.fl, sids: pick, createdAt: now }); }catch(e){ console.error(e); failN++; }
+  }
+  svPub = null;
+  svSetMsg(failN ? `發出 ${okN} 位，${failN} 件失敗（可能是規則還沒加）` : `✓ 已發給 ${okN} 位學生，到下面「已發布的問卷」看填寫狀況`, !failN);
+  render();
+}
+async function svDeleteRound(rid){
+  const entries = svRoundEntries(rid), done = entries.filter(x => x.d.status === 'submitted').length;
+  if(!confirm(`刪除這次發布？${done ? `已經有 ${done} 位交出的回覆會一起刪掉，` : ''}無法復原。`)) return;
+  try{
+    for(const x of entries) await deleteDoc(doc(db, 'portal', uid, 'students', x.sid, 'sv', rid));
+    await deleteDoc(doc(db, 'portal', uid, 'svRounds', rid));
+    if(svView === rid) svView = null;
+    svSetMsg('已刪除', true);
+  }catch(e){ console.error(e); svSetMsg('刪除失敗，請再試一次', false); }
+  render();
+}
+async function svReopen(sid, rid){
+  if(!confirm('讓這位學生重新填寫？他之前的答案會保留，可以修改後再交出。')) return;
+  try{ await updateDoc(doc(db, 'portal', uid, 'students', sid, 'sv', rid), { status: 'todo' }); }catch(e){ console.error(e); svSetMsg('操作失敗', false); render(); }
+}
+
+function svEditHtml(){
+  const d = svEdit.draft;
+  const qh = d.questions.map((q, i) => {
+    const isCh = q.t !== 'text';
+    const opts = isCh ? `<div class="svopts">${(q.opts || []).map((o, j) => `<div class="svo" data-oi="${j}">
+        <input data-ok="zh" value="${esc(o.zh)}" placeholder="選項（中文）"><input data-ok="es" value="${esc(o.es)}" placeholder="Español"><input data-ok="en" value="${esc(o.en)}" placeholder="English">
+        <button class="tiny quiet" data-a="oup" title="上移">↑</button><button class="tiny quiet" data-a="odel" title="刪除選項">✕</button></div>`).join('')}
+      <button class="tiny quiet" data-a="oadd">＋ 加選項</button></div>` : '';
+    return `<div class="svq" data-qi="${i}"><div class="row"><b>第 ${i + 1} 題</b>
+      <select data-k="t">${SV_TYPES.map(t => `<option value="${t}"${q.t === t ? ' selected' : ''}>${esc(SV_TYPE_LABEL[t])}</option>`).join('')}</select>
+      <span style="flex:1"></span><button class="tiny quiet" data-a="qup" ${i === 0 ? 'disabled' : ''}>↑ 上移</button><button class="tiny quiet" data-a="qdown" ${i === d.questions.length - 1 ? 'disabled' : ''}>↓ 下移</button><button class="tiny quiet" data-a="qdel">刪除</button></div>
+      <textarea class="nudta svta" data-k="zh" placeholder="中文題目（寫繁體，簡體會自動轉）" maxlength="300">${esc(q.zh)}</textarea>
+      <textarea class="nudta svta" data-k="es" placeholder="Español（可以空白）" maxlength="400">${esc(q.es)}</textarea>
+      <textarea class="nudta svta" data-k="en" placeholder="English（可以空白）" maxlength="400">${esc(q.en)}</textarea>${opts}</div>`;
+  }).join('');
+  const c = svConsentQ();
+  return `<div class="card" id="svEdit"><h2>${svEdit.isNew ? '新問卷' : '編輯問卷'}</h2>
+    <div class="row" style="margin-bottom:8px"><label class="small muted" style="min-width:64px">問卷名稱</label><input id="svTitle" value="${esc(d.title)}" maxlength="${SV_TITLE_MAX}" style="flex:1"></div>
+    ${helpBox('svq', '每題可以填中文、西文、英文。發布時選「中文（繁或簡）＋外語（西文或英文）」，學生會看到中文和你選的那一種外語並列；選的外語那一欄如果空白，會改用另一種外語。最後一題「是否同意使用問卷內容」是固定的，會自動加在最後，不能刪。')}
+    ${qh}
+    <div class="row" style="margin:8px 0"><button class="tiny quiet" data-a="qadd">＋ 加一題</button></div>
+    <div class="svq lock"><div class="muted small">固定最後一題（不用編輯）</div><div>${esc(c.zh)}</div><div class="muted small">${esc(c.es)}<br>${esc(c.en)}</div></div>
+    <div class="row" style="margin-top:10px"><button id="svSave">儲存</button><button class="quiet" id="svCancel">取消</button><span class="small ${svMsg && svMsg.ok ? 'ok' : 'err'}">${esc(svMsg ? svMsg.text : '')}</span></div></div>`;
+}
+function bindSvEdit(root){
+  const box = root.querySelector('#svEdit'); if(!box || !svEdit) return;
+  const d = svEdit.draft;
+  $('svTitle').oninput = e => { d.title = e.target.value; };
+  box.querySelectorAll('.svq[data-qi]').forEach(card => {
+    const i = +card.dataset.qi, q = d.questions[i];
+    card.querySelectorAll('textarea[data-k]').forEach(t => t.oninput = () => { q[t.dataset.k] = t.value; });
+    const sel = card.querySelector('select[data-k="t"]');
+    sel.onchange = () => {
+      q.t = sel.value;
+      if(q.t === 'scale' && (!q.opts || !q.opts.length)) q.opts = svBlankQ('scale').opts;
+      if((q.t === 'single' || q.t === 'multi') && (!q.opts || q.opts.length < 2)) q.opts = svBlankQ('single').opts;
+      render();
+    };
+    card.querySelectorAll('.svo').forEach(row => {
+      const j = +row.dataset.oi;
+      row.querySelectorAll('input[data-ok]').forEach(inp => inp.oninput = () => { q.opts[j][inp.dataset.ok] = inp.value; });
+    });
+    card.querySelectorAll('button[data-a]').forEach(b => b.onclick = e => {
+      const a = b.dataset.a, j = b.closest('.svo') ? +b.closest('.svo').dataset.oi : -1;
+      if(a === 'qup' && i > 0) d.questions.splice(i - 1, 0, d.questions.splice(i, 1)[0]);
+      else if(a === 'qdown' && i < d.questions.length - 1) d.questions.splice(i + 1, 0, d.questions.splice(i, 1)[0]);
+      else if(a === 'qdel'){ if(!confirm('刪除第 ' + (i + 1) + ' 題？')) return; d.questions.splice(i, 1); }
+      else if(a === 'oadd') q.opts.push(svBlankOpt());
+      else if(a === 'odel'){ if(q.opts.length <= 2){ svSetMsg('選項至少要 2 個', false); return render(); } q.opts.splice(j, 1); }
+      else if(a === 'oup' && j > 0) q.opts.splice(j - 1, 0, q.opts.splice(j, 1)[0]);
+      svMsg = null; render();
+    });
+  });
+  box.querySelector('[data-a="qadd"]').onclick = () => { if(d.questions.length >= SV_Q_MAX){ svSetMsg('一份問卷最多 ' + SV_Q_MAX + ' 題', false); return render(); } d.questions.push(svBlankQ('text')); svMsg = null; render(); };
+  $('svSave').onclick = svSaveEdit;
+  $('svCancel').onclick = () => { if(!confirm('不儲存，直接離開？')) return; svEdit = null; svMsg = null; render(); };
+}
+
+function svResultsHtml(rid, active){
+  const r = svRounds[rid]; if(!r) return '';
+  const entries = svRoundEntries(rid), done = entries.filter(x => x.d.status === 'submitted');
+  const T = svTally(r.qs, done.map(x => ({ answers: x.d.answers, sid: x.sid })));
+  const chips = entries.map(x => `<span class="small">${esc(svStuName(x.sid))} <span class="chip ${x.d.status === 'submitted' ? 'graded' : 'todo'}">${x.d.status === 'submitted' ? '已交' : '未填'}</span>${x.d.status === 'submitted' ? `<button class="tiny quiet" data-a="reopen" data-sid="${esc(x.sid)}">退回</button>` : ''}</span>`).join('　');
+  const qh = r.qs.map((q, i) => {
+    const t = T[q.id] || { n: 0 };
+    let body = '';
+    if(q.t === 'text'){
+      body = (t.texts || []).length ? t.texts.map(x => `<div class="svans"><b>${esc(svStuName(x.entry.sid))}</b>　${nl2br(x.text)}</div>`).join('') : '<div class="muted small">還沒有回答</div>';
+    }else{
+      body = (q.opts || []).map(o => {
+        const n = (t.counts || {})[o.id] || 0, pct = t.n ? Math.round(n / t.n * 100) : 0;
+        return `<div class="svbar"><span class="svbl">${esc(o.zh)}</span><span class="svtrack"><i style="width:${pct}%"></i></span><span class="svbn">${n}（${pct}%）</span></div>`;
+      }).join('') + (t.avg != null ? `<div class="muted small">平均 ${t.avg}（1＝「${esc(q.opts[0].zh)}」，${q.opts.length}＝「${esc(q.opts[q.opts.length - 1].zh)}」）</div>` : '');
+    }
+    return `<div class="svq"><div><b>${i + 1}. ${esc(q.zh)}</b> <span class="muted small">${esc(SV_TYPE_LABEL[q.t] || (q.t === 'consent' ? '是否同意' : ''))}・${t.n} 人回答</span></div>${body}</div>`;
+  }).join('');
+  return `<div class="card" id="svRes"><div class="row"><h2 style="margin:0">${esc(r.title)} · 結果</h2><span style="flex:1"></span><button class="tiny quiet" data-a="resClose">收起</button></div>
+    <div class="muted small" style="margin:4px 0">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡體' : '繁體'} ＋ ${r.fl === 'en' ? 'English' : 'Español'}　已交 ${done.length}／${entries.length}</div>
+    <div style="margin:6px 0 10px">${chips}</div>${qh}</div>`;
+}
+function svHtml(active){
+  if(svEdit) return svEditHtml();
+  const sids = Object.keys(surveys).sort((a, b) => (surveys[b].updatedAt || 0) - (surveys[a].updatedAt || 0));
+  const rids = Object.keys(svRounds).sort((a, b) => (svRounds[b].createdAt || 0) - (svRounds[a].createdAt || 0));
+  let h = `<div class="card"><h2>問卷調查</h2>
+    <div class="row"><button class="tiny" data-a="newTpl">＋ 用基本模板建立新問卷</button><button class="tiny quiet" data-a="newBlank">＋ 空白問卷</button></div>
+    ${helpBox('sv0', '基本模板是最新版的課程滿意度調查，再加上「學生日誌使用」的問題。建立後可以隨意改題目、改名字、刪題、加題。每年想改，就「複製」一份再改，或是用模板建立新問卷。發布給學生時，問卷會複製一份給他們，之後你再改問卷，不會影響已經發出去的。')}
+    <div class="small ${svMsg && svMsg.ok ? 'ok' : 'err'}">${esc(svMsg ? svMsg.text : '')}</div>`;
+  if(!sids.length) h += '<div class="muted small" style="margin-top:6px">還沒有問卷，按上面的「用基本模板建立新問卷」開始。</div>';
+  sids.forEach(id => {
+    const s = surveys[id];
+    h += `<div class="hwrow" data-svid="${esc(id)}"><div class="row"><b>${esc(s.title)}</b><span class="muted small">${(s.questions || []).length + 1} 題　改於 ${esc(fmtTime(s.updatedAt))}</span>
+      <button class="tiny quiet" data-a="edit">編輯</button><button class="tiny quiet" data-a="pub">${svPub && svPub.id === id ? '收起' : '發布給學生'}</button><button class="tiny quiet" data-a="copy">複製</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
+    if(svPub && svPub.id === id){
+      h += `<div style="margin-top:8px"><div class="row small"><span class="muted">中文</span><label><input type="radio" name="svzh" value="tc" ${svPub.zh === 'tc' ? 'checked' : ''}> 繁體</label><label><input type="radio" name="svzh" value="sc" ${svPub.zh === 'sc' ? 'checked' : ''}> 簡體</label>
+        <span class="muted" style="margin-left:10px">外語</span><label><input type="radio" name="svfl" value="es" ${svPub.fl === 'es' ? 'checked' : ''}> Español</label><label><input type="radio" name="svfl" value="en" ${svPub.fl === 'en' ? 'checked' : ''}> English</label></div>
+        <div class="picks" style="margin-top:6px">${active.map(sid => `<label><input type="checkbox" data-sid="${esc(sid)}" ${svPub.sel[sid] ? 'checked' : ''}>${esc(students[sid].name)}${!roster[sid] ? '（還沒填電子郵件）' : ''}</label>`).join('')}</div>
+        <div class="row" style="margin-top:6px"><button class="tiny quiet" data-a="all">全選</button><button class="tiny" data-a="send">發出</button></div></div>`;
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  h += `<div class="card"><h2>已發布的問卷（${rids.length}）</h2>`;
+  if(!rids.length) h += '<div class="muted small">還沒有發布過。</div>';
+  rids.forEach(rid => {
+    const r = svRounds[rid], en = svRoundEntries(rid), done = en.filter(x => x.d.status === 'submitted').length;
+    h += `<div class="hwrow" data-rid="${esc(rid)}"><div class="row"><b>${esc(r.title)}</b><span class="muted small">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡' : '繁'}＋${r.fl === 'en' ? 'EN' : 'ES'}　已交 ${done}／${en.length}</span>
+      <button class="tiny quiet" data-a="res">${svView === rid ? '收起結果' : '看結果'}</button><button class="tiny quiet" data-a="delr">刪除</button></div></div>`;
+  });
+  h += '</div>';
+  if(svView && svRounds[svView]) h += svResultsHtml(svView, active);
+  return h;
+}
+function bindSv(root, active){
+  bindSvEdit(root);
+  const pane = root.querySelector('.tabp[data-p="sv"]'); if(!pane || svEdit) return;
+  pane.querySelectorAll('[data-a="newTpl"]').forEach(b => b.onclick = () => svCreate('tpl'));
+  pane.querySelectorAll('[data-a="newBlank"]').forEach(b => b.onclick = () => svCreate('blank'));
+  pane.querySelectorAll('.hwrow[data-svid]').forEach(row => {
+    const id = row.dataset.svid;
+    row.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if(a === 'edit'){ svEdit = { id, draft: { title: surveys[id].title, questions: JSON.parse(JSON.stringify(surveys[id].questions || [])) } }; svMsg = null; svPub = null; render(); toTop(); }
+      else if(a === 'copy') svCreate('copy', id);
+      else if(a === 'del') svDelete(id);
+      else if(a === 'pub'){ svPub = svPub && svPub.id === id ? null : { id, zh: 'tc', fl: 'es', sel: {} }; svMsg = null; render(); }
+      else if(a === 'all'){ active.forEach(sid => { svPub.sel[sid] = true; }); render(); }
+      else if(a === 'send') svSend();
+    });
+    row.querySelectorAll('input[name="svzh"]').forEach(i => i.onchange = () => { svPub.zh = i.value; });
+    row.querySelectorAll('input[name="svfl"]').forEach(i => i.onchange = () => { svPub.fl = i.value; });
+    row.querySelectorAll('input[data-sid]').forEach(i => i.onchange = () => { svPub.sel[i.dataset.sid] = i.checked; });
+  });
+  pane.querySelectorAll('.hwrow[data-rid]').forEach(row => {
+    const rid = row.dataset.rid;
+    row.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      if(b.dataset.a === 'res'){ svView = svView === rid ? null : rid; render(); }
+      else if(b.dataset.a === 'delr') svDeleteRound(rid);
+    });
+  });
+  pane.querySelectorAll('#svRes [data-a="resClose"]').forEach(b => b.onclick = () => { svView = null; render(); });
+  pane.querySelectorAll('#svRes [data-a="reopen"]').forEach(b => b.onclick = () => svReopen(b.dataset.sid, svView));
+}
+
 function render(){
   const root = $('app');
   if(uid && gradeOpen && gdraft && authReady){ $('btnLogout').classList.remove('hidden'); return; }   // 批改中：不要被資料更新洗掉畫面
+  if(uid && svEdit){ const a = document.activeElement; if(a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT') && a.closest && a.closest('#svEdit')) return; }   // 編輯問卷、正在打字：不要被資料更新洗掉輸入框
   $('btnLogout').classList.toggle('hidden', !uid);
   if(!authReady){ root.innerHTML = '<div class="card muted">載入中…</div>'; return; }
   if(!uid){
@@ -1091,18 +1323,18 @@ function render(){
   const pend = active.reduce((n, sid) => n + Object.keys(hw[sid] || {}).filter(w => hw[sid][w].status === 'submitted').length, 0);
   const reqN = pendingReqs().length;
   const bbUnreadTotal = (() => { const u = bbUnread(); return Object.keys(u).reduce((n, k) => n + u[k], 0); })();
-  const TABS = [['stu', '學生'], ['hw', '作業'], ['voc', '單字'], ['plc', '測驗'], ['pub', '公布'], ['nud', '彈跳視窗'], ['set', '設定']];
+  const TABS = [['stu', '學生'], ['hw', '作業'], ['voc', '單字'], ['plc', '測驗'], ['sv', '問卷'], ['pub', '公布'], ['nud', '彈跳視窗'], ['set', '設定']];
   if(!TABS.some(t => t[0] === adminTab)) adminTab = 'stu';
   const pane = (k, h) => `<section class="tabp ${adminTab === k ? '' : 'hidden'}" data-p="${k}">${h}</section>`;
   root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'pub' && bbUnreadTotal ? `<span class="bd">${bbUnreadTotal}</span>` : ''}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}${t[0] === 'stu' && reqN ? `<span class="bd">${reqN}</span>` : ''}</button>`).join('')}</nav>`
-    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('plc', plcHtml(active)) + pane('pub', bbHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
+    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('plc', plcHtml(active)) + pane('sv', svHtml(active)) + pane('pub', bbHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
   root.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => {
     adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
     root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
     root.querySelectorAll('.tabp').forEach(x => x.classList.toggle('hidden', x.dataset.p !== adminTab));
     toTop();
   });
-  bindHw(root, active); bindNud(root); bindReq(root); bindVoc(root); bindBb(root);
+  bindHw(root, active); bindSv(root, active); bindNud(root); bindReq(root); bindVoc(root); bindBb(root);
   root.querySelectorAll('tr[data-pid] .plDel').forEach(b => b.onclick = async () => {
     const id = b.closest('tr').dataset.pid;
     if(!confirm('刪除這筆測驗結果？')) return;
@@ -1151,14 +1383,18 @@ async function saveEmail(id, raw){
 function syncHw(){
   const want = Object.keys(students).filter(id => !students[id].archived);
   Object.keys(hwUnsubs).forEach(id => { if(want.indexOf(id) < 0){ hwUnsubs[id](); delete hwUnsubs[id]; delete hw[id]; } });
+  Object.keys(svUnsubs).forEach(id => { if(want.indexOf(id) < 0){ svUnsubs[id](); delete svUnsubs[id]; delete sv[id]; } });
   want.forEach(id => {
+    if(!svUnsubs[id]) svUnsubs[id] = onSnapshot(collection(db, 'portal', uid, 'students', id, 'sv'),
+      snap => { sv[id] = {}; snap.forEach(d => sv[id][d.id] = d.data()); render(); },
+      err => console.error(err));
     if(hwUnsubs[id]) return;
     hwUnsubs[id] = onSnapshot(collection(db, 'portal', uid, 'students', id, 'hw'),
       snap => { hw[id] = {}; snap.forEach(d => hw[id][d.id] = d.data()); render(); },
       err => console.error(err));
   });
 }
-function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; bbPosts = []; bbWall = []; bbDm = []; placements = []; notes = {}; noteDraft = {}; members = {}; membersLoaded = false; membersErr = false; dmSeen = {}; }
+function stop(){ unsubs.forEach(u => u()); unsubs = []; Object.keys(hwUnsubs).forEach(id => hwUnsubs[id]()); hwUnsubs = {}; hw = {}; Object.keys(svUnsubs).forEach(id => svUnsubs[id]()); svUnsubs = {}; sv = {}; surveys = {}; svRounds = {}; svEdit = null; svPub = null; svView = null; svMsg = null; pool = {}; poolLoaded = false; admins = {}; reqs = {}; lists = {}; marks = {}; bbPosts = []; bbWall = []; bbDm = []; placements = []; notes = {}; noteDraft = {}; members = {}; membersLoaded = false; membersErr = false; dmSeen = {}; }
 function start(){
   stop(); students = {}; roster = {}; studentsLoaded = rosterLoaded = false; loadErr = '';
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
@@ -1171,6 +1407,8 @@ function start(){
   unsubs.push(onSnapshot(query(collection(db, 'portal', uid, 'dm'), orderBy('ts', 'desc'), limit(500)), snap => { bbDm = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); renderSoftA(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'members'), snap => { members = {}; snap.forEach(d => members[d.id] = d.data()); membersLoaded = true; syncMembers(); }, err => { console.error(err); membersErr = true; render(); }));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'dmSeen'), s => { dmSeen = s.exists() ? s.data() : {}; renderSoftA(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'surveys'), snap => { surveys = {}; snap.forEach(d => surveys[d.id] = d.data()); render(); }, err => console.error(err)));
+  unsubs.push(onSnapshot(collection(db, 'portal', uid, 'svRounds'), snap => { svRounds = {}; snap.forEach(d => svRounds[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'placements'), snap => { placements = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'notes'), snap => { notes = {}; snap.forEach(d => notes[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'gmap'), d => { gmap = d.exists() ? (d.data().map || {}) : {}; render(); }, err => console.error(err)));
