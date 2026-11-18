@@ -728,6 +728,14 @@ test('問卷文字：四種語言的 key 一樣齊全', () => {
   assert.strictEqual(C('svT')('es', 'svRequiredMsg', { n: 3 }), 'Falta contestar: 3');
 });
 
+test('預設模板：17 題，對得上原本的滿意度調查（含「還有什麼想對老師說的嗎」，英文照原文）', () => {
+  const t = C('svTemplate')().questions;
+  assert.strictEqual(t.length, 17);
+  assert.ok(t[16].zh.indexOf('還有什麼想對老師說的嗎') === 0 && t[16].es.indexOf('¿Hay algo más que te gustaría decirle al profesor?') === 0 && t[16].en.indexOf('Is there anything else you would like to tell the teacher?') === 0);
+  assert.ok(t[0].en.indexOf('Is there anything in particular that you found especially helpful?') > -1);
+  assert.ok(t[5].en.indexOf('clearly and in an easy-to-understand way') > -1);
+});
+
 console.log('\n問卷：公開連結、合併回覆、匯出、翻譯');
 test('公開版只含題目和 open，不含老師資料；連結帶老師代號和發布代號', () => {
   const round = { surveyId: 'x', title: 'T', qs: [{ id: 'q1' }], zh: 'tc', fl: 'es', sids: ['s1'], pub: true, createdAt: 5 };

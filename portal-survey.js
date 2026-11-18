@@ -100,15 +100,15 @@ function svTemplate() {
   return {
     title: '課程滿意度調查',
     questions: [
-      q('text', '你覺得課程內容的實用性如何？有哪些特別對你有幫助的地方？', '¿Qué opinas sobre la utilidad del contenido del curso? ¿Hay algo en particular que te haya sido de gran ayuda?', 'What do you think about the usefulness of the course content? Is there anything that has been especially helpful to you?'),
+      q('text', '你覺得課程內容的實用性如何？有哪些特別對你有幫助的地方？', '¿Qué opinas sobre la utilidad del contenido del curso? ¿Hay algo en particular que te haya sido de gran ayuda?', 'What do you think about the usefulness of the course content? Is there anything in particular that you found especially helpful?'),
       q('single', '你覺得課程的節奏如何？', '¿Qué opinas sobre el ritmo del curso?', 'What do you think about the pace of the course?', svOpts([['太快', 'Demasiado rápido', 'Too fast'], ['剛剛好', 'Justo', 'Just right'], ['太慢', 'Demasiado lento', 'Too slow']])),
       q('single', '你覺得上課內容的難度如何？', '¿Qué opinas sobre la dificultad del contenido del curso?', 'What do you think about the difficulty level of the course content?', svOpts([['太簡單', 'Demasiado fácil', 'Too easy'], ['剛剛好', 'Adecuado', 'Just right'], ['太難', 'Demasiado difícil', 'Too difficult']])),
-      q('text', '你覺得你的中文能力有哪些具體的進步？', '¿Qué avances concretos crees que has logrado en tus habilidades de chino?', 'What specific improvements do you think you have made in your Chinese?'),
+      q('text', '你覺得你的中文能力有哪些具體的進步？', '¿Qué avances concretos crees que has logrado en tus habilidades de chino?', 'What specific improvements do you think you have made in your Chinese language skills?'),
       q('text', '你對老師的教學態度有什麼感受？', '¿Qué opinas sobre la actitud del profesor al enseñar?', 'What do you think about the teacher’s attitude toward teaching?'),
-      q('text', '你覺得老師在講解課程內容時，表達是否清晰易懂？需要改進的地方會是哪些？', '¿Consideras que el profesor explica el contenido del curso de manera clara y comprensible? ¿Qué aspectos crees que podrían mejorarse?', 'Do you think the teacher explains the course content clearly? What could be improved?'),
-      q('text', '當你在課堂上提出問題時，老師的回應是否解答了你的疑惑？', 'Cuando haces preguntas en clase, ¿las respuestas del profesor aclaran tus dudas?', 'When you ask questions in class, do the teacher’s answers clear up your doubts?'),
+      q('text', '你覺得老師在講解課程內容時，表達是否清晰易懂？需要改進的地方會是哪些？', '¿Consideras que el profesor explica el contenido del curso de manera clara y comprensible? ¿Qué aspectos crees que podrían mejorarse?', 'Do you think the teacher explains the course content clearly and in an easy-to-understand way? What aspects do you think could be improved?'),
+      q('text', '當你在課堂上提出問題時，老師的回應是否解答了你的疑惑？', 'Cuando haces preguntas en clase, ¿las respuestas del profesor aclaran tus dudas?', 'When you ask questions in class, do the teacher’s answers clarify your doubts?'),
       q('text', '你覺得這個課程的優點是什麼？', '¿Cuáles son las ventajas de este curso, según tu opinión?', 'In your opinion, what are the advantages of this course?'),
-      q('text', '你覺得老師的教學方式或課程內容，可以在哪些部分做得更好？', '¿Qué aspectos del método de enseñanza o del contenido del curso crees que podrían mejorarse?', 'In what ways could the teaching method or the course content be improved?'),
+      q('text', '你覺得老師的教學方式或課程內容，可以在哪些部分做得更好？', '¿Qué aspectos del método de enseñanza o del contenido del curso crees que podrían mejorarse?', 'What aspects of the teaching method or course content do you think could be improved?'),
       q('text', '接下來這一年，你的中文學習目標是什麼？', '¿Cuáles son tus objetivos de aprendizaje de chino para el próximo año?', 'What are your Chinese learning goals for the coming year?'),
       q('scale', '整體來說，你覺得學生日誌好用嗎？', 'En general, ¿te parece útil el Diario de chino?', 'Overall, do you find the student diary (Diario de chino) useful?', svScaleOpts('good')),
       q('multi', '你最常使用學生日誌的哪些功能？', '¿Qué funciones del Diario de chino usas más?', 'Which features of the student diary do you use most?', svOpts([
@@ -117,7 +117,8 @@ function svTemplate() {
       q('scale', '學生日誌的操作容易嗎？', '¿Es fácil usar el Diario de chino?', 'Is the student diary easy to use?', svScaleOpts('easy')),
       q('single', '頁面上的「台灣時間」和「你的當地時間」清楚嗎？', '¿Se entiende bien la “Hora de Taiwán” y “Tu hora” en la página?', 'Are “Taiwan time” and “Your time” clear on the page?', svOpts([['很清楚', 'Muy claro', 'Very clear'], ['還可以', 'Más o menos', 'Fairly clear'], ['不太清楚', 'No muy claro', 'Not clear']])),
       q('text', '使用學生日誌時，你有遇到什麼問題或錯誤嗎？', '¿Has tenido algún problema o error al usar el Diario de chino?', 'Have you run into any problems or errors while using the student diary?'),
-      q('text', '你希望學生日誌增加什麼功能？', '¿Qué funciones te gustaría que tuviera el Diario de chino?', 'What features would you like the student diary to have?')
+      q('text', '你希望學生日誌增加什麼功能？', '¿Qué funciones te gustaría que tuviera el Diario de chino?', 'What features would you like the student diary to have?'),
+      q('text', '還有什麼想對老師說的嗎？任何意見或建議都很歡迎！', '¿Hay algo más que te gustaría decirle al profesor? ¡Cualquier comentario o sugerencia es muy bienvenido!', 'Is there anything else you would like to tell the teacher? Any comments or suggestions are very welcome!')
     ]
   };
 }
