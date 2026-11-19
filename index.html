@@ -273,12 +273,28 @@ function zhSimp(s){
   if(typeof OpenCC === 'undefined' || !/[\u3400-\u9fff]/.test(s)) return s;
   try{ if(!_zhConv) _zhConv = OpenCC.Converter({ from: 'tw', to: 'cn' }); return _zhConv(s); }catch(e){ return s; }
 }
+/* 繁體介面：課程內容裡的簡體字（老師日誌有時用簡體寫）在顯示時轉成台灣繁體。轉換檔比較大（約 450KB），所以選繁體時才下載；下載好會重畫一次。
+   只換字形、不換用語；「臺」一律還原成台灣常用的「台」（原文本來就寫臺的除外）。 */
+let _zhT = null, _zhTLoading = false;
+function zhTLoad(){
+  if(_zhTLoading) return; _zhTLoading = true;
+  const sc = document.createElement('script'); sc.src = 'vendor/opencc-cn2t.js';
+  sc.onload = () => { try{ _zhT = OpenCC_cn2t.Converter({ from: 'cn', to: 'tw' }); render(); }catch(e){} };
+  sc.onerror = () => { _zhTLoading = false; };
+  document.head.appendChild(sc);
+}
+function zhTrad(s){
+  if(!/[\u3400-\u9fff]/.test(s)) return s;
+  if(!_zhT){ zhTLoad(); return s; }
+  try{ const o = _zhT(s); return s.indexOf('\u81fa') > -1 ? o : o.replace(/\u81fa/g, '\u53f0'); }catch(e){ return s; }
+}
+const zhConv = s => zhs() === 'sc' ? zhSimp(s) : zhTrad(s);
 const UIM = '\u2063';   // 介面文字（T/LT/BT 回傳的）前面的隱形記號：這種字依「介面語言」顯示，不跟著「中文字」轉
 const uiS = s => UIM + s;
 const esc = s => {
   s = String(s == null ? '' : s);
   if(s.indexOf(UIM) > -1) return escRaw(s.split(UIM).join(''));
-  return escRaw(zhs() === 'sc' ? zhSimp(s) : s);
+  return escRaw(zhConv(s));
 };
 
 /* ───────── 狀態 ───────── */
@@ -332,13 +348,27 @@ function allTimeZones(){
 }
 
 /* ───────── 畫面 ───────── */
-function setLang(l){
-  lang = l; LS.set('dc.lang', l);
+/* 介面和中文字連動：介面選繁／簡，中文字就跟著；選中文字，介面如果是繁／簡也跟著。介面是 ES／EN 時，兩邊各管各的。
+   舊設定如果兩邊不一樣（介面繁、中文字簡），以「中文字」為準（老師在後台替學生設的預設也是中文字）。 */
+function syncLangZh(){
+  if(lang !== 'tc' && lang !== 'sc') return false;
+  const z = zhsPick || (rosterData && (rosterData.script === 'tc' || rosterData.script === 'sc') ? rosterData.script : null);
+  if(!z || z === lang) return false;
+  lang = z; if(!PREVIEW) LS.set('dc.lang', z);
+  return true;
+}
+function paintLang(){
   try{ revRound = null; }catch(e){}
-  document.documentElement.lang = pcLoc(l);
-  document.querySelectorAll('#langBar button').forEach(b => b.classList.toggle('on', b.dataset.l === l));
+  document.documentElement.lang = pcLoc(lang);
+  document.querySelectorAll('#langBar button').forEach(b => b.classList.toggle('on', b.dataset.l === lang));
   paintZhBar();
   $('appTitle').innerHTML = esc(T('title'));
+}
+function setLang(l, init){
+  lang = l; LS.set('dc.lang', l);
+  if(!init && (l === 'tc' || l === 'sc')){ zhsPick = l; if(!PREVIEW) LS.set('dc.zh', l); }
+  if(init) syncLangZh();
+  paintLang();
   render();
 }
 function paintZhBar(){
@@ -347,7 +377,8 @@ function paintZhBar(){
 }
 function setZh(z){
   zhsPick = z; if(!PREVIEW) LS.set('dc.zh', z);
-  paintZhBar(); $('appTitle').innerHTML = esc(T('title'));
+  syncLangZh();
+  paintLang();
   render();
 }
 document.querySelectorAll('#langBar button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.l)));
@@ -1062,7 +1093,7 @@ function rbChars(text){
   text = String(text == null ? '' : text); const mode = hwRb();
   if(!mode) return Array.from(text).map(c => esc(c));
   let syl = null; try{ syl = syllables(text); }catch(e){}
-  const conv = zhs() === 'sc' ? zhSimp(text) : text, same = conv.length === text.length;
+  const conv = zhConv(text), same = conv.length === text.length;
   return Array.from(text).map((c, i) => {
     const sh = same ? conv[i] : c, s = syl && syl[i], rt = s && s.isZh ? (mode === 'pinyin' ? s.py : s.zy) : '';
     return rt ? `<ruby>${escRaw(sh)}<rt>${escRaw(rt)}</rt></ruby>` : esc(c);
@@ -1240,11 +1271,11 @@ function hwActionDraw(d){
 /* ───────── 問卷調查（老師在後台發布；學生作答後交出，跟作業同一套做法） ───────── */
 let svDocs = {}, svLoaded = false, unsubSv = null;
 let svOpen = null, svOpenStatus = null, svDraft = {}, svTimer = null, svSaveState = '', svConfirming = false;
-let svZhOv = null, svFlOv = null;   // 學生在問卷頁自己切換的「繁／簡」和「西文／英文」（只有這一次看問卷的畫面；預設是老師發布時選的）
+let svFlOv = null;   // 學生在問卷頁自己切換的「西文／英文」（只有這一次看問卷的畫面）。繁／簡跟著右上角的設定走，問卷裡不再另外切換
 const SVT = (k, p) => uiS(svT(lang, k, p));
 /* 問卷文字：中文照「這次發布選的繁／簡」轉，不跟學生自己的中文字設定；外語照發布時選的 */
-const svZhCur = d => svZhOv || d.zh, svFlCur = d => svFlOv || d.fl;
-const svZhS = (d, s) => uiS(svZhCur(d) === 'sc' ? zhSimp(String(s || '')) : String(s || ''));
+const svFlCur = d => svFlOv || (lang === 'es' || lang === 'en' ? lang : d.fl);   // 右上角介面是西文／英文時，問卷的外語跟著；介面是繁／簡才用老師發布時選的
+const svZhS = (d, s) => String(s || '');   // 中文字（繁／簡）由 esc() 依右上角設定統一轉換
 const svFlS = s => uiS(String(s || ''));
 
 function startSv(sid){
@@ -1275,7 +1306,7 @@ function svCardHtml(){
 function bindSvCard(root){ root.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => openSv(b.dataset.sv)); }
 function openSv(id){
   const d = svDocs[id]; if(!d) return;
-  svOpen = id; svOpenStatus = d.status; svConfirming = false; svSaveState = ''; svZhOv = null; svFlOv = null;
+  svOpen = id; svOpenStatus = d.status; svConfirming = false; svSaveState = ''; svFlOv = null;
   svDraft = JSON.parse(JSON.stringify(d.answers || {}));
   render(); toTop();
 }
@@ -1314,13 +1345,12 @@ function svQHtml(d, q, no, dis){
 function renderSv(root){
   const d = svDocs[svOpen];
   const locked = d.status === 'submitted' || PREVIEW;
-  const zc = svZhCur(d), fc = svFlCur(d);
+  const fc = svFlCur(d);
   const IP = d.intro ? svPick(d.intro, fc) : null;
   const intro = IP && (IP.zh || IP.fl) ? `<div class="card">${IP.zh ? `<div style="white-space:pre-line">${esc(svZhS(d, IP.zh))}</div>` : ''}${IP.fl ? `<div class="muted" style="white-space:pre-line;margin-top:10px">${esc(svFlS(IP.fl))}</div>` : ''}</div>` : '';
   let h = `<div class="card"><button class="btn quiet" id="svBack" style="padding:4px 14px;font-size:13px">‹ ${esc(SVT('svBack'))}</button>
     <h2 style="margin-top:12px">${esc(svZhS(d, d.title))}</h2><div>${svChip(d)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px">
-      <div class="lang"><span class="lgl">${esc(SVT('svSwZh'))}</span><button data-svzh="tc" class="${zc === 'tc' ? 'on' : ''}">繁</button><button data-svzh="sc" class="${zc === 'sc' ? 'on' : ''}">简</button></div>
       <div class="lang"><span class="lgl">${esc(SVT('svSwFl'))}</span><button data-svfl="es" class="${fc === 'es' ? 'on' : ''}">ES</button><button data-svfl="en" class="${fc === 'en' ? 'on' : ''}">EN</button></div></div>
     ${PREVIEW ? `<div class="msg">${esc(SVT('svPreviewRO'))}</div>` : d.status === 'submitted' ? `<div class="msg">${esc(SVT('svLocked'))}</div>` : ''}</div>${intro}`;
   h += `<div class="card">${(d.qs || []).map((q, i) => svQHtml(d, q, i + 1, locked)).join('')}</div>`;
@@ -1328,7 +1358,6 @@ function renderSv(root){
   else if(PREVIEW && d.status !== 'submitted') h += `<div class="card"><button class="btn" style="width:100%" disabled>${esc(SVT('svSubmit'))}</button></div>`;
   root.innerHTML = h;
   $('svBack').onclick = () => { clearTimeout(svTimer); if(svSaveState === 'saving') svSave(); svOpen = null; render(); toTop(); };
-  root.querySelectorAll('[data-svzh]').forEach(b => b.onclick = () => { svZhOv = b.dataset.svzh; render(); });
   root.querySelectorAll('[data-svfl]').forEach(b => b.onclick = () => { svFlOv = b.dataset.svfl; render(); });
   if(locked) return;
   svShowSave(); svActionDraw(d);
@@ -1373,6 +1402,7 @@ async function startRoster(){
     const snap = await getDocs(q);
     if(snap.empty){ rosterState = 'none'; render(); return; }
     studentId = snap.docs[0].id; rosterData = snap.docs[0].data() || {}; rosterReady = true;
+    if(syncLangZh()) paintLang();
     rosterState = 'ok';
     tzSetting = LS.get('dc.tz.' + tid) || null;
     if(unsubDoc) unsubDoc();
@@ -1390,7 +1420,7 @@ async function startRoster(){
 function startPreview(user){
   tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
   startHw(PREVIEW); startSv(PREVIEW);
-  getDoc(doc(db, 'portal', tid, 'roster', PREVIEW)).then(s => { rosterData = s.exists() ? s.data() : null; }).catch(() => { rosterData = null; }).then(() => { rosterReady = true; render(); });
+  getDoc(doc(db, 'portal', tid, 'roster', PREVIEW)).then(s => { rosterData = s.exists() ? s.data() : null; }).catch(() => { rosterData = null; }).then(() => { rosterReady = true; if(syncLangZh()) paintLang(); render(); });
   unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
     s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
     err => { console.error(err); docLoaded = true; docError = (err && err.code === 'permission-denied') ? T('errNoPerm') : T('errOther'); render(); });
@@ -1407,7 +1437,7 @@ onAuthStateChanged(auth, user => {
   if(user && user.emailVerified) startRoster(); else render();
 });
 
-setLang(lang);
+setLang(lang, true);
 </script>
 </body>
 </html>

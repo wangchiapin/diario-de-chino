@@ -1206,25 +1206,29 @@ def survey_tests(browser, base):
     page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(600)
     page.click('#langBar button[data-l=tc]')
     txt = page.inner_text('#app')
-    check('首頁有問卷卡片：標題（簡體）、還沒填、開始填寫', '问卷调查' not in txt and '2026 年底满意度调查' in txt and '還沒填' in txt and '開始填寫' in txt, txt[:300])
+    check('首頁有問卷卡片：標題、還沒填、開始填寫（介面選繁，名稱也跟著繁體）', '2026 年底滿意度調查' in txt and '還沒填' in txt and '開始填寫' in txt and '满意度' not in txt, txt[:300])
     page.click('[data-sv]'); page.wait_for_timeout(200)
     txt = page.inner_text('#app')
     if os.environ.get('SHOTS'): page.screenshot(path='/tmp/shots/stu_sv.png', full_page=True)
-    check('題目：中文用簡體（這次發布選的）、外語用英文', '你觉得课程内容的实用性如何' in txt and 'What do you think about the usefulness' in txt and '¿Qué' not in txt, txt[:400])
-    check('量表和複選的選項顯示：簡體中文＋英文', '很好' in txt and 'Very good' in txt and 'Class log and vocabulary review' in txt and '上课纪录与单字复习' in txt)
-    check('最後一題：是否同意', '是否同意我使用问卷内容' in txt and 'Do you agree' in txt)
-    check('開頭：簡體中文＋英文，在題目前面', '谢谢你一直以来的学习' in txt and '已经一年了' in txt and 'Thank you for your learning' in txt and txt.index('谢谢你一直以来的学习') < txt.index('你觉得课程内容的实用性如何'), txt[:500])
-    check('問卷頁上方有「繁／简」「ES／EN」切換，預設是發布時選的（简、EN）', page.locator('[data-svzh=sc].on').count() == 1 and page.locator('[data-svfl=en].on').count() == 1)
-    page.click('[data-svzh=tc]'); page.wait_for_timeout(100)
+    check('題目：中文跟右上角（繁）、外語用英文（發布時選的）', '你覺得課程內容的實用性如何' in txt and 'What do you think about the usefulness' in txt and '¿Qué' not in txt, txt[:400])
+    check('量表和複選的選項顯示：繁體中文＋英文', '很好' in txt and 'Very good' in txt and 'Class log and vocabulary review' in txt and '上課紀錄與單字複習' in txt)
+    check('最後一題：是否同意', '是否同意我使用問卷內容' in txt and 'Do you agree' in txt)
+    check('開頭：繁體中文＋英文，在題目前面', '謝謝你一直以來的學習' in txt and '已經一年了' in txt and 'Thank you for your learning' in txt and txt.index('謝謝你一直以來的學習') < txt.index('你覺得課程內容的實用性如何'), txt[:500])
+    check('問卷頁上方只剩「ES／EN」切換，沒有自己的「繁／简」', page.locator('[data-svzh]').count() == 0 and page.locator('[data-svfl=en].on').count() == 1)
+    page.click('#zhBar button[data-z=sc]'); page.wait_for_timeout(100)
     txt = page.inner_text('#app')
-    check('切到繁：題目、開頭、選項都變繁體', '你覺得課程內容的實用性如何' in txt and '謝謝你一直以來的學習' in txt and '上課紀錄與單字複習' in txt and '问卷' not in txt, txt[:300])
+    check('右上角中文字切到简：題目、開頭、選項、問卷名稱都變簡體，介面也跟著變简', '你觉得课程内容的实用性如何' in txt and '谢谢你一直以来的学习' in txt and '上课纪录与单字复习' in txt and '2026 年底满意度调查' in txt and page.locator('#langBar button[data-l=sc].on').count() == 1, txt[:300])
+    page.click('#langBar button[data-l=tc]'); page.wait_for_timeout(100)
+    txt = page.inner_text('#app')
+    check('右上角介面切回繁：全部變繁體，中文字也跟著', '你覺得課程內容的實用性如何' in txt and '问卷' not in txt and page.locator('#zhBar button[data-z=tc].on').count() == 1, txt[:300])
     page.click('[data-svfl=es]'); page.wait_for_timeout(100)
     txt = page.inner_text('#app')
     check('切到 ES：題目、選項、開頭的外語都變西文', '¿Qué opinas sobre la utilidad' in txt and 'Registro de clases' in txt and '¡Gracias por tu aprendizaje' in txt and 'What do you think' not in txt and page.locator('[data-svfl=es].on').count() == 1, txt[:300])
-    page.click('[data-svzh=sc]'); page.click('[data-svfl=en]'); page.wait_for_timeout(100)
-    check('切回簡＋EN', '你觉得课程内容的实用性如何' in page.inner_text('#app') and 'What do you think about the usefulness' in page.inner_text('#app'))
-    page.fill('textarea[data-id=q1]', 'Muy útil'); page.click('[data-svzh=tc]'); page.wait_for_timeout(100)
+    page.click('[data-svfl=en]'); page.wait_for_timeout(100)
+    check('切回 EN', 'What do you think about the usefulness' in page.inner_text('#app'))
+    page.fill('textarea[data-id=q1]', 'Muy útil'); page.click('#zhBar button[data-z=sc]'); page.wait_for_timeout(100)
     check('切換繁簡：已經寫的答案還在', page.input_value('textarea[data-id=q1]') == 'Muy útil')
+    page.click('#zhBar button[data-z=tc]'); page.wait_for_timeout(100)
     page.check('input[name=sv_q2][value=o2]')
     q12 = [q for q in svdocs[path]['qs'] if q['t'] == 'multi'][0]['id']; q11 = [q for q in svdocs[path]['qs'] if q['t'] == 'scale'][0]['id']
     page.check('input[name=sv_%s][value=o1]' % q11)
@@ -1408,6 +1412,47 @@ def survey_public_tests(browser, base):
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
+def lang_link_tests(browser, base):
+    print('\n語言連動：介面和中文字、課程內容簡繁互轉')
+    P = 'portal/%s/' % TID
+    stu = {'v': 1, 'name': 'Pedro', 'archived': False, 'pay': 'single', 'taught': 3, 'tz': '', 'lessons': [],
+           'log': [{'d': '2026-10-24', 'p': '嘴巴过敏'}, {'d': '2026-10-03', 'p': '中秋節'}], 'next': {'n': '外国人/文化差异'}}
+    def login(roster_script=None, init=''):
+        ros = {'email': 'pedro@example.com', 'name': 'Pedro', 'nudge': {'on': False}}
+        if roster_script: ros['script'] = roster_script
+        ctx, page, errs = new_page(browser, base_state({P + 'students/s1': stu, P + 'roster/s1': ros}))
+        if init: page.add_init_script(init)
+        page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+        page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(1500)
+        return ctx, page, errs
+    on = lambda page, sel: page.locator(sel + '.on').count() == 1
+    ctx, page, errs = login('tc')
+    page.click('#langBar button[data-l=sc]'); page.wait_for_timeout(100)
+    check('介面選简：中文字跟著變简，畫面全簡體', on(page, '#zhBar [data-z=sc]') and '下一堂课' in page.inner_text('#app') and '已上课堂数' in page.inner_text('#app'))
+    page.click('#zhBar button[data-z=tc]'); page.wait_for_timeout(100)
+    check('中文字選繁：介面也跟著變繁，畫面全繁體', on(page, '#langBar [data-l=tc]') and '下一堂課' in page.inner_text('#app') and '已上課堂數' in page.inner_text('#app'))
+    page.click('#langBar button[data-l=es]'); page.wait_for_timeout(100)
+    page.click('#zhBar button[data-z=sc]'); page.wait_for_timeout(100)
+    check('介面是 ES：中文字只管中文內容，介面維持 ES', on(page, '#langBar [data-l=es]') and on(page, '#zhBar [data-z=sc]') and 'Próxima clase' in page.inner_text('#app'))
+    page.click('#learnGo'); page.wait_for_timeout(300); txt = page.inner_text('#app')
+    check('上課紀錄：選简時，繁體和簡體的紀錄都顯示簡體', '嘴巴过敏' in txt and '中秋节' in txt and '外国人/文化差异' in txt, txt)
+    page.click('#zhBar button[data-z=tc]'); page.wait_for_timeout(500); txt = page.inner_text('#app')
+    check('上課紀錄：選繁時，簡體的紀錄轉成繁體（台灣用字），原本繁體的不變', '嘴巴過敏' in txt and '中秋節' in txt and '外國人/文化差異' in txt and 'Clases' in txt, txt)
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    ctx, page, errs = login(None, "localStorage.setItem('dc.lang','tc');localStorage.setItem('dc.zh','sc');")
+    check('舊設定衝突（介面繁、中文字簡）：以中文字為準，全站簡體', on(page, '#langBar [data-l=sc]') and on(page, '#zhBar [data-z=sc]') and '下一堂课' in page.inner_text('#app'))
+    ctx.close()
+
+    ctx, page, errs = login('sc', "localStorage.setItem('dc.lang','tc');")
+    check('舊使用者只記過介面選繁：沿用他自己的選擇（繁），不被老師預設蓋掉', on(page, '#langBar [data-l=tc]') and on(page, '#zhBar [data-z=tc]') and '下一堂課' in page.inner_text('#app'))
+    ctx.close()
+
+    ctx, page, errs = login('sc', "localStorage.setItem('dc.lang','es');")
+    check('介面 ES、老師預設中文字簡：中文內容簡體，介面維持 ES', on(page, '#langBar [data-l=es]') and on(page, '#zhBar [data-z=sc]') and 'Próxima clase' in page.inner_text('#app') and '嘴巴过敏' in (page.click('#learnGo') or page.wait_for_timeout(300) or page.inner_text('#app')))
+    ctx.close()
+
+
 def survey_preview_tests(browser, base):
     print('\n問卷調查：老師預覽（看得到送出鈕，但不能按）')
     P = 'portal/%s/' % TID
@@ -1419,7 +1464,7 @@ def survey_preview_tests(browser, base):
     page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(500)
     page.click('[data-sv]'); page.wait_for_timeout(200)
     txt = page.inner_text('#app')
-    check('預覽：看到開頭和切換鈕', '一年了，謝謝你。' in txt and 'Gracias por un año.' in txt and page.locator('[data-svzh]').count() == 2 and page.locator('[data-svfl]').count() == 2, txt[:300])
+    check('預覽：看到開頭（中文跟右上角設定，沒設定時預設簡體）和外語切換鈕（沒有自己的繁簡切換）', '一年了，谢谢你。' in txt and 'Gracias por un año.' in txt and page.locator('[data-svzh]').count() == 0 and page.locator('[data-svfl]').count() == 2, txt[:300])
     check('預覽：看得到「交出問卷」，但是灰的、不能按；題目也不能填', page.locator('button:has-text("交出問卷"), button:has-text("Enviar encuesta")').count() == 1 and page.locator('#app button[disabled]').count() >= 1 and page.locator('textarea[data-id=q1]').is_disabled(), txt[-200:])
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
@@ -1457,6 +1502,7 @@ with sync_playwright() as p:
     survey_tests(browser, base)
     survey_public_tests(browser, base)
     survey_preview_tests(browser, base)
+    lang_link_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)
