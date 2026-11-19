@@ -39,6 +39,7 @@ td.em{min-width:210px}
 .small{font-size:12px}
 a.pv{font-size:13px;color:var(--accent);margin-left:6px}
 .hwrow{border-top:1px solid var(--line);padding:10px 0}
+@media(min-width:700px){.hwrow > .row > .toR{margin-left:auto}}   /* 電腦版：作業／問卷列的按鈕靠右 */
 .hwrow:first-of-type{border-top:0}
 .chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--accent-soft);margin:2px 4px 2px 0}
 .chip.todo{background:#e8e4db;color:#7b7467}.chip.submitted{background:#f0e2c3;color:#5a4624}.chip.graded{background:#dbe7da;color:#35553a}
@@ -387,7 +388,7 @@ function hwHtml(active){
     const p = pool[wid], st = poolState(wid) || {}, total = window.hwTotal ? hwTotal(st) : (p.count || 0);
     const rows = active.map(sid => ({ sid, d: (hw[sid] || {})[wid] })).filter(x => x.d);
     h += `<div class="hwrow" data-wid="${esc(wid)}"><div class="row"><b>${esc(p.name || '（沒有名稱）')}</b><span class="muted small">${total} 分　${esc(fmtTime(p.upd || p.ts))}</span>
-      <button class="tiny quiet" data-a="try" title="用學生的作答畫面自己寫一次，不會存給任何學生">試寫</button><button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
+      <button class="tiny quiet toR" data-a="try" title="用學生的作答畫面自己寫一次，不會存給任何學生">試寫</button><button class="tiny quiet" data-a="assign">${assignOpen === wid ? '收起' : '發給學生'}</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
     if(delOpen === wid) h += delPanelHtml(wid);
     if(rows.length) h += `<div class="small" style="margin-top:4px">${rows.map(x => `<span class="muted">${esc(students[x.sid].name)}</span> ${hwChip(x.d)}${x.d.status !== 'todo' ? `<button class="tiny quiet" data-g="${esc(x.sid)}" data-gw="${esc(wid)}">${x.d.status === 'graded' ? '看批改' : '批改'}</button> ` : ''}`).join('')}</div>`;
     if(assignOpen === wid){
@@ -1354,7 +1355,7 @@ function svHtml(active){
   sids.forEach(id => {
     const s = surveys[id];
     h += `<div class="hwrow" data-svid="${esc(id)}"><div class="row"><b>${esc(s.title)}</b><span class="muted small">${(s.questions || []).length + 1} 題　改於 ${esc(fmtTime(s.updatedAt))}</span>
-      <button class="tiny quiet" data-a="edit">編輯</button><button class="tiny quiet" data-a="pub">${svPub && svPub.id === id ? '收起' : '發布給學生'}</button><button class="tiny quiet" data-a="copy">複製</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
+      <button class="tiny quiet toR" data-a="edit">編輯</button><button class="tiny quiet" data-a="pub">${svPub && svPub.id === id ? '收起' : '發布給學生'}</button><button class="tiny quiet" data-a="copy">複製</button><button class="tiny quiet" data-a="del">刪除</button></div>`;
     if(svPub && svPub.id === id){
       h += `<div style="margin-top:8px"><div class="row small"><span class="muted">中文</span><label><input type="radio" name="svzh" value="tc" ${svPub.zh === 'tc' ? 'checked' : ''}> 繁體</label><label><input type="radio" name="svzh" value="sc" ${svPub.zh === 'sc' ? 'checked' : ''}> 簡體</label>
         <span class="muted" style="margin-left:10px">外語</span><label><input type="radio" name="svfl" value="es" ${svPub.fl === 'es' ? 'checked' : ''}> Español</label><label><input type="radio" name="svfl" value="en" ${svPub.fl === 'en' ? 'checked' : ''}> English</label></div>
@@ -1369,7 +1370,7 @@ function svHtml(active){
   rids.forEach(rid => {
     const r = svRounds[rid], en = svRoundEntries(rid), done = en.filter(x => x.status === 'submitted').length;
     h += `<div class="hwrow" data-rid="${esc(rid)}"><div class="row"><b>${esc(r.title)}</b><span class="muted small">${esc(fmtTime(r.createdAt))}　${r.zh === 'sc' ? '簡' : '繁'}＋${r.fl === 'en' ? 'EN' : 'ES'}　${r.pub ? `公開連結（${r.open === false ? '已關閉' : '開放中'}）　收到 ${done} 份` : `已交 ${done}／${en.length}`}</span>
-      <button class="tiny quiet" data-a="res">${svView === rid ? '收起結果' : '看結果'}</button><button class="tiny quiet" data-a="delr">刪除</button></div></div>`;
+      <button class="tiny quiet toR" data-a="res">${svView === rid ? '收起結果' : '看結果'}</button><button class="tiny quiet" data-a="delr">刪除</button></div></div>`;
   });
   h += '</div>';
   if(svView && svRounds[svView]) h += svResultsHtml(svView, active);
