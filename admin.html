@@ -209,6 +209,12 @@ function payText(s){
   if(s.pay === 'single') return '單堂付費';
   return '—';
 }
+function spanCell(s){
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(String(s.since || '')) ? s.since : '';
+  const d = new Date(), today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const t = iso ? nudSpan(iso, today, 'tc') : '';
+  return t ? `<div>${esc(t)}</div><div class="muted">${esc(iso)}</div>` : '<span class="muted">—</span>';
+}
 function fmtTime(ms){
   if(!ms) return '—';
   const d = new Date(ms), p = n => String(n).padStart(2, '0');
@@ -1455,11 +1461,12 @@ function render(){
   }else{
     html += `<div class="card"><h2>對照表：學生 ↔ 電子郵件（${active.length} 位在學）</h2>
       ${missingTz ? `<div class="muted small" style="margin-bottom:6px">有 ${missingTz} 位學生還沒設定所在地。</div>${helpBox('tz', '學生頁會先用他們裝置的時區；到日誌「課表及學生設定」選好所在地就會自動帶入。')}` : ''}
-      <table><thead><tr><th>學生</th><th>付費</th><th>已上</th><th>時區</th><th>日誌更新</th><th>中文字</th><th>登入用電子郵件</th><th></th></tr></thead><tbody>`;
+      <table><thead><tr><th>學生</th><th>付費</th><th>已上</th><th>上了多久</th><th>時區</th><th>日誌更新</th><th>中文字</th><th>登入用電子郵件</th><th></th></tr></thead><tbody>`;
     active.forEach(id => {
       const s = students[id], r = roster[id], m = rowMsg[id];
       html += `<tr data-id="${esc(id)}">
         <td><b>${esc(s.name)}</b></td><td${s.pay === 'package' && s.remaining < 0 ? ' class="err"' : ''}>${esc(payText(s))}</td><td>${s.taught || 0} 堂</td>
+        <td class="small" style="white-space:nowrap">${spanCell(s)}</td>
         <td class="small">${esc(s.tz || '（沒設定）')}</td><td class="small">${esc(fmtTime(s.updatedAt))}</td>
         <td>${r ? `<select class="zhSel" title="學生頁一打開時的中文字；學生自己改過就以他的為準"><option value="sc"${r.script !== 'tc' ? ' selected' : ''}>簡體</option><option value="tc"${r.script === 'tc' ? ' selected' : ''}>繁體</option></select>` : '<span class="muted small">—</span>'}</td>
         <td class="em"><input type="email" class="emIn" value="${esc(drafts[id] != null ? drafts[id] : (r ? r.email : ''))}" placeholder="student@example.com" autocapitalize="off"></td>
