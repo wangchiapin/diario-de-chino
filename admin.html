@@ -186,6 +186,7 @@ let reqs = {}, reqSel = {}, reqMsg = {};
 let bbPosts = [], bbWall = [], bbDm = [], members = {}, membersLoaded = false, membersErr = false, memSyncing = false, dmSeen = {}, bbTab = 'board', bbOpened = {}, bbDraft = { board: '', reply: {} }, bbMsg = null;   // 公布欄、公開留言、私訊、學生名單鏡像
 let placements = [], notes = {}, noteDraft = {}, noteMsg = '';   // placements：能力分級測驗結果；notes：老師專用的學生備註（學生讀不到）
 let gmap = {};   // 老師手動分的語法點冊別：標題 → 冊（0＝不分類），存在 config/gmap
+let vocFix = { open: false, text: '', prev: null };   // 補齊翻譯面板：貼上的內容、預覽結果
 let lists = {}, marks = {}, vocSid = '', vocDraft = { w: '', p: '' }, vocMsg = null, vocShowHidden = false;   // lists：學生代號 → 老師為他存的單字／語法清單；marks：學生標的「還不熟」
 let adminTab = (function(){ try{ return localStorage.getItem('dc.adminTab') || 'stu'; }catch(e){ return 'stu'; } })();
 const helpOpen = new Set();
@@ -508,6 +509,48 @@ async function vocSave(sid, mutate, okText){
   catch(err){ console.error(err); vocMsg = { text: err && err.code === 'permission-denied' ? '沒有權限：Firestore 規則還沒加第八批（見 README）' : '儲存失敗，請再試一次', ok: false }; }
   render();
 }
+// ── 補齊翻譯：把缺西文或英文的字集合起來 → 給 AI 的提示詞 → 貼回來預覽 → 只填空的欄位
+const vocMissing = sid => vocTotals(sid).words.filter(w => !w.es || !w.en);
+function vocFixPrompt(sid){
+  const lines = vocMissing(sid).map(w => w.zh + ((w.es || w.en) ? `　（已有：${w.es ? '西文 ' + w.es : ''}${w.es && w.en ? '；' : ''}${w.en ? '英文 ' + w.en : ''}）` : ''));
+  return `我會給你一批中文單字，請幫我補上西班牙文和英文，給西班牙語母語的華語學習者用。有些字後面括號裡標了「已有」，代表那一種翻譯我已經確認過了，請原樣照抄，只補缺的那一種。
+
+輸出規則：
+1. 只輸出結果，不要任何說明、標題、編號或前後文字。
+2. 每個單字一行，格式固定是：中文 西班牙文 ｜ 英文
+3. 中文和西班牙文之間用一個空格；西班牙文和英文之間用全形的「｜」。
+4. 中文照我給的原樣寫，不要轉成別的字體，不要加拼音，不要把括號裡的「已有」寫進結果。
+5. 取最常用、最適合初學者的意思；一個字最多兩個意思，用逗號分開。
+6. 動詞西班牙文用原形，名詞不要加冠詞。
+7. 請放在程式碼區塊裡，方便我直接複製。
+
+範例：
+冰 hielo ｜ ice
+便利商店 tienda de conveniencia ｜ convenience store
+
+以下是要補的單字：
+` + lines.join('\n') + '\n';
+}
+// 解析 AI 回覆，對照缺翻譯的字，只算出「空欄位要填什麼」
+function vocFixPreview(sid, txt){
+  const miss = {}; vocMissing(sid).forEach(w => { miss[w.zh] = w; });
+  const fill = [], bad = [], seen = {};
+  String(txt || '').replace(/```[a-z]*/gi, '').split('\n').forEach(raw => {
+    const line = raw.trim(); if(!line) return;
+    const m = line.match(/^([㐀-鿿]+)\s*(.*)$/);
+    if(!m){ bad.push(line); return; }
+    const w = miss[m[1]];
+    if(!w){ bad.push(line); return; }
+    const bar = m[2].search(/[｜|]/);
+    const es = (bar >= 0 ? m[2].slice(0, bar) : m[2]).trim(), en = bar >= 0 ? m[2].slice(bar + 1).replace(/[｜|]/g, ',').trim() : '';
+    const nEs = !w.es && es ? es : '', nEn = !w.en && en ? en : '';
+    if(!nEs && !nEn){ bad.push(line); return; }
+    seen[w.zh] = 1;
+    fill.push({ zh: w.zh, py: w.py || '', es: nEs, en: nEn, oldEs: w.es || '', oldEn: w.en || '' });
+  });
+  const left = Object.keys(miss).filter(z => !seen[z]);
+  return { fill, bad, left };
+}
 function gramCardHtml(active){
   const seen = {}, un = [];
   active.forEach(id => learnGrammar(vocTotals(id).points, window.GRAMMAR_MAP, gmap).unmatched.forEach(n => { if(!seen[n]){ seen[n] = 1; un.push(n); } }));
@@ -539,12 +582,30 @@ function plcHtml(active){
     <div class="muted small" style="margin-bottom:8px">學生頁和獨立網頁測完都會自動存在這裡，新的在前。這只是參考，不是考試成績。</div>
     ${placements.length ? `<table><thead><tr><th>時間</th><th>名字</th><th>程度</th><th>答對</th><th>各級答對</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有人做過測驗</div>'}</div>`;
 }
+function vfPanelHtml(sid){
+  const p = vocFix.prev;
+  let pv = '';
+  if(p){
+    pv = p.fill.length ? `<div class="small" style="margin:8px 0 4px"><b>預覽：會補上 ${p.fill.length} 個字</b>（只填空的格子，已經有的不會動）</div>
+      <table><thead><tr><th>單字</th><th>西文意思</th><th>英文意思</th></tr></thead><tbody>${p.fill.map(f => `<tr><td><b>${esc(f.zh)}</b></td><td>${f.es ? `<span class="ok">＋ ${esc(f.es)}</span>` : esc(f.oldEs)}</td><td>${f.en ? `<span class="ok">＋ ${esc(f.en)}</span>` : esc(f.oldEn)}</td></tr>`).join('')}</tbody></table>
+      <div class="row" style="margin:8px 0 4px"><button id="vfApply">確定匯入</button><button id="vfCancel" class="quiet">重貼</button></div>` : '<div class="small err" style="margin:8px 0">沒有對到任何可補的字，請確認貼的是 AI 回覆的內容。</div>';
+    if(p.bad.length) pv += `<div class="small err">這 ${p.bad.length} 行沒用到（格式不對、不在缺翻譯的清單、或欄位本來就有）：<br>${p.bad.map(esc).join('<br>')}</div>`;
+    if(p.left.length) pv += `<div class="small muted" style="margin-top:4px">AI 沒回到的字（${p.left.length}）：${p.left.map(esc).join('、')}</div>`;
+  }
+  return `<div class="card" style="background:#faf7f0">
+    <div class="small"><b>① 複製提示詞，貼給 AI</b>（${vocMissing(sid).length} 個字；已有的那一種翻譯會一起附上，請 AI 只補缺的）</div>
+    <div class="row" style="margin:6px 0"><button id="vfCopy">複製 AI 提示詞</button><span class="small ok" id="vfCopyMsg"></span></div>
+    <div class="small" style="margin-top:8px"><b>② 把 AI 的回覆貼在這裡</b></div>
+    <textarea id="vfTx" class="nudta" placeholder="做菜 cocinar ｜ cook" style="min-height:110px">${esc(vocFix.text)}</textarea>
+    <div class="row" style="margin:6px 0 0"><button id="vfPrev">預覽</button></div>${pv}</div>`;
+}
 function vocHtml(active){
   if(!active.length) return '<div class="card muted">還沒有學生</div>';
   if(!vocSid || active.indexOf(vocSid) < 0) vocSid = active[0];
   const sid = vocSid, tot = vocTotals(sid), L = vocList(sid), m = vocMsg;
   const opts = active.map(id => `<option value="${esc(id)}" ${id === sid ? 'selected' : ''}>${esc(students[id].name)}</option>`).join('');
   const noPy = tot.words.filter(w => !w.py).length;
+  const nMiss = tot.words.filter(w => !w.es || !w.en).length;
   const rows = tot.words.map(w => `<tr data-z="${esc(w.zh)}"><td><b>${esc(w.zh)}</b><div class="muted small">${w.src === 'tc' ? '自己加的' : '練習單'}</div></td>
       <td><input class="vPy" value="${esc(w.py)}" placeholder="拼音" aria-label="拼音"></td><td><input class="vEs" value="${esc(w.es)}" placeholder="西文意思" aria-label="西文意思"></td><td><input class="vEn" value="${esc(w.en || '')}" placeholder="英文意思" aria-label="英文意思"></td>
       <td class="vAct"><button class="vSave">存</button> <button class="quiet vHide">${w.src === 'tc' ? '刪除' : '隱藏'}</button></td></tr>`).join('');
@@ -569,6 +630,8 @@ function vocHtml(active){
         <input id="stWords" type="number" min="0" max="20000" placeholder="起始單字量（選填）" value="${esc((L.start || {}).words || '')}" style="width:170px">
         <button id="stSave">存</button></div></div>
     <div class="card vw"><h2>單字（${tot.words.length}）</h2>
+      ${nMiss ? `<div class="row" style="margin-bottom:8px"><button id="vfOpen" class="quiet">${vocFix.open ? '收起補齊翻譯' : `補齊翻譯（${nMiss} 個缺）`}</button><span class="muted small">缺西文或英文的字，一次請 AI 補</span></div>` : ''}
+      ${nMiss && vocFix.open ? vfPanelHtml(sid) : ''}
       ${noPy ? `<div class="row" style="margin-bottom:8px"><button id="vocFill">全部補上拼音（${noPy} 個）</button><span class="muted small">只補還沒有拼音的</span></div>` : ''}
       ${tot.words.length ? `<table><thead><tr><th>單字</th><th>拼音</th><th>西文意思</th><th>英文意思</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="muted small">還沒有單字</div>'}
       ${hiddenHtml}</div>
@@ -580,7 +643,7 @@ function vocHtml(active){
 function bindVoc(root){
   const sel = root.querySelector('#vocSel'); if(!sel) return;
   const sid = vocSid;
-  sel.onchange = e => { vocSid = e.target.value; vocMsg = null; noteMsg = ''; render(); };
+  sel.onchange = e => { vocSid = e.target.value; vocMsg = null; vocFix.prev = null; vocFix.text = ''; noteMsg = ''; render(); };
   const nt = root.querySelector('#noteTx'); if(nt) nt.oninput = e => { noteDraft[sid] = e.target.value; };
   const ns = root.querySelector('#noteSave'); if(ns) ns.onclick = async () => {
     const text = (root.querySelector('#noteTx').value || '').trim().slice(0, 2000);
@@ -631,6 +694,28 @@ function bindVoc(root){
     if(!pts.length){ vocMsg = { text: '請輸入語法點', ok: false }; return render(); }
     const known = {}; vocTotals(sid).points.forEach(x => { known[x.n] = 1; });
     vocSave(sid, cur => { pts.forEach(n => { if(!known[n] && !cur.points.some(x => x.n === n)) cur.points.push({ n, t: Date.now() }); const h = cur.hideP.indexOf(n); if(h >= 0) cur.hideP.splice(h, 1); }); }, `✓ 已加入語法點`).then(() => { vocDraft.p = ''; });
+  });
+  on('vfOpen', () => { vocFix.open = !vocFix.open; render(); });
+  on('vfCopy', async () => {
+    const t = vocFixPrompt(sid); let ok = true;
+    try{ await navigator.clipboard.writeText(t); }
+    catch(e){ const x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); try{ ok = document.execCommand('copy'); }catch(e2){ ok = false; } x.remove(); }
+    const m = root.querySelector('#vfCopyMsg'); if(m){ m.textContent = ok ? '已複製，貼給 AI 就好' : '複製失敗'; m.className = 'small ' + (ok ? 'ok' : 'err'); }
+  });
+  const vfTx = root.querySelector('#vfTx'); if(vfTx) vfTx.oninput = e => { vocFix.text = e.target.value; };
+  on('vfPrev', () => { vocFix.prev = vocFixPreview(sid, vocFix.text); render(); });
+  on('vfCancel', () => { vocFix.prev = null; vocFix.text = ''; render(); });
+  on('vfApply', () => {
+    const fill = (vocFix.prev || {}).fill || [];
+    vocSave(sid, cur => {
+      fill.forEach(f => {
+        let i = cur.words.findIndex(w => w.zh === f.zh);
+        if(i < 0){ cur.words.push({ zh: f.zh, py: f.py, es: '', en: '' }); i = cur.words.length - 1; }
+        const w = cur.words[i];
+        if(f.es && !w.es) w.es = f.es;
+        if(f.en && !w.en) w.en = f.en;
+      });
+    }, `✓ 已補上 ${fill.length} 個字的翻譯`).then(() => { vocFix.prev = null; vocFix.text = ''; });
   });
   on('vocFill', () => {
     const miss = vocTotals(sid).words.filter(w => !w.py);

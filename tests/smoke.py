@@ -1018,6 +1018,17 @@ def voc_admin_tests(browser, base):
     check('語法點分冊：對不上的列出來、可以選冊', page.locator('.gmSel').count() >= 1 and '語法點分冊' in page.inner_text('#app'))
     page.click('#vocFill'); page.wait_for_timeout(300)
     check('全部補上拼音', all(x['py'] for x in page.evaluate("window.__fb.store[%r].words" % L1)) and page.locator('#vocFill').count() == 0)
+    # 補齊翻譯：只補目前學生、先預覽、只填空欄位
+    check('補齊翻譯：有缺翻譯時出現按鈕（做菜缺英文）', page.locator('#vfOpen').count() == 1 and '缺' in page.inner_text('#vfOpen'))
+    page.click('#vfOpen'); page.wait_for_timeout(200)
+    page.fill('#vfTx', '```\n做菜 cambiado ｜ cook\n亂碼 foo ｜ bar\n```'); page.click('#vfPrev'); page.wait_for_timeout(200)
+    t = page.inner_text('[data-p=voc]')
+    check('預覽：做菜補英文 cook、已有的西文不動；不在清單的字列在沒用到', '預覽' in t and 'cook' in t and 'cambiado' not in t and '亂碼' in t and page.locator('#vfApply').count() == 1, t[:400])
+    check('預覽階段還沒寫入', not any(x.get('en') for x in page.evaluate("window.__fb.store[%r].words" % L1) if x['zh'] == '做菜'))
+    page.click('#vfApply'); page.wait_for_timeout(300)
+    w = [x for x in page.evaluate("window.__fb.store[%r].words" % L1) if x['zh'] == '做菜'][0]
+    check('確定匯入：英文寫進去，西文維持 cocinar', w['en'] == 'cook' and w['es'] == 'cocinar', w)
+    check('匯入完不影響另一位學生', not any(x['zh'] == '做菜' for x in page.evaluate("window.__fb.store['portal/%s/lists/s2'].words" % TID)))
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
 
