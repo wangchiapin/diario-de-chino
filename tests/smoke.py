@@ -1491,6 +1491,100 @@ def survey_preview_tests(browser, base):
     check('公開頁：切 EN＋简：開頭外語、題目、介面都變，名字和答案不會不見', 'Thanks for a year.' in txt and 'How is it?' in txt and '你觉得课程如何' in txt and 'Your name' in txt and page.input_value('#nm') == 'Luis' and page.input_value('textarea[data-id=q1]') == 'bien', txt[:300])
     check('沒有錯誤訊息', not errs, errs); ctx.close()
 
+def theme_tests(browser, base):
+    import json
+    print('\n節慶主題（學生頁＋後台）')
+    CFG = 'portal/%s/config/theme' % TID
+    teacher = {'teacher@example.com': {'password': 'tpass12', 'uid': TID, 'emailVerified': True}}
+    def mk(date, extra=None, lg='es', width=390):
+        ctx, page, errs = new_page(browser, base_state(extra))
+        page.set_viewport_size({'width': width, 'height': 800})
+        page.clock.set_fixed_time(date + 'T12:00:00')
+        page.add_init_script("localStorage.setItem('dc.lang','%s');" % lg)
+        page.goto(base + 'index.html?t=' + TID); page.wait_for_timeout(300)
+        page.fill('#em', 'pedro@example.com'); page.fill('#pw', 'secret1'); page.click('#btnAuth'); page.wait_for_timeout(700)
+        return ctx, page, errs
+    theme = lambda page: page.evaluate("document.documentElement.getAttribute('data-theme')")
+
+    # 1. 12/24 自動：聖誕主題＋所有裝飾
+    ctx, page, errs = mk('2026-12-24')
+    check('12/24 自動：套用聖誕主題', theme(page) == 'xmas')
+    check('問候卡有聖誕紅、祝福語（西文）', page.locator('.hello .pt-deco').count() == 1 and '¡Feliz Navidad!' in page.inner_text('.hello .pt-deco'))
+    check('頂部燈串、底部小場景、飄雪都有', page.locator('#ptLights').count() == 1 and page.locator('#ptTrees svg').count() >= 7 and page.locator('#ptSnow i').count() >= 8)
+    check('日曆 12/25 有金星星，別天沒有', page.locator('.day[data-d="2026-12-25"] .pt-star').count() == 1 and page.locator('.pt-star').count() == 1)
+    check('卡片標題前有小雪花（CSS 標記）', page.evaluate("getComputedStyle(document.querySelector('.card h2'),'::before').content") == '"❄"')
+    check('背景變成偏灰綠', page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(231, 235, 225)')
+    check('飄雪不擋點擊', page.evaluate("getComputedStyle(document.getElementById('ptSnow')).pointerEvents") == 'none')
+    check('手機：沒有橫向捲動', page.evaluate("(function(){var w=document.querySelector('.wrap');return w.scrollWidth<=w.clientWidth+1})()"))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 2. 11/21 自動：沒有主題、原本的樣子
+    ctx, page, errs = mk('2026-11-21')
+    check('11/21 自動：沒有主題、沒有任何裝飾', theme(page) is None and page.locator('.pt-deco,#ptLights,#ptTrees,#ptSnow,.pt-star').count() == 0)
+    check('背景是原本的米色', page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(236, 232, 223)')
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 3. 後台設定：強制／關閉／亂寫
+    ctx, page, errs = mk('2026-06-10', {CFG: {'mode': 'force', 'id': 'xmas'}})
+    check('6/10 但後台強制聖誕：套用', theme(page) == 'xmas' and page.locator('.hello .pt-deco').count() == 1); ctx.close()
+    ctx, page, errs = mk('2026-12-24', {CFG: {'mode': 'off'}})
+    check('12/24 但後台關閉：原本的樣子', theme(page) is None and page.locator('#ptTrees,.pt-deco').count() == 0); ctx.close()
+    ctx, page, errs = mk('2026-12-24', {CFG: {'mode': 'force', 'id': 'nope'}})
+    check('強制到不存在的節慶：當作沒有主題，不會壞', theme(page) is None and not errs, errs); ctx.close()
+    ctx, page, errs = mk('2026-12-24', {CFG: {'mode': 'auto'}})
+    check('後台設自動：照日期', theme(page) == 'xmas'); ctx.close()
+
+    # 4. 語言
+    for lg, want in [('en', 'Merry Christmas!'), ('tc', '聖誕快樂'), ('sc', '圣诞快乐')]:
+        ctx, page, errs = mk('2026-12-24', None, lg)
+        check('語言 %s：祝福語 %s' % (lg, want), want in page.inner_text('.hello .pt-deco')); ctx.close()
+
+    # 5. 窄手機與電腦版版面
+    ctx, page, errs = mk('2026-12-24', None, 'es', 340)
+    check('340px 窄手機：沒有橫向捲動、底部小場景會換行不爆版', page.evaluate("(function(){var w=document.querySelector('.wrap');return w.scrollWidth<=w.clientWidth+1})()"))
+    ctx.close()
+    ctx, page, errs = mk('2026-12-24', None, 'es', 1280)
+    boxes = page.evaluate("""(function(){var q=function(s){var e=document.querySelector(s);if(!e)return null;var r=e.getBoundingClientRect();return [r.left,r.right,r.top,r.bottom]};
+      return {deco:q('.hello .pt-deco'),tz:q('.hello .tzbox'),hi:q('.hello .hi'),holly:q('.hello .pt-hollyd svg'),sm:q('.hello .pt-smd svg'),card:q('.hello')}})()""")
+    hit = lambda a, b: not (a[1] <= b[0] or b[1] <= a[0] or a[3] <= b[2] or b[3] <= a[2])
+    check('電腦版：祝福語、時區選單、名字互不重疊', boxes['deco'] and boxes['tz'] and not hit(boxes['deco'], boxes['tz']) and not hit(boxes['deco'], boxes['hi']), boxes)
+    check('電腦版：冬青葉、雪人不蓋到時區選單和祝福語', not hit(boxes['holly'], boxes['tz']) and not hit(boxes['sm'], boxes['tz']) and not hit(boxes['holly'], boxes['deco']), boxes)
+    check('電腦版：三欄版面還在', page.evaluate("getComputedStyle(document.querySelector('.home')).display") == 'grid')
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
+    # 6. 老師預覽也會套用
+    ctx, page, errs = new_page(browser, base_state({CFG: {'mode': 'force', 'id': 'xmas'}}, teacher))
+    page.clock.set_fixed_time('2026-06-10T12:00:00')
+    page.add_init_script("window.__fb.autoLogin = 'teacher@example.com';")
+    page.goto(base + 'index.html?preview=s1'); page.wait_for_timeout(600)
+    check('老師預覽：也看得到強制的聖誕主題', theme(page) == 'xmas' and not errs, errs); ctx.close()
+
+    # 7. 後台：設定分頁的主題卡
+    def admin(date, extra=None):
+        ctx, page, errs = new_page(browser, base_state(extra, teacher))
+        page.clock.set_fixed_time(date + 'T12:00:00')
+        page.goto(base + 'admin.html'); page.wait_for_timeout(300)
+        page.fill('#em', 'teacher@example.com'); page.fill('#pw', 'tpass12'); page.click('#go'); page.wait_for_timeout(600)
+        tab(page, 'set')
+        return ctx, page, errs
+    ctx, page, errs = admin('2026-12-24')
+    txt = page.inner_text('[data-p=set]')
+    check('後台：顯示現在學生看到聖誕主題（自動）與套用範圍 12/22–12/27', '聖誕節主題' in txt and '自動' in txt and '12/22–12/27' in txt, txt[:300])
+    check('後台：預設選「自動依日期」', page.locator('input[name=thMode][value=auto]').is_checked())
+    page.check('input[name=thMode][value=off]'); page.click('#thSave'); page.wait_for_timeout(300)
+    c = page.evaluate("window.__fb.store['%s']" % CFG)
+    check('後台：選關閉並儲存 → 存成 off', c['mode'] == 'off' and 'id' not in c and '已儲存' in page.inner_text('[data-p=set]'), c)
+    check('後台：關閉後，文字改成原本的樣子', '原本的樣子' in page.inner_text('[data-p=set]'))
+    page.check('input[name=thMode][value=force]'); page.select_option('#thFest', 'xmas'); page.click('#thSave'); page.wait_for_timeout(300)
+    c = page.evaluate("window.__fb.store['%s']" % CFG)
+    check('後台：手動指定聖誕節 → 存成 force＋xmas', c['mode'] == 'force' and c['id'] == 'xmas', c)
+    page.check('input[name=thMode][value=auto]'); page.click('#thSave'); page.wait_for_timeout(300)
+    check('後台：改回自動 → 存成 auto', page.evaluate("window.__fb.store['%s'].mode" % CFG) == 'auto')
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+    ctx, page, errs = admin('2026-06-10')
+    check('後台：平常日自動 → 顯示沒有節慶、原本的樣子', '沒有節慶' in page.inner_text('[data-p=set]'))
+    check('沒有錯誤訊息', not errs, errs); ctx.close()
+
 srv, base = serve()
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
@@ -1514,6 +1608,7 @@ with sync_playwright() as p:
     survey_public_tests(browser, base)
     survey_preview_tests(browser, base)
     lang_link_tests(browser, base)
+    theme_tests(browser, base)
     browser.close()
 print('\n' + ('有 %d 項沒通過（通過 %d 項）' % (failed, passed) if failed else '全部通過（%d 項）' % passed) + '\n')
 sys.exit(1 if failed else 0)

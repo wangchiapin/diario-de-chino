@@ -16,6 +16,7 @@ vm.runInContext(fs.readFileSync(path.join(root, 'portal-learn.js'), 'utf8'), ctx
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-board.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-survey.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(root, 'portal-pinyin.js'), 'utf8') + ';this.symToZhuyin = symToZhuyin;', ctx);
+vm.runInContext(fs.readFileSync(path.join(root, 'portal-theme.js'), 'utf8'), ctx);
 const C = name => ctx[name];
 const J = x => JSON.stringify(JSON.parse(JSON.stringify(x)));
 
@@ -803,6 +804,48 @@ test('翻譯：中文不用翻；Google 翻譯連結帶來源語言、目標繁�
   const u = C('svGoogleTranslateUrl')('Hola, ¿qué tal?', 'es');
   assert.ok(u.indexOf('sl=es') > -1 && u.indexOf('tl=zh-TW') > -1 && u.indexOf(encodeURIComponent('Hola, ¿qué tal?')) > -1);
   assert.ok(C('svGoogleTranslateUrl')('x'.repeat(5000)).length < 1700);
+});
+
+console.log('\n節慶主題（日期判斷與設定）');
+test('聖誕節：12/22 到 12/27 才套用（前 3 天、後 2 天）', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2026-12-21', '2026-12-22', '2026-12-25', '2026-12-27', '2026-12-28'].map(pick)), J([null, 'xmas', 'xmas', 'xmas', null]));
+});
+test('跨年：1 月到 11 月沒有聖誕主題；每一年都一樣', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-01-01', '2026-06-15', '2026-11-30', '2027-12-23', '2028-12-26'].map(pick)), J([null, null, null, 'xmas', 'xmas']));
+});
+test('設定：自動／關閉／強制；強制到不存在的節慶就當沒有', () => {
+  const res = C('ptResolve');
+  assert.strictEqual(J([res(null, '2026-12-24'), res({ mode: 'auto' }, '2026-12-24'), res({ mode: 'off' }, '2026-12-24'), res({ mode: 'force', id: 'xmas' }, '2026-06-01'), res({ mode: 'force', id: 'nope' }, '2026-12-24'), res({ mode: 'auto' }, '2026-06-01')]),
+    J(['xmas', 'xmas', null, 'xmas', null, null]));
+});
+test('範圍文字：給後台顯示 12/22–12/27', () => {
+  assert.strictEqual(C('ptRangeText')('xmas', 2026), '12/22–12/27');
+});
+test('兩個節慶重疊：離節慶當天近的優先（用暫時加的假節慶驗證）', () => {
+  vm.runInContext("PT_FEST.push({ id: 'fakeA', name: { tc: 'A' }, date: function(){ return [12, 28]; } })", ctx);
+  try {
+    const pick = C('ptPick');
+    assert.strictEqual(J(['2026-12-24', '2026-12-25', '2026-12-26', '2026-12-28', '2026-12-30'].map(pick)), J(['xmas', 'xmas', 'xmas', 'fakeA', 'fakeA']));
+  } finally { vm.runInContext("PT_FEST.pop()", ctx); }
+  assert.strictEqual(C('ptPick')('2026-12-28'), null);
+});
+test('每個節慶都有四種語言名稱、問候語和配色', () => {
+  vm.runInContext("PT_FEST.forEach(function(f){ ['es','en','tc','sc'].forEach(function(l){ if(!f.name[l] || !PT_GREET[f.id][l]) throw new Error(f.id + ' 缺 ' + l); }); if(!PT_ASSETS[f.id] || !PT_ASSETS[f.id].css) throw new Error(f.id + ' 沒有配色'); })", ctx);
+});
+test('日曆小記號：只有節慶當天有；沒套用主題時一律沒有', () => {
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'xmas' })", ctx);
+  assert.ok(C('ptDayMark')('2026-12-25').indexOf('pt-star') > 0 && C('ptDayMark')('2026-12-24') === '');
+  vm.runInContext("ptSetCfg({ mode: 'off' })", ctx);
+  assert.strictEqual(C('ptDayMark')('2026-12-25'), '');
+  assert.strictEqual(C('ptHelloDeco')('es'), '');
+});
+test('問候語：西文、英文、繁體、簡體各一套', () => {
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'xmas' })", ctx);
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Navidad!') > 0 && h('en').indexOf('Merry Christmas!') > 0 && h('tc').indexOf('聖誕快樂') > 0 && h('sc').indexOf('圣诞快乐') > 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');

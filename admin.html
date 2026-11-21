@@ -159,6 +159,7 @@ td.em{min-width:260px}
 <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.29.5/dist/index.js"></script>
 <script src="vendor/opencc-t2cn.js"></script>
 <script src="portal-hw.js"></script>
+<script src="portal-theme.js"></script>
 <script src="portal-nudge.js"></script>
 <script src="portal-learn.js"></script>
 <script src="grammar-map.js"></script>
@@ -836,6 +837,35 @@ function markDmSeen(sid){
   setDoc(doc(db, 'portal', uid, 'config', 'dmSeen'), Object.assign({}, dmSeen)).catch(e => console.error(e));
 }
 
+/* 節慶主題（學生頁的配色與小裝飾）：自動依日期／強制某個節慶／關閉 */
+let themeCfg = null, themeMsg = null;
+function themeHtml(){
+  const mode = themeCfg && (themeCfg.mode === 'off' || themeCfg.mode === 'force') ? themeCfg.mode : 'auto';
+  const fid = themeCfg && ptFestById(themeCfg.id) ? themeCfg.id : PT_FEST[0].id;
+  const y = new Date().getFullYear();
+  const autoId = ptPick(ptTodayIso());
+  const cur = ptResolve(themeCfg, ptTodayIso());
+  const nm = id => { const f = ptFestById(id); return f ? f.name.tc : ''; };
+  const opts = PT_FEST.map(f => `<option value="${esc(f.id)}" ${f.id === fid ? 'selected' : ''}>${esc(f.name.tc)}（${esc(ptRangeText(f.id, y))}）</option>`).join('');
+  return `<div class="card"><h2>學生頁節慶主題（配色與小裝飾）</h2>
+    <div class="small" style="margin-bottom:8px">學生頁現在會顯示：<b>${cur ? esc(nm(cur)) + '主題' : '原本的樣子（沒有節慶）'}</b>${mode === 'auto' ? '（自動：今天' + (autoId ? '在' + esc(nm(autoId)) + '期間' : '沒有節慶') + '）' : mode === 'force' ? '（你手動指定）' : '（你手動關閉）'}</div>
+    <div class="small muted" style="margin-bottom:8px">自動規則：節慶當天的前 3 天到後 2 天套用；兩個節慶重疊時，離哪個節慶當天近就用哪個。</div>
+    <label class="small"><input type="radio" name="thMode" value="auto" ${mode === 'auto' ? 'checked' : ''} style="width:auto"> 自動依日期（預設）</label><br>
+    <label class="small"><input type="radio" name="thMode" value="force" ${mode === 'force' ? 'checked' : ''} style="width:auto"> 手動指定：</label>
+    <select id="thFest" style="width:auto;max-width:100%;margin:4px 0">${opts}</select><br>
+    <label class="small"><input type="radio" name="thMode" value="off" ${mode === 'off' ? 'checked' : ''} style="width:auto"> 關閉（學生頁回到原本的樣子）</label>
+    <div class="row" style="margin-top:10px"><button id="thSave" class="tiny">儲存</button><span class="small ${themeMsg && !themeMsg.ok ? 'err' : 'ok'}">${esc(themeMsg ? themeMsg.text : '')}</span></div>
+    <div class="small muted" style="margin-top:6px">儲存後，學生下次打開（或重新整理）頁面就會看到。</div>
+  </div>`;
+}
+async function themeSave(){
+  const m = (document.querySelector('input[name=thMode]:checked') || {}).value || 'auto';
+  const data = { mode: m, updatedAt: Date.now() };
+  if(m === 'force') data.id = $('thFest').value;
+  try{ await setDoc(doc(db, 'portal', uid, 'config', 'theme'), data); themeCfg = data; themeMsg = { text: '✓ 已儲存', ok: true }; }
+  catch(err){ console.error(err); themeMsg = { text: '儲存失敗，請再試一次', ok: false }; }
+  render();
+}
 function pubHtml(){
   let h = `<div class="card"><h2>發布帳號（讓練習單產生器可以發布作業）</h2>
     ${helpBox('pub1', '第一次使用：先複製下面的「老師代號」，貼到練習單產生器；再把產生器登入 Google 後顯示的「帳號代碼」貼在這裡，按「允許」，這個帳號才能發布作業。')}
@@ -850,6 +880,7 @@ function pubHtml(){
 }
 function bindHw(root, active){
   root.querySelectorAll('[data-g]').forEach(b => b.onclick = () => openGrade(b.dataset.g, b.dataset.gw));
+  const thS = $('thSave'); if(thS) thS.onclick = themeSave;
   const c = $('tidCopy'); if(c) c.onclick = async () => { try{ await navigator.clipboard.writeText(uid); c.textContent = '已複製'; }catch(e){ $('tidShow').select(); } };
   const ac = $('adCode'), al = $('adLabel');
   if(ac){ ac.oninput = () => { adminDraft.code = ac.value; }; al.oninput = () => { adminDraft.label = al.value; }; $('adAdd').onclick = addAdmin; }
@@ -1568,7 +1599,7 @@ function render(){
   if(!TABS.some(t => t[0] === adminTab)) adminTab = 'stu';
   const pane = (k, h) => `<section class="tabp ${adminTab === k ? '' : 'hidden'}" data-p="${k}">${h}</section>`;
   root.innerHTML = `<nav class="tabbar" id="tabbar">${TABS.map(t => `<button class="${adminTab === t[0] ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[0] === 'pub' && bbUnreadTotal ? `<span class="bd">${bbUnreadTotal}</span>` : ''}${t[0] === 'hw' && pend ? `<span class="bd">${pend}</span>` : ''}${t[0] === 'stu' && reqN ? `<span class="bd">${reqN}</span>` : ''}</button>`).join('')}</nav>`
-    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('plc', plcHtml(active)) + pane('sv', svHtml(active)) + pane('pub', bbHtml(active)) + pane('nud', nudHtml(active)) + pane('set', pubHtml());
+    + pane('stu', reqHtml(active) + html) + pane('hw', hwHtml(active)) + pane('voc', vocHtml(active)) + pane('plc', plcHtml(active)) + pane('sv', svHtml(active)) + pane('pub', bbHtml(active)) + pane('nud', nudHtml(active)) + pane('set', themeHtml() + pubHtml());
   root.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => {
     adminTab = b.dataset.t; try{ localStorage.setItem('dc.adminTab', adminTab); }catch(e){}
     root.querySelectorAll('#tabbar button').forEach(x => x.classList.toggle('on', x === b));
@@ -1641,6 +1672,7 @@ function start(){
   const onErr = err => { console.error(err); loadErr = err && err.code === 'permission-denied' ? '沒有權限讀取：Firestore 規則還沒加 portal 那段（見 README）。' : '讀取失敗，請重新整理。'; render(); };
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'students'), snap => { students = {}; snap.forEach(d => students[d.id] = d.data()); studentsLoaded = true; syncHw(); render(); syncMembers(); }, onErr));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'hwPool'), snap => { pool = {}; snap.forEach(d => pool[d.id] = d.data()); poolLoaded = true; render(); }, err => { console.error(err); poolLoaded = true; render(); }));
+  unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'theme'), s => { themeCfg = s.exists() ? s.data() : null; render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(doc(db, 'portal', uid, 'config', 'nudge'), s => { nudCfg = s.exists() ? s.data() : null; render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(collection(db, 'portal', uid, 'requests'), snap => { reqs = {}; snap.forEach(d => reqs[d.id] = d.data()); render(); }, err => console.error(err)));
   unsubs.push(onSnapshot(query(collection(db, 'portal', uid, 'board'), orderBy('ts', 'desc'), limit(50)), snap => { bbPosts = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); renderSoftA(); }, err => console.error(err)));

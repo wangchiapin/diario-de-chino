@@ -241,6 +241,7 @@ button.link{background:none;border:0;color:var(--accent);font:inherit;font-size:
 <script src="vendor/opencc-t2cn.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.29.5/dist/index.js"></script>
 <script src="portal-core.js"></script>
+<script src="portal-theme.js"></script>
 <script src="portal-hw.js"></script>
 <script src="portal-nudge.js"></script>
 <script src="portal-learn.js"></script>
@@ -593,7 +594,7 @@ function renderHome(root){
     const sts = list.map(v => pcStatus(v, now));
     // 同一天有好幾堂時：還有沒上的課 > 已上 > 請假／沒上課
     const st = sts.some(x => x === 'upcoming' || x === 'now') ? 'st-up' : sts.includes('done') ? 'st-done' : sts.length ? 'st-off' : '';
-    grid += `<button class="day ${c.inMonth ? '' : 'out'} ${st} ${c.date === todayLocal ? 'today' : ''} ${c.date === selDay ? 'sel' : ''}" data-d="${c.date}"><span>${+c.date.slice(8)}</span></button>`;
+    grid += `<button class="day ${c.inMonth ? '' : 'out'} ${st} ${c.date === todayLocal ? 'today' : ''} ${c.date === selDay ? 'sel' : ''}" data-d="${c.date}"><span>${+c.date.slice(8)}</span>${ptDayMark(c.date)}</button>`;
   });
   const dayList = groups[selDay] || [];
   const detail = dayList.length
@@ -606,7 +607,7 @@ function renderHome(root){
   const srcLabel = tzSource() === 'teacher' ? T('tzTeacher') : tzSource() === 'device' ? T('tzDevice') : '';
 
   root.innerHTML = `<div class="home">
-    <div class="card hello"><div class="muted hi">${esc(T('hello', { name: studentDoc.name || '' }))}</div><label class="tzbox muted" title="${esc(srcLabel)}">${esc(T('timezone'))}<select id="tzSel2">${opts}</select></label></div>
+    <div class="card hello"><div class="muted hi">${esc(T('hello', { name: studentDoc.name || '' }))}</div>${ptHelloDeco(lang)}<label class="tzbox muted" title="${esc(srcLabel)}">${esc(T('timezone'))}<select id="tzSel2">${opts}</select></label></div>
     <div class="colA">
     <div class="it" style="order:1"><div class="card"><h2>${esc(T('nextClass'))}</h2>${nextHtml}</div></div>
     <div class="it" style="order:5">${stats}${stats2}</div>
@@ -1393,6 +1394,11 @@ function svActionDraw(d){
 /* ───────── 資料：先用 Email 找到自己是哪位學生，再即時讀自己那一份 ───────── */
 let rosterState = 'loading', authReady = false;
 
+async function themeLoad(){
+  if(!tid) return;
+  try{ const s = await getDoc(doc(db, 'portal', tid, 'config', 'theme')); ptSetCfg(s.exists() ? s.data() : null); }catch(e){ ptSetCfg(null); }
+  if(rosterReady && studentDoc) render();
+}
 async function startRoster(){
   const user = auth.currentUser;
   if(!user || !tid || !user.emailVerified){ render(); return; }
@@ -1404,6 +1410,7 @@ async function startRoster(){
     studentId = snap.docs[0].id; rosterData = snap.docs[0].data() || {}; rosterReady = true;
     if(syncLangZh()) paintLang();
     rosterState = 'ok';
+    themeLoad();
     tzSetting = LS.get('dc.tz.' + tid) || null;
     if(unsubDoc) unsubDoc();
     startHw(studentId); startSv(studentId); startBoard(studentId);
@@ -1419,6 +1426,7 @@ async function startRoster(){
 
 function startPreview(user){
   tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
+  themeLoad();
   startHw(PREVIEW); startSv(PREVIEW);
   getDoc(doc(db, 'portal', tid, 'roster', PREVIEW)).then(s => { rosterData = s.exists() ? s.data() : null; }).catch(() => { rosterData = null; }).then(() => { rosterReady = true; if(syncLangZh()) paintLang(); render(); });
   unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
@@ -1430,6 +1438,7 @@ function startPreview(user){
 onAuthStateChanged(auth, user => {
   authReady = true;
   if(unsubDoc){ unsubDoc(); unsubDoc = null; }
+  ptSetCfg(null);
   stopHw(); stopSv(); stopBoard(); learnDataDone = false; nudStop(); reqTried = false; reqOk = false; learnOpen = false; placeOpen = false; placeHist = null; matDoc = null; matLoaded = false; matTried = false; listDoc = null; cloudMarks = null; learnDataTried = false;
   studentDoc = null; docLoaded = false; studentId = null; rosterState = 'loading'; busyErr = busyMsg = '';
   if(PREVIEW){ if(user) startPreview(user); else render(); return; }
