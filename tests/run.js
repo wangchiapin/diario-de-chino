@@ -935,6 +935,54 @@ test('父親節：8/8；套用 8/5 到 8/10；四語祝福；簡體用台灣用�
   assert.ok(h('es').indexOf('¡Feliz Día de la Madre!') > 0 && h('en').indexOf("Happy Mother's Day!") > 0 && h('tc').indexOf('母親節快樂') > 0 && h('sc').indexOf('母亲节快乐') > 0);
   vm.runInContext("ptSetCfg(null)", ctx);
 });
+test('清明：4/4 或 4/5（2025–2040 對過天文計算）；套用前 3 天到後 2 天；四語祝福、簡體用台灣用字', () => {
+  const want = {2025:4,2026:5,2027:5,2028:4,2029:4,2030:5,2031:5,2032:4,2033:4,2034:5,2035:5,2036:4,2037:4,2038:5,2039:5,2040:4};
+  const bad = vm.runInContext("(function(w){var b=[];for(var y=2025;y<=2040;y++){var d=ptFestById('qingming').date(y);if(d[0]!==4||d[1]!==w[y])b.push(y)}return b})(" + J(want) + ")", ctx);
+  assert.strictEqual(J(Array.from(bad)), J([]));
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-04-01', '2027-04-02', '2027-04-05', '2027-04-07', '2027-04-08'].map(pick)), J([null, 'qingming', 'qingming', 'qingming', null]));
+  assert.strictEqual(C('ptRangeText')('qingming', 2027), '04/02–04/07');
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'qingming' })", ctx);
+  assert.ok(C('ptDayMark')('2027-04-05').indexOf('pt-star') > 0 && C('ptDayMark')('2027-04-04') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Día de Qingming!') > 0 && h('en').indexOf('Happy Qingming Festival!') > 0 && h('tc').indexOf('清明節安康') > 0 && h('sc').indexOf('清明节安康') > 0 && h('sc').indexOf('清明節安康') < 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
+test('端午：2025–2040 日期表（農曆五月初五，多個網站對過）；2027 是 6/9，套用 6/6 到 6/11；四語祝福', () => {
+  const want = {2025:[5,31],2026:[6,19],2027:[6,9],2028:[5,28],2029:[6,16],2030:[6,5],2031:[6,24],2032:[6,12],2033:[6,1],2034:[6,20],2035:[6,10],2036:[5,30],2037:[6,18],2038:[6,7],2039:[5,27],2040:[6,14]};
+  const bad = vm.runInContext("(function(w){var b=[];for(var y=2025;y<=2040;y++){var d=ptFestById('duanwu').date(y);if(d[0]!==w[y][0]||d[1]!==w[y][1])b.push(y)}return b})(" + J(want) + ")", ctx);
+  assert.strictEqual(J(Array.from(bad)), J([]));
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-06-05', '2027-06-06', '2027-06-09', '2027-06-11', '2027-06-12'].map(pick)), J([null, 'duanwu', 'duanwu', 'duanwu', null]));
+  assert.strictEqual(C('ptRangeText')('duanwu', 2027), '06/06–06/11');
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'duanwu' })", ctx);
+  assert.ok(C('ptDayMark')('2027-06-09').indexOf('pt-star') > 0 && C('ptDayMark')('2027-06-08') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Festival del Bote del Dragón!') > 0 && h('en').indexOf('Happy Dragon Boat Festival!') > 0 && h('tc').indexOf('端午節快樂') > 0 && h('sc').indexOf('端午节快乐') > 0 && h('sc').indexOf('端午節快樂') < 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
+test('中秋：2025–2040 日期表（農曆八月十五，多個網站對過）；2027 是 9/15，套用 9/12 到 9/17；四語祝福；是深色主題', () => {
+  const want = {2025:[10,6],2026:[9,25],2027:[9,15],2028:[10,3],2029:[9,22],2030:[9,12],2031:[10,1],2032:[9,19],2033:[9,8],2034:[9,27],2035:[9,16],2036:[10,4],2037:[9,24],2038:[9,13],2039:[10,2],2040:[9,20]};
+  const bad = vm.runInContext("(function(w){var b=[];for(var y=2025;y<=2040;y++){var d=ptFestById('midautumn').date(y);if(d[0]!==w[y][0]||d[1]!==w[y][1])b.push(y)}return b})(" + J(want) + ")", ctx);
+  assert.strictEqual(J(Array.from(bad)), J([]));
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-09-11', '2027-09-12', '2027-09-15', '2027-09-17', '2027-09-18'].map(pick)), J([null, 'midautumn', 'midautumn', 'midautumn', null]));
+  assert.strictEqual(C('ptRangeText')('midautumn', 2027), '09/12–09/17');
+  assert.ok(vm.runInContext("PT_ASSETS.midautumn.css", ctx).indexOf('color-scheme:dark') > 0);
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'midautumn' })", ctx);
+  assert.ok(C('ptDayMark')('2027-09-15').indexOf('pt-star') > 0 && C('ptDayMark')('2027-09-14') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Festival de Medio Otoño!') > 0 && h('en').indexOf('Happy Mid-Autumn Festival!') > 0 && h('tc').indexOf('中秋節快樂') > 0 && h('sc').indexOf('中秋节快乐') > 0 && h('sc').indexOf('中秋節快樂') < 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
+test('清明、端午、中秋：備援函式（表外年份用）算得出 2027 的端午和中秋；各自都有自己的動畫', () => {
+  assert.strictEqual(J(Array.from(vm.runInContext("ptLunarDate(2027, 5, 5, [3, 25])", ctx))), J([6, 9]));
+  assert.strictEqual(J(Array.from(vm.runInContext("ptLunarDate(2027, 8, 15, [7, 25])", ctx))), J([9, 15]));
+  ['qingming', 'duanwu', 'midautumn'].forEach(id => {
+    const css = vm.runInContext("PT_ASSETS." + id + ".css", ctx);
+    assert.ok(/@keyframes pt(rain|petal)/.test(css), id + ' 要自帶 @keyframes');
+  });
+});
 test('所有節慶兩兩不重疊（2025–2040 每一年，含跨年）：套用範圍都不會碰到別的節慶', () => {
   const bad = vm.runInContext("(function(){var b=[];for(var y=2025;y<=2040;y++){var days=[];PT_FEST.forEach(function(f){days.push([f.id,ptFestDay(f,y)])});for(var i=0;i<days.length;i++)for(var j=i+1;j<days.length;j++){if(Math.abs(days[i][1]-days[j][1])<=PT_BEFORE+PT_AFTER)b.push(y+' '+days[i][0]+'/'+days[j][0])}}return b})()", ctx);
   assert.strictEqual(J(Array.from(bad)), J([]));
