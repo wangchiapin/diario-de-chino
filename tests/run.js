@@ -889,8 +889,30 @@ test('春節：設定可強制指定；日曆 2/6 有小燈籠、別天沒有；
   const clash = vm.runInContext("(function(){var n=0;for(var y=2025;y<=2040;y++){var c=ptFestDay(ptFestById('cny'),y);['xmas','halloween'].forEach(function(id){for(var yy=y-1;yy<=y+1;yy++){var d=Math.abs(c-ptFestDay(ptFestById(id),yy));if(d<=PT_BEFORE+PT_AFTER)n++}})}return n})()", ctx);
   assert.strictEqual(clash, 0);
 });
+test('元宵：春節加 14 天（2027 是 2/20）；套用範圍 2/17 到 2/22；前後一天都沒有', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-02-16', '2027-02-17', '2027-02-20', '2027-02-22', '2027-02-23'].map(pick)), J([null, 'lantern', 'lantern', 'lantern', null]));
+  assert.strictEqual(C('ptRangeText')('lantern', 2027), '02/17–02/22');
+});
+test('元宵：每年跟著春節走（2026 是 3/3、2028 是 2/9），跨月、閏年都對', () => {
+  const day = y => vm.runInContext("ptFestById('lantern').date(" + y + ")", ctx);
+  assert.strictEqual(J([day(2026), day(2027), day(2028), day(2030)].map(a => Array.from(a))), J([[3, 3], [2, 20], [2, 9], [2, 17]]));
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2026-02-28', '2026-03-03', '2026-03-05', '2026-03-06', '2028-02-09'].map(pick)), J(['lantern', 'lantern', 'lantern', null, 'lantern']));
+});
+test('元宵：每一年（2025–2040）都剛好是春節後第 14 天，而且不會和春節、聖誕、萬聖節重疊', () => {
+  const r = vm.runInContext("(function(){var bad=[];for(var y=2025;y<=2040;y++){var c=ptFestDay(ptFestById('cny'),y),l=ptFestDay(ptFestById('lantern'),y);if(l-c!==14)bad.push(y+'差'+(l-c));['cny','xmas','halloween'].forEach(function(id){for(var yy=y-1;yy<=y+1;yy++){if(id==='cny'&&yy===y)continue;if(Math.abs(l-ptFestDay(ptFestById(id),yy))<=PT_BEFORE+PT_AFTER)bad.push(y+'碰到'+id)}})}return bad})()", ctx);
+  assert.strictEqual(J(Array.from(r)), J([]));
+});
+test('元宵：設定可強制指定；日曆 2/20 有小天燈、別天沒有；四語祝福（簡體用台灣用字）', () => {
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'lantern' })", ctx);
+  assert.ok(C('ptDayMark')('2027-02-20').indexOf('pt-star') > 0 && C('ptDayMark')('2027-02-19') === '' && C('ptDayMark')('2027-02-06') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Fiesta de los Faroles!') > 0 && h('en').indexOf('Happy Lantern Festival!') > 0 && h('tc').indexOf('元宵節快樂') > 0 && h('sc').indexOf('元宵节快乐') > 0 && h('sc').indexOf('元宵節快樂') < 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
 test('每個節慶都有頁尾小場景、問候卡裝飾、日曆記號、動態效果種類', () => {
-  vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats' && a.fx !== 'petals')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
+  vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats' && a.fx !== 'petals' && a.fx !== 'lanterns')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');

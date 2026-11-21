@@ -7,7 +7,8 @@ var PT_BEFORE = 3, PT_AFTER = 2;
 var PT_FEST = [
   { id: 'xmas', name: { es: 'Navidad', en: 'Christmas', tc: '聖誕節', sc: '圣诞节' }, date: function (y) { return [12, 25]; } },
   { id: 'halloween', name: { es: 'Halloween', en: 'Halloween', tc: '萬聖節', sc: '万圣节' }, date: function (y) { return [10, 31]; } },
-  { id: 'cny', name: { es: 'Año Nuevo Chino', en: 'Lunar New Year', tc: '春節', sc: '春节' }, date: function (y) { return ptLunarNewYear(y); } }
+  { id: 'cny', name: { es: 'Año Nuevo Chino', en: 'Lunar New Year', tc: '春節', sc: '春节' }, date: function (y) { return ptLunarNewYear(y); } },
+  { id: 'lantern', name: { es: 'Fiesta de los Faroles', en: 'Lantern Festival', tc: '元宵節', sc: '元宵节' }, date: function (y) { var c = ptLunarNewYear(y), t = new Date(Date.UTC(y, c[0] - 1, c[1] + 14)); return [t.getUTCMonth() + 1, t.getUTCDate()]; } } /* 農曆正月十五 = 春節 + 14 天 */
 ];
 
 /* 春節（農曆正月初一）的西曆日期。
@@ -32,7 +33,8 @@ function ptLunarNewYear(y) {
 var PT_GREET = {
   xmas: { es: ['¡Feliz Navidad!', '聖誕快樂'], en: ['Merry Christmas!', '聖誕快樂'], tc: ['聖誕快樂', 'Feliz Navidad'], sc: ['圣诞快乐', 'Feliz Navidad'] },
   halloween: { es: ['¡Feliz Halloween!', '萬聖節快樂'], en: ['Happy Halloween!', '萬聖節快樂'], tc: ['萬聖節快樂', 'Feliz Halloween'], sc: ['万圣节快乐', 'Feliz Halloween'] },
-  cny: { es: ['¡Feliz Año Nuevo Lunar!', '新年快樂　恭喜發財'], en: ['Happy Lunar New Year!', '新年快樂　恭喜發財'], tc: ['新年快樂　恭喜發財', 'Feliz Año Nuevo Lunar'], sc: ['新年快乐　恭喜发财', 'Feliz Año Nuevo Lunar'] }
+  cny: { es: ['¡Feliz Año Nuevo Lunar!', '新年快樂　恭喜發財'], en: ['Happy Lunar New Year!', '新年快樂　恭喜發財'], tc: ['新年快樂　恭喜發財', 'Feliz Año Nuevo Lunar'], sc: ['新年快乐　恭喜发财', 'Feliz Año Nuevo Lunar'] },
+  lantern: { es: ['¡Feliz Fiesta de los Faroles!', '元宵節快樂'], en: ['Happy Lantern Festival!', '元宵節快樂'], tc: ['元宵節快樂', 'Feliz Fiesta de los Faroles'], sc: ['元宵节快乐', 'Feliz Fiesta de los Faroles'] }
 };
 
 function ptDayNum(y, m, d) { return Math.round(Date.UTC(y, m - 1, d) / 86400000); }
@@ -114,7 +116,21 @@ var PT_SVG = {
   PT_SVG.cmark = svg(12, 17, '0 0 24 42', LAN, 'star25');
 })();
 
-/* 每個節慶一組：css（配色＋專屬裝飾）、hello（問候卡裡的裝飾）、mark（日曆節慶日記號）、foot（頁尾小場景）、fx（動態效果：snow 飄雪／bats 飛蝙蝠／petals 飄梅花瓣） */
+/* ── 元宵 ── */
+(function () {
+  function svg(w, h, vb, body, cls) { return '<svg' + (cls ? ' class=\'' + cls + '\'' : '') + ' width=\'' + w + '\' height=\'' + h + '\' viewBox=\'' + vb + '\' aria-hidden=\'true\'>' + body + '</svg>'; }
+  var LAN = "<path d='M12 2v4' stroke='#a69a86' stroke-width='1.4'/><rect x='7' y='5' width='10' height='3' rx='1.2' fill='#8f7a4a'/><ellipse cx='12' cy='19' rx='10' ry='11' fill='#d4893f'/><ellipse cx='12' cy='19' rx='5' ry='11' fill='#e2a45c'/><path d='M12 8v22M7.5 9q-3 10 0 20M16.5 9q3 10 0 20' stroke='#a8642a' stroke-width='.9' fill='none'/><rect x='7' y='29' width='10' height='3' rx='1.2' fill='#8f7a4a'/><path d='M12 32v8M9 32v6M15 32v6' stroke='#8f7a4a' stroke-width='1.3' stroke-linecap='round'/>", LAN2 = "<path d='M12 2v4' stroke='#a69a86' stroke-width='1.4'/><rect x='7' y='5' width='10' height='3' rx='1.2' fill='#8f7a4a'/><ellipse cx='12' cy='19' rx='10' ry='11' fill='#e6c577'/><ellipse cx='12' cy='19' rx='5' ry='11' fill='#f0d896'/><path d='M12 8v22M7.5 9q-3 10 0 20M16.5 9q3 10 0 20' stroke='#bf9a4c' stroke-width='.9' fill='none'/><rect x='7' y='29' width='10' height='3' rx='1.2' fill='#8f7a4a'/><path d='M12 32v8M9 32v6M15 32v6' stroke='#8f7a4a' stroke-width='1.3' stroke-linecap='round'/>", SKY = "<path d='M5 7q7-8 14 0l1.5 21h-17z' fill='#e9ad62'/><path d='M5 7q7-8 14 0' fill='none' stroke='#c98741' stroke-width='1'/><path d='M9 5.5q-1 11 .5 22.5M15 5.5q1 11-.5 22.5' stroke='#d49650' stroke-width='.8' fill='none'/><rect x='2.5' y='27.5' width='19' height='2.6' rx='1.2' fill='#8f7a4a'/><circle cx='12' cy='33.5' r='4.6' fill='#f8e3a2' opacity='.55'/><ellipse cx='12' cy='33' rx='2.2' ry='3.2' fill='#f4c768'/><ellipse cx='12' cy='34' rx='1' ry='1.7' fill='#fff1c4'/>", MOON = "<circle cx='16' cy='16' r='14' fill='#f6e9b8' opacity='.55'/><circle cx='16' cy='16' r='10.5' fill='#f3e0a0'/><circle cx='12.5' cy='13' r='2' fill='#e8d38a'/><circle cx='20' cy='19' r='2.6' fill='#e8d38a'/><circle cx='18' cy='10.5' r='1.3' fill='#e8d38a'/>", BOWL = "<path d='M10 14q2-4 0-8M18 14q2-4 0-8M26 14q2-4 0-8' stroke='#c9bfa8' stroke-width='1.4' fill='none' stroke-linecap='round'/><ellipse cx='18' cy='25' rx='15' ry='4' fill='#efe4cb'/><circle cx='11' cy='22' r='5.2' fill='#fbf7ec' stroke='#e2d8c0'/><circle cx='19' cy='21' r='5.6' fill='#fbf7ec' stroke='#e2d8c0'/><circle cx='26' cy='23' r='4.8' fill='#f0cbc4' stroke='#e2b6ad'/><path d='M3 24h30q-1 10-15 10T3 24z' fill='#fbf7ec' stroke='#7f8fae' stroke-width='1.3'/><path d='M4.5 28h27' stroke='#7f8fae' stroke-width='1.3'/><path d='M12 34h12v2H12z' fill='#7f8fae'/>";
+  PT_SVG.llan = svg(26, 44, '0 0 24 42', LAN);
+  PT_SVG.llan2 = svg(24, 40, '0 0 24 42', LAN2);
+  PT_SVG.lsky = svg(24, 34, '0 0 24 38', SKY);
+  PT_SVG.lsky2 = svg(22, 32, '0 0 24 38', SKY);
+  PT_SVG.lmoon = svg(30, 30, '0 0 32 32', MOON);
+  PT_SVG.lbowl = svg(40, 36, '0 0 36 38', BOWL);
+  PT_SVG.lbowl2 = svg(36, 38, '0 0 36 38', BOWL);
+  PT_SVG.lmark = svg(10, 16, '0 0 24 38', SKY, 'star25');
+})();
+
+/* 每個節慶一組：css（配色＋專屬裝飾）、hello（問候卡裡的裝飾）、mark（日曆節慶日記號）、foot（頁尾小場景）、fx（動態效果：snow 飄雪／bats 飛蝙蝠／petals 飄梅花瓣／lanterns 天燈往上浮） */
 var PT_ASSETS = {
   xmas: {
     fx: 'snow',
@@ -207,6 +223,36 @@ var PT_ASSETS = {
       '[data-theme=cny] .pt-snow i{position:absolute;top:-16px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 12 12\'><path d=\'M5 0q6 3 4 10-6-1-4-10z\' fill=\'%23e8c4c4\'/></svg>") no-repeat center/contain;opacity:.85;animation:ptpetal linear infinite}',
       '@keyframes ptpetal{0%{transform:translate(0,0) rotate(0)}50%{transform:translate(34px,55vh) rotate(180deg)}100%{transform:translate(-12px,110vh) rotate(360deg)}}'
     ].join('\n')
+  },
+  lantern: {
+    fx: 'lanterns',
+    mark: function () { return PT_SVG.lmark; },
+    foot: function () { return PT_SVG.lbowl2 + PT_SVG.llan + PT_SVG.lmoon + PT_SVG.lsky2 + PT_SVG.llan2 + PT_SVG.lbowl2; },
+    hello: function (g) { return PT_SVG.llan + '<div class="gr">' + g[0] + '<small>' + g[1] + '</small></div>'; },
+    side: function () { return { a: PT_SVG.lsky, b: PT_SVG.lmoon, c: PT_SVG.lbowl }; },
+    css: [
+      /* 淺色：暖米黃底、燈籠橘當主色、灰藍當輔色（低飽和） */
+      '[data-theme=lantern]{--bg:#f0e6cc;--card:#faf3e0;--line:#e0d3b2;--text:#3a3426;--sub:#766c55;--accent:#b5652f;--accent-soft:#f0dcc0;--done:#7a8a5a;--off:#b8ab8c;--warn:#8f3a33;--pt-gr:#b5652f;--pt-gr2:#5f6c8c}',
+      '[data-theme=lantern] .day.out{color:#c9bd9f}',
+      '[data-theme=lantern] .day.st-done{background:#e3e6cf;color:#4b5a37;border-color:#c3cba9}',
+      '[data-theme=lantern] .day.st-up{background:#f3dfc2;color:#6b3f1d;border-color:#dcb88a}',
+      '[data-theme=lantern] .day.st-off{background:#ebe3cd;color:#a89e82;border-color:#e0d3b2}',
+      '[data-theme=lantern] .sw.up{background:#f3dfc2;border-color:#dcb88a}[data-theme=lantern] .sw.done{background:#e3e6cf;border-color:#c3cba9}[data-theme=lantern] .sw.off{background:#ebe3cd;border-color:#e0d3b2}',
+      '[data-theme=lantern] .day.sel{box-shadow:0 0 0 2px #3a3426}[data-theme=lantern] .day.today.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 2px #3a3426}',
+      '[data-theme=lantern] .chip.submitted,[data-theme=lantern] .rv.h{background:#f3dfc2;color:#6b3f1d}[data-theme=lantern] .chip.todo{background:#ebe3cd;color:#766c55}',
+      '[data-theme=lantern] .lbar,[data-theme=lantern] .lchip,[data-theme=lantern] .bub{background:#ebe3cd}',
+      '[data-theme=lantern] .bank,[data-theme=lantern] .tnote{background:#f4ecd6}[data-theme=lantern] .lgrid div{background:#f5eedb}',
+      '[data-theme=lantern] .hwq input[type=checkbox],[data-theme=lantern] .hwq input[type=radio]{accent-color:#b5652f}',
+      /* 卡片標題前的小月亮 */
+      '[data-theme=lantern] .card h2::before{content:"";display:inline-block;width:13px;height:13px;margin-right:7px;vertical-align:-1px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\'><circle cx=\'12\' cy=\'12\' r=\'10\' fill=\'%23f3e0a0\'/><circle cx=\'9\' cy=\'10\' r=\'1.6\' fill=\'%23e8d38a\'/><circle cx=\'15\' cy=\'15\' r=\'2\' fill=\'%23e8d38a\'/></svg>") no-repeat center/contain}',
+      /* 頂部小燈籠串 */
+      '[data-theme=lantern] .pt-lights{display:block;height:58px;margin:-4px -2px 6px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'96\' height=\'58\' viewBox=\'0 0 96 58\'><path d=\'M0 4 Q24 12 48 4 T96 4\' fill=\'none\' stroke=\'%23a69a86\' stroke-width=\'1.4\'/><g transform=\'translate(8 5) scale(.8)\'><path d=\'M12 2v4\' stroke=\'%23a69a86\' stroke-width=\'1.4\'/><rect x=\'7\' y=\'5\' width=\'10\' height=\'3\' rx=\'1.2\' fill=\'%238f7a4a\'/><ellipse cx=\'12\' cy=\'19\' rx=\'10\' ry=\'11\' fill=\'%23d4893f\'/><ellipse cx=\'12\' cy=\'19\' rx=\'5\' ry=\'11\' fill=\'%23e2a45c\'/><path d=\'M12 8v22M7.5 9q-3 10 0 20M16.5 9q3 10 0 20\' stroke=\'%23a8642a\' stroke-width=\'.9\' fill=\'none\'/><rect x=\'7\' y=\'29\' width=\'10\' height=\'3\' rx=\'1.2\' fill=\'%238f7a4a\'/><path d=\'M12 32v8M9 32v6M15 32v6\' stroke=\'%238f7a4a\' stroke-width=\'1.3\' stroke-linecap=\'round\'/></g><g transform=\'translate(56 8) scale(.7)\'><path d=\'M12 2v4\' stroke=\'%23a69a86\' stroke-width=\'1.4\'/><rect x=\'7\' y=\'5\' width=\'10\' height=\'3\' rx=\'1.2\' fill=\'%238f7a4a\'/><ellipse cx=\'12\' cy=\'19\' rx=\'10\' ry=\'11\' fill=\'%23e6c577\'/><ellipse cx=\'12\' cy=\'19\' rx=\'5\' ry=\'11\' fill=\'%23f0d896\'/><path d=\'M12 8v22M7.5 9q-3 10 0 20M16.5 9q3 10 0 20\' stroke=\'%23bf9a4c\' stroke-width=\'.9\' fill=\'none\'/><rect x=\'7\' y=\'29\' width=\'10\' height=\'3\' rx=\'1.2\' fill=\'%238f7a4a\'/><path d=\'M12 32v8M9 32v6M15 32v6\' stroke=\'%238f7a4a\' stroke-width=\'1.3\' stroke-linecap=\'round\'/></g></svg>") repeat-x;background-size:96px 58px}',
+      /* 問候卡左上角的小星星 */
+      '[data-theme=lantern] .hello::before{content:"";position:absolute;left:0;top:0;width:44px;height:44px;pointer-events:none;opacity:.9;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 40 40\'><g fill=\'%23d6b560\'><path d=\'M10 4l1.4 4.6L16 10l-4.6 1.4L10 16l-1.4-4.6L4 10l4.6-1.4z\'/><path d=\'M30 14l1 3.2 3.2 1-3.2 1-1 3.2-1-3.2-3.2-1 3.2-1z\' opacity=\'.8\'/><path d=\'M20 30l.8 2.4 2.4.8-2.4.8-.8 2.4-.8-2.4-2.4-.8 2.4-.8z\' opacity=\'.7\'/></g></svg>") no-repeat;background-size:contain}',
+      /* 往上浮的小天燈 */
+      '[data-theme=lantern] .pt-snow i{position:absolute;top:100%;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 38\'><path d=\'M5 7q7-8 14 0l1.5 21h-17z\' fill=\'%23e9ad62\'/><path d=\'M5 7q7-8 14 0\' fill=\'none\' stroke=\'%23c98741\' stroke-width=\'1\'/><path d=\'M9 5.5q-1 11 .5 22.5M15 5.5q1 11-.5 22.5\' stroke=\'%23d49650\' stroke-width=\'.8\' fill=\'none\'/><rect x=\'2.5\' y=\'27.5\' width=\'19\' height=\'2.6\' rx=\'1.2\' fill=\'%238f7a4a\'/><circle cx=\'12\' cy=\'33.5\' r=\'4.6\' fill=\'%23f8e3a2\' opacity=\'.55\'/><ellipse cx=\'12\' cy=\'33\' rx=\'2.2\' ry=\'3.2\' fill=\'%23f4c768\'/><ellipse cx=\'12\' cy=\'34\' rx=\'1\' ry=\'1.7\' fill=\'%23fff1c4\'/></svg>") no-repeat center/contain;opacity:0;animation:ptrise linear infinite}',
+      '@keyframes ptrise{0%{transform:translate(0,0);opacity:0}12%{opacity:.9}50%{transform:translate(16px,-55vh)}88%{opacity:.9}100%{transform:translate(-10px,-112vh);opacity:0}}'
+    ].join('\n')
   }
 };
 
@@ -263,12 +309,15 @@ function ptApply(id) {
   if (wrap && !trees) { trees = document.createElement('div'); trees.id = 'ptTrees'; trees.className = 'pt-trees'; trees.setAttribute('data-pt', PT_ACTIVE); wrap.insertBefore(trees, foot || null); trees.innerHTML = A.foot(); }
   if (!snow) {
     snow = document.createElement('div'); snow.id = 'ptSnow'; snow.className = 'pt-snow'; snow.setAttribute('aria-hidden', 'true'); snow.setAttribute('data-pt', PT_ACTIVE);
-    var narrow = window.innerWidth < 600, bats = A.fx === 'bats', petals = A.fx === 'petals', n = bats ? (narrow ? 4 : 7) : petals ? (narrow ? 7 : 12) : (narrow ? 9 : 16);
+    var narrow = window.innerWidth < 600, bats = A.fx === 'bats', petals = A.fx === 'petals', lanterns = A.fx === 'lanterns', n = bats ? (narrow ? 4 : 7) : lanterns ? (narrow ? 4 : 7) : petals ? (narrow ? 7 : 12) : (narrow ? 9 : 16);
     for (var i = 0; i < n; i++) {
       var e = document.createElement('i');
       if (bats) {
         var w = 20 + Math.random() * 14;
         e.style.cssText = 'top:' + (4 + Math.random() * 55).toFixed(1) + '%;width:' + w.toFixed(1) + 'px;height:' + (w * 0.6).toFixed(1) + 'px;animation-duration:' + (14 + Math.random() * 12).toFixed(1) + 's;animation-delay:-' + (Math.random() * 20).toFixed(1) + 's';
+      } else if (lanterns) {
+        var lw = 14 + Math.random() * 8;
+        e.style.cssText = 'left:' + (4 + Math.random() * 92).toFixed(1) + '%;width:' + lw.toFixed(1) + 'px;height:' + (lw * 1.55).toFixed(1) + 'px;animation-duration:' + (12 + Math.random() * 6).toFixed(1) + 's;animation-delay:-' + (Math.random() * 14).toFixed(1) + 's';
       } else if (petals) {
         var pz = 9 + Math.random() * 6;
         e.style.cssText = 'left:' + (Math.random() * 100).toFixed(1) + '%;width:' + pz.toFixed(1) + 'px;height:' + pz.toFixed(1) + 'px;animation-duration:' + (11 + Math.random() * 8).toFixed(1) + 's;animation-delay:-' + (Math.random() * 16).toFixed(1) + 's';
