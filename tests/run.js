@@ -911,6 +911,34 @@ test('元宵：設定可強制指定；日曆 2/20 有小天燈、別天沒有�
   assert.ok(h('es').indexOf('¡Feliz Fiesta de los Faroles!') > 0 && h('en').indexOf('Happy Lantern Festival!') > 0 && h('tc').indexOf('元宵節快樂') > 0 && h('sc').indexOf('元宵节快乐') > 0 && h('sc').indexOf('元宵節快樂') < 0);
   vm.runInContext("ptSetCfg(null)", ctx);
 });
+test('母親節：5 月第二個星期日（2026 5/10、2027 5/9、2028 5/14）；套用 5/6 到 5/11', () => {
+  const day = y => Array.from(vm.runInContext("ptFestById('mother').date(" + y + ")", ctx));
+  assert.strictEqual(J([day(2026), day(2027), day(2028), day(2029)]), J([[5, 10], [5, 9], [5, 14], [5, 13]]));
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-05-05', '2027-05-06', '2027-05-09', '2027-05-11', '2027-05-12'].map(pick)), J([null, 'mother', 'mother', 'mother', null]));
+  assert.strictEqual(C('ptRangeText')('mother', 2027), '05/06–05/11');
+});
+test('母親節：2025–2040 每一年都剛好是星期日、日期在 5/8 到 5/14', () => {
+  const bad = vm.runInContext("(function(){var b=[];for(var y=2025;y<=2040;y++){var d=ptFestById('mother').date(y);var w=new Date(Date.UTC(y,d[0]-1,d[1])).getUTCDay();if(d[0]!==5||d[1]<8||d[1]>14||w!==0)b.push(y)}return b})()", ctx);
+  assert.strictEqual(J(Array.from(bad)), J([]));
+});
+test('父親節：8/8；套用 8/5 到 8/10；四語祝福；簡體用台灣用字', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-08-04', '2027-08-05', '2027-08-08', '2027-08-10', '2027-08-11'].map(pick)), J([null, 'father', 'father', 'father', null]));
+  assert.strictEqual(C('ptRangeText')('father', 2027), '08/05–08/10');
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'father' })", ctx);
+  assert.ok(C('ptDayMark')('2027-08-08').indexOf('pt-star') > 0 && C('ptDayMark')('2027-08-07') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Día del Padre!') > 0 && h('en').indexOf("Happy Father's Day!") > 0 && h('tc').indexOf('父親節快樂') > 0 && h('sc').indexOf('父亲节快乐') > 0 && h('sc').indexOf('父親節快樂') < 0);
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'mother' })", ctx);
+  assert.ok(C('ptDayMark')('2027-05-09').indexOf('pt-star') > 0 && C('ptDayMark')('2027-05-08') === '');
+  assert.ok(h('es').indexOf('¡Feliz Día de la Madre!') > 0 && h('en').indexOf("Happy Mother's Day!") > 0 && h('tc').indexOf('母親節快樂') > 0 && h('sc').indexOf('母亲节快乐') > 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
+test('所有節慶兩兩不重疊（2025–2040 每一年，含跨年）：套用範圍都不會碰到別的節慶', () => {
+  const bad = vm.runInContext("(function(){var b=[];for(var y=2025;y<=2040;y++){var days=[];PT_FEST.forEach(function(f){days.push([f.id,ptFestDay(f,y)])});for(var i=0;i<days.length;i++)for(var j=i+1;j<days.length;j++){if(Math.abs(days[i][1]-days[j][1])<=PT_BEFORE+PT_AFTER)b.push(y+' '+days[i][0]+'/'+days[j][0])}}return b})()", ctx);
+  assert.strictEqual(J(Array.from(bad)), J([]));
+});
 test('每個節慶都有頁尾小場景、問候卡裝飾、日曆記號、動態效果種類', () => {
   vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats' && a.fx !== 'petals' && a.fx !== 'lanterns')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
 });

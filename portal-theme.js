@@ -8,7 +8,9 @@ var PT_FEST = [
   { id: 'xmas', name: { es: 'Navidad', en: 'Christmas', tc: '聖誕節', sc: '圣诞节' }, date: function (y) { return [12, 25]; } },
   { id: 'halloween', name: { es: 'Halloween', en: 'Halloween', tc: '萬聖節', sc: '万圣节' }, date: function (y) { return [10, 31]; } },
   { id: 'cny', name: { es: 'Año Nuevo Chino', en: 'Lunar New Year', tc: '春節', sc: '春节' }, date: function (y) { return ptLunarNewYear(y); } },
-  { id: 'lantern', name: { es: 'Fiesta de los Faroles', en: 'Lantern Festival', tc: '元宵節', sc: '元宵节' }, date: function (y) { var c = ptLunarNewYear(y), t = new Date(Date.UTC(y, c[0] - 1, c[1] + 14)); return [t.getUTCMonth() + 1, t.getUTCDate()]; } } /* 農曆正月十五 = 春節 + 14 天 */
+  { id: 'lantern', name: { es: 'Fiesta de los Faroles', en: 'Lantern Festival', tc: '元宵節', sc: '元宵节' }, date: function (y) { var c = ptLunarNewYear(y), t = new Date(Date.UTC(y, c[0] - 1, c[1] + 14)); return [t.getUTCMonth() + 1, t.getUTCDate()]; } } /* 農曆正月十五 = 春節 + 14 天 */,
+  { id: 'mother', name: { es: 'Día de la Madre', en: "Mother's Day", tc: '母親節', sc: '母亲节' }, date: function (y) { var dow = new Date(Date.UTC(y, 4, 1)).getUTCDay(); return [5, 1 + (7 - dow) % 7 + 7]; } }, /* 臺灣：5 月第二個星期日 */
+  { id: 'father', name: { es: 'Día del Padre', en: "Father's Day", tc: '父親節', sc: '父亲节' }, date: function (y) { return [8, 8]; } } /* 臺灣：8/8 */
 ];
 
 /* 春節（農曆正月初一）的西曆日期。
@@ -34,7 +36,9 @@ var PT_GREET = {
   xmas: { es: ['¡Feliz Navidad!', '聖誕快樂'], en: ['Merry Christmas!', '聖誕快樂'], tc: ['聖誕快樂', 'Feliz Navidad'], sc: ['圣诞快乐', 'Feliz Navidad'] },
   halloween: { es: ['¡Feliz Halloween!', '萬聖節快樂'], en: ['Happy Halloween!', '萬聖節快樂'], tc: ['萬聖節快樂', 'Feliz Halloween'], sc: ['万圣节快乐', 'Feliz Halloween'] },
   cny: { es: ['¡Feliz Año Nuevo Lunar!', '新年快樂　恭喜發財'], en: ['Happy Lunar New Year!', '新年快樂　恭喜發財'], tc: ['新年快樂　恭喜發財', 'Feliz Año Nuevo Lunar'], sc: ['新年快乐　恭喜发财', 'Feliz Año Nuevo Lunar'] },
-  lantern: { es: ['¡Feliz Fiesta de los Faroles!', '元宵節快樂'], en: ['Happy Lantern Festival!', '元宵節快樂'], tc: ['元宵節快樂', 'Feliz Fiesta de los Faroles'], sc: ['元宵节快乐', 'Feliz Fiesta de los Faroles'] }
+  lantern: { es: ['¡Feliz Fiesta de los Faroles!', '元宵節快樂'], en: ['Happy Lantern Festival!', '元宵節快樂'], tc: ['元宵節快樂', 'Feliz Fiesta de los Faroles'], sc: ['元宵节快乐', 'Feliz Fiesta de los Faroles'] },
+  mother: { es: ['¡Feliz Día de la Madre!', '母親節快樂'], en: ["Happy Mother's Day!", '母親節快樂'], tc: ['母親節快樂', 'Feliz Día de la Madre'], sc: ['母亲节快乐', 'Feliz Día de la Madre'] },
+  father: { es: ['¡Feliz Día del Padre!', '父親節快樂'], en: ["Happy Father's Day!", '父親節快樂'], tc: ['父親節快樂', 'Feliz Día del Padre'], sc: ['父亲节快乐', 'Feliz Día del Padre'] }
 };
 
 function ptDayNum(y, m, d) { return Math.round(Date.UTC(y, m - 1, d) / 86400000); }
@@ -128,6 +132,31 @@ var PT_SVG = {
   PT_SVG.lbowl = svg(40, 36, '0 0 36 38', BOWL);
   PT_SVG.lbowl2 = svg(36, 38, '0 0 36 38', BOWL);
   PT_SVG.lmark = svg(10, 16, '0 0 24 38', SKY, 'star25');
+})();
+
+/* ── 母親節、父親節 ── */
+(function () {
+  function svg(w, h, vb, body, cls) { return '<svg' + (cls ? ' class=\'' + cls + '\'' : '') + ' width=\'' + w + '\' height=\'' + h + '\' viewBox=\'' + vb + '\' aria-hidden=\'true\'>' + body + '</svg>'; }
+  var FLOWER = "<g fill='#e3a3a8'><circle cx='9' cy='12' r='6'/><circle cx='16' cy='7' r='6.5'/><circle cx='23' cy='12' r='6'/><circle cx='20' cy='19' r='6'/><circle cx='12' cy='19' r='6'/></g><circle cx='16' cy='13' r='7' fill='#ebb8bc'/><path d='M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0' stroke='#d08a90' fill='none' stroke-width='1' stroke-linecap='round'/>", CARN = "<path d='M16 24Q17 33 15 40' stroke='#7c9a6e' stroke-width='2' fill='none' stroke-linecap='round'/><ellipse cx='20.5' cy='33' rx='4.5' ry='2' fill='#8fae80' transform='rotate(-30 20.5 33)'/><g fill='#e3a3a8'><circle cx='9' cy='12' r='6'/><circle cx='16' cy='7' r='6.5'/><circle cx='23' cy='12' r='6'/><circle cx='20' cy='19' r='6'/><circle cx='12' cy='19' r='6'/></g><circle cx='16' cy='13' r='7' fill='#ebb8bc'/><path d='M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0' stroke='#d08a90' fill='none' stroke-width='1' stroke-linecap='round'/><path d='M12 23q4 3 8 0l-1 4h-6z' fill='#7c9a6e'/>", BOUQ = "<path d='M20 24L5 30 20 44 35 30z' fill='#efe3d3' stroke='#dccdb8'/><path d='M12 30l8 14 8-14' fill='none' stroke='#dccdb8'/><g transform='translate(1 -3) scale(.55)'><g fill='#e3a3a8'><circle cx='9' cy='12' r='6'/><circle cx='16' cy='7' r='6.5'/><circle cx='23' cy='12' r='6'/><circle cx='20' cy='19' r='6'/><circle cx='12' cy='19' r='6'/></g><circle cx='16' cy='13' r='7' fill='#ebb8bc'/><path d='M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0' stroke='#d08a90' fill='none' stroke-width='1' stroke-linecap='round'/></g><g transform='translate(21 -3) scale(.55)'><g fill='#e3a3a8'><circle cx='9' cy='12' r='6'/><circle cx='16' cy='7' r='6.5'/><circle cx='23' cy='12' r='6'/><circle cx='20' cy='19' r='6'/><circle cx='12' cy='19' r='6'/></g><circle cx='16' cy='13' r='7' fill='#ebb8bc'/><path d='M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0' stroke='#d08a90' fill='none' stroke-width='1' stroke-linecap='round'/></g><g transform='translate(11 3) scale(.6)'><g fill='#e3a3a8'><circle cx='9' cy='12' r='6'/><circle cx='16' cy='7' r='6.5'/><circle cx='23' cy='12' r='6'/><circle cx='20' cy='19' r='6'/><circle cx='12' cy='19' r='6'/></g><circle cx='16' cy='13' r='7' fill='#ebb8bc'/><path d='M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0' stroke='#d08a90' fill='none' stroke-width='1' stroke-linecap='round'/></g><ellipse cx='8' cy='24' rx='5' ry='2.2' fill='#8fae80' transform='rotate(-35 8 24)'/><ellipse cx='32' cy='24' rx='5' ry='2.2' fill='#8fae80' transform='rotate(35 32 24)'/><path d='M20 31q-7-4-8 0 1 4 8 0 7 4 8 0-1-4-8 0z' fill='#c97f84'/><circle cx='20' cy='31' r='1.8' fill='#b86f6b'/>", HEART = "<path d='M16 28C4 20 2 11 8 7c4-2.5 7 0 8 3 1-3 4-5.5 8-3 6 4 4 13-8 21z' fill='#d99aa0'/><path d='M9 10q2-2 4 0' stroke='#efc4c8' stroke-width='1.6' fill='none' stroke-linecap='round'/>", CAKE = "<path d='M3 28V16l30 0v12z' fill='#f1e2cc'/><path d='M3 16q6-7 15-7t15 7z' fill='#fbf6ee' stroke='#eadfce'/><path d='M3 22h30' stroke='#d9c4a6'/><circle cx='18' cy='7' r='3.6' fill='#d9858d'/><path d='M18 3.4q1-2 3-2' stroke='#7c9a6e' stroke-width='1.3' fill='none' stroke-linecap='round'/><path d='M3 28h30' stroke='#d9c4a6' stroke-width='1.4'/>";
+  var TIE = "<path d='M8 1h8l2 7-6 3-6-3z' fill='#4a667a'/><path d='M12 11l-5 4 2 20 3 8 3-8 2-20z' fill='#5b7a8e'/><path d='M9.5 20l5-3M9.8 26l4.6-3M10.2 32l3.8-3' stroke='#86a1b2' stroke-width='1.2' stroke-linecap='round'/>", TIE2 = "<path d='M8 1h8l2 7-6 3-6-3z' fill='#7a6a48'/><path d='M12 11l-5 4 2 20 3 8 3-8 2-20z' fill='#8a7a58'/><path d='M9.5 20l5-3M9.8 26l4.6-3M10.2 32l3.8-3' stroke='#b3a47c' stroke-width='1.2' stroke-linecap='round'/>", MUG = "<path d='M11 12q2-4 0-8M18 12q2-4 0-8M25 12q2-4 0-8' stroke='#c2c8c8' stroke-width='1.5' fill='none' stroke-linecap='round'/><path d='M6 16h24v12q0 6-8 6h-8q-8 0-8-6z' fill='#e9e1cd'/><path d='M6 22h24' stroke='#5b7a8e' stroke-width='3'/><path d='M30 20q8 0 8 6t-8 6' fill='none' stroke='#e9e1cd' stroke-width='3'/><ellipse cx='18' cy='16' rx='12' ry='2.4' fill='#8a6a48'/>", GLASS = "<g fill='#e8eeee' fill-opacity='.45' stroke='#5c5a52' stroke-width='2'><circle cx='11' cy='11' r='8'/><circle cx='29' cy='11' r='8'/></g><path d='M19 10q1-2 2 0' stroke='#5c5a52' stroke-width='1.8' fill='none'/><path d='M3 9L0 6M37 9l3-3' stroke='#5c5a52' stroke-width='1.8' stroke-linecap='round'/>", CAP = "<path d='M5 22q0-16 16-16t16 16z' fill='#6b8294'/><path d='M5 22h32l5 3q-6 3-16 2.5H5z' fill='#556b7c'/><circle cx='21' cy='5.5' r='2' fill='#556b7c'/><path d='M21 6v14' stroke='#7f95a5' stroke-width='1'/>";
+  PT_SVG.mbouq = svg(34, 44, '0 0 40 46', BOUQ);
+  PT_SVG.mbouq2 = svg(36, 42, '0 0 40 46', BOUQ);
+  PT_SVG.mcake = svg(30, 28, '0 0 36 32', CAKE);
+  PT_SVG.mcake2 = svg(34, 30, '0 0 36 32', CAKE);
+  PT_SVG.mheart = svg(28, 28, '0 0 32 32', HEART);
+  PT_SVG.mheart2 = svg(26, 26, '0 0 32 32', HEART);
+  PT_SVG.mcarn = svg(30, 38, '0 0 32 40', CARN);
+  PT_SVG.mcarn2 = svg(28, 36, '0 0 32 40', CARN);
+  PT_SVG.mmark = svg(11, 14, '0 0 32 32', FLOWER, 'star25');
+  PT_SVG.dtie = svg(26, 50, '0 0 24 46', TIE);
+  PT_SVG.dtie2 = svg(22, 42, '0 0 24 46', TIE);
+  PT_SVG.dtie3 = svg(22, 42, '0 0 24 46', TIE2);
+  PT_SVG.dmug = svg(30, 30, '0 0 40 38', MUG);
+  PT_SVG.dmug2 = svg(36, 36, '0 0 40 38', MUG);
+  PT_SVG.dglass = svg(32, 16, '0 0 40 20', GLASS);
+  PT_SVG.dglass2 = svg(36, 18, '0 0 40 20', GLASS);
+  PT_SVG.dcap = svg(40, 28, '0 0 44 28', CAP);
+  PT_SVG.dmark = svg(9, 18, '0 0 24 46', TIE, 'star25');
 })();
 
 /* 每個節慶一組：css（配色＋專屬裝飾）、hello（問候卡裡的裝飾）、mark（日曆節慶日記號）、foot（頁尾小場景）、fx（動態效果：snow 飄雪／bats 飛蝙蝠／petals 飄梅花瓣／lanterns 天燈往上浮） */
@@ -252,6 +281,56 @@ var PT_ASSETS = {
       /* 往上浮的小天燈 */
       '[data-theme=lantern] .pt-snow i{position:absolute;top:100%;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 38\'><path d=\'M5 7q7-8 14 0l1.5 21h-17z\' fill=\'%23e9ad62\'/><path d=\'M5 7q7-8 14 0\' fill=\'none\' stroke=\'%23c98741\' stroke-width=\'1\'/><path d=\'M9 5.5q-1 11 .5 22.5M15 5.5q1 11-.5 22.5\' stroke=\'%23d49650\' stroke-width=\'.8\' fill=\'none\'/><rect x=\'2.5\' y=\'27.5\' width=\'19\' height=\'2.6\' rx=\'1.2\' fill=\'%238f7a4a\'/><circle cx=\'12\' cy=\'33.5\' r=\'4.6\' fill=\'%23f8e3a2\' opacity=\'.55\'/><ellipse cx=\'12\' cy=\'33\' rx=\'2.2\' ry=\'3.2\' fill=\'%23f4c768\'/><ellipse cx=\'12\' cy=\'34\' rx=\'1\' ry=\'1.7\' fill=\'%23fff1c4\'/></svg>") no-repeat center/contain;opacity:0;animation:ptrise linear infinite}',
       '@keyframes ptrise{0%{transform:translate(0,0);opacity:0}12%{opacity:.9}50%{transform:translate(16px,-55vh)}88%{opacity:.9}100%{transform:translate(-10px,-112vh);opacity:0}}'
+    ].join('\n')
+  },
+  mother: {
+    fx: 'petals',
+    mark: function () { return PT_SVG.mmark; },
+    foot: function () { return PT_SVG.mbouq2 + PT_SVG.mheart2 + PT_SVG.mcarn2 + PT_SVG.mcake2 + PT_SVG.mcarn2 + PT_SVG.mheart2 + PT_SVG.mbouq2; },
+    hello: function (g) { return PT_SVG.mbouq + '<div class="gr">' + g[0] + '<small>' + g[1] + '</small></div>'; },
+    side: function () { return { a: PT_SVG.mcake, b: PT_SVG.mheart, c: PT_SVG.mcarn }; },
+    css: [
+      '[data-theme=mother]{--bg:#f1e7e0;--card:#faf4ee;--line:#e3d3c8;--text:#3d3530;--sub:#7c6f66;--accent:#b86f6b;--accent-soft:#f1dcd8;--done:#7f9674;--off:#c0b2a6;--warn:#8f3a33;--pt-gr:#b86f6b;--pt-gr2:#7f9674}',
+      '[data-theme=mother] .day.out{color:#cdbfb4}',
+      '[data-theme=mother] .day.st-done{background:#e4e8d8;color:#4d5c40;border-color:#c5cdb3}',
+      '[data-theme=mother] .day.st-up{background:#f3dedb;color:#6e3a37;border-color:#dcb0ab}',
+      '[data-theme=mother] .day.st-off{background:#ece1d8;color:#ab9d90;border-color:#e3d3c8}',
+      '[data-theme=mother] .sw.up{background:#f3dedb;border-color:#dcb0ab}[data-theme=mother] .sw.done{background:#e4e8d8;border-color:#c5cdb3}[data-theme=mother] .sw.off{background:#ece1d8;border-color:#e3d3c8}',
+      '[data-theme=mother] .day.sel{box-shadow:0 0 0 2px #3d3530}[data-theme=mother] .day.today.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 2px #3d3530}',
+      '[data-theme=mother] .chip.submitted,[data-theme=mother] .rv.h{background:#f3dedb;color:#6e3a37}[data-theme=mother] .chip.todo{background:#ece1d8;color:#7c6f66}',
+      '[data-theme=mother] .lbar,[data-theme=mother] .lchip,[data-theme=mother] .bub{background:#ece1d8}',
+      '[data-theme=mother] .bank,[data-theme=mother] .tnote{background:#f5ece4}[data-theme=mother] .lgrid div{background:#f6eee7}',
+      '[data-theme=mother] .hwq input[type=checkbox],[data-theme=mother] .hwq input[type=radio]{accent-color:#b86f6b}',
+      '[data-theme=mother] .card h2::before{content:"";display:inline-block;width:13px;height:13px;margin-right:7px;vertical-align:-1px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'><g fill=\'%23e3a3a8\'><circle cx=\'9\' cy=\'12\' r=\'6\'/><circle cx=\'16\' cy=\'7\' r=\'6.5\'/><circle cx=\'23\' cy=\'12\' r=\'6\'/><circle cx=\'20\' cy=\'19\' r=\'6\'/><circle cx=\'12\' cy=\'19\' r=\'6\'/></g><circle cx=\'16\' cy=\'13\' r=\'7\' fill=\'%23ebb8bc\'/><path d=\'M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0\' stroke=\'%23d08a90\' fill=\'none\' stroke-width=\'1\' stroke-linecap=\'round\'/></svg>") no-repeat center/contain}',
+      '[data-theme=mother] .pt-lights{display:block;height:58px;margin:-4px -2px 6px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'96\' height=\'58\' viewBox=\'0 0 96 58\'><path d=\'M0 4Q24 12 48 4T96 4\' fill=\'none\' stroke=\'%23a89f94\' stroke-width=\'1.4\'/><g transform=\'translate(5 6) scale(.62)\'><g fill=\'%23e3a3a8\'><circle cx=\'9\' cy=\'12\' r=\'6\'/><circle cx=\'16\' cy=\'7\' r=\'6.5\'/><circle cx=\'23\' cy=\'12\' r=\'6\'/><circle cx=\'20\' cy=\'19\' r=\'6\'/><circle cx=\'12\' cy=\'19\' r=\'6\'/></g><circle cx=\'16\' cy=\'13\' r=\'7\' fill=\'%23ebb8bc\'/><path d=\'M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0\' stroke=\'%23d08a90\' fill=\'none\' stroke-width=\'1\' stroke-linecap=\'round\'/></g><g transform=\'translate(55 9) scale(.55)\'><g fill=\'%23e3a3a8\'><circle cx=\'9\' cy=\'12\' r=\'6\'/><circle cx=\'16\' cy=\'7\' r=\'6.5\'/><circle cx=\'23\' cy=\'12\' r=\'6\'/><circle cx=\'20\' cy=\'19\' r=\'6\'/><circle cx=\'12\' cy=\'19\' r=\'6\'/></g><circle cx=\'16\' cy=\'13\' r=\'7\' fill=\'%23ebb8bc\'/><path d=\'M11 12q2-3 5-1 3-2 5 1M12 16q4 2 8 0\' stroke=\'%23d08a90\' fill=\'none\' stroke-width=\'1\' stroke-linecap=\'round\'/></g><ellipse cx=\'36\' cy=\'14\' rx=\'6\' ry=\'2.4\' fill=\'%239db88e\' transform=\'rotate(25 36 14)\'/><ellipse cx=\'84\' cy=\'14\' rx=\'6\' ry=\'2.4\' fill=\'%239db88e\' transform=\'rotate(-25 84 14)\'/></svg>") repeat-x;background-size:96px 58px}',
+      '[data-theme=mother] .hello::before{content:"";position:absolute;left:0;top:0;width:44px;height:44px;pointer-events:none;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 28\'><path d=\'M2 4Q16 6 30 22\' stroke=\'%238fae80\' stroke-width=\'1.6\' fill=\'none\' stroke-linecap=\'round\'/><g fill=\'%23a3be94\'><ellipse cx=\'10\' cy=\'7\' rx=\'5\' ry=\'2.2\' transform=\'rotate(25 10 7)\'/><ellipse cx=\'17\' cy=\'12\' rx=\'5\' ry=\'2.2\' transform=\'rotate(40 17 12)\'/><ellipse cx=\'24\' cy=\'18\' rx=\'4.5\' ry=\'2\' transform=\'rotate(55 24 18)\'/><ellipse cx=\'7\' cy=\'12\' rx=\'4.5\' ry=\'2\' transform=\'rotate(70 7 12)\' opacity=\'.8\'/></g><circle cx=\'14\' cy=\'5\' r=\'2.4\' fill=\'%23e3a3a8\'/></svg>") no-repeat;background-size:contain}',
+      '[data-theme=mother] .pt-snow i{position:absolute;top:-16px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 12 12\'><path d=\'M6 0q8 3 5 11-9-1-5-11z\' fill=\'%23ebc2c4\'/></svg>") no-repeat center/contain;opacity:.85;animation:ptpetal linear infinite}',
+      '@keyframes ptpetal{0%{transform:translate(0,0) rotate(0)}50%{transform:translate(34px,55vh) rotate(180deg)}100%{transform:translate(-12px,110vh) rotate(360deg)}}'
+    ].join('\n')
+  },
+  father: {
+    fx: 'petals',
+    mark: function () { return PT_SVG.dmark; },
+    foot: function () { return PT_SVG.dtie2 + PT_SVG.dmug2 + PT_SVG.dglass2 + PT_SVG.dcap + PT_SVG.dmug2 + PT_SVG.dtie3; },
+    hello: function (g) { return PT_SVG.dtie + '<div class="gr">' + g[0] + '<small>' + g[1] + '</small></div>'; },
+    side: function () { return { a: PT_SVG.dglass, b: PT_SVG.dmug, c: PT_SVG.dcap }; },
+    css: [
+      '[data-theme=father]{--bg:#e6e9e8;--card:#f4f5f2;--line:#cfd5d3;--text:#2f3638;--sub:#6a7476;--accent:#4f6b7d;--accent-soft:#d9e2e7;--done:#6f8a6a;--off:#b0b8b8;--warn:#8f3a33;--pt-gr:#4f6b7d;--pt-gr2:#8a7a58}',
+      '[data-theme=father] .day.out{color:#b9c1c0}',
+      '[data-theme=father] .day.st-done{background:#dfe6dc;color:#46583f;border-color:#bccab6}',
+      '[data-theme=father] .day.st-up{background:#dde5ea;color:#2f4655;border-color:#aebfca}',
+      '[data-theme=father] .day.st-off{background:#e3e7e6;color:#9aa3a2;border-color:#cfd5d3}',
+      '[data-theme=father] .sw.up{background:#dde5ea;border-color:#aebfca}[data-theme=father] .sw.done{background:#dfe6dc;border-color:#bccab6}[data-theme=father] .sw.off{background:#e3e7e6;border-color:#cfd5d3}',
+      '[data-theme=father] .day.sel{box-shadow:0 0 0 2px #2f3638}[data-theme=father] .day.today.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 2px #2f3638}',
+      '[data-theme=father] .chip.submitted,[data-theme=father] .rv.h{background:#dde5ea;color:#2f4655}[data-theme=father] .chip.todo{background:#e3e7e6;color:#6a7476}',
+      '[data-theme=father] .lbar,[data-theme=father] .lchip,[data-theme=father] .bub{background:#e3e7e6}',
+      '[data-theme=father] .bank,[data-theme=father] .tnote{background:#ebeeed}[data-theme=father] .lgrid div{background:#eef0ee}',
+      '[data-theme=father] .hwq input[type=checkbox],[data-theme=father] .hwq input[type=radio]{accent-color:#4f6b7d}',
+      '[data-theme=father] .card h2::before{content:"";display:inline-block;width:13px;height:13px;margin-right:7px;vertical-align:-1px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 12 12\'><path d=\'M6 0l1.6 4.4L12 6 7.6 7.6 6 12 4.4 7.6 0 6l4.4-1.6z\' fill=\'%23a9bccb\'/></svg>") no-repeat center/contain}',
+      '[data-theme=father] .pt-lights{display:block;height:58px;margin:-4px -2px 6px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'96\' height=\'58\' viewBox=\'0 0 96 58\'><path d=\'M0 4Q24 12 48 4T96 4\' fill=\'none\' stroke=\'%239aa3a2\' stroke-width=\'1.4\'/><g transform=\'translate(14 3) scale(.85)\'><path d=\'M8 1h8l2 7-6 3-6-3z\' fill=\'%234a667a\'/><path d=\'M12 11l-5 4 2 20 3 8 3-8 2-20z\' fill=\'%235b7a8e\'/><path d=\'M9.5 20l5-3M9.8 26l4.6-3M10.2 32l3.8-3\' stroke=\'%2386a1b2\' stroke-width=\'1.2\' stroke-linecap=\'round\'/></g><g transform=\'translate(62 5) scale(.75)\'><path d=\'M8 1h8l2 7-6 3-6-3z\' fill=\'%237a6a48\'/><path d=\'M12 11l-5 4 2 20 3 8 3-8 2-20z\' fill=\'%238a7a58\'/><path d=\'M9.5 20l5-3M9.8 26l4.6-3M10.2 32l3.8-3\' stroke=\'%23b3a47c\' stroke-width=\'1.2\' stroke-linecap=\'round\'/></g><rect x=\'24\' y=\'3\' width=\'3\' height=\'6\' rx=\'1\' fill=\'%23b3a47c\'/><rect x=\'72\' y=\'3\' width=\'3\' height=\'6\' rx=\'1\' fill=\'%23b3a47c\'/></svg>") repeat-x;background-size:96px 58px}',
+      '[data-theme=father] .hello::before{content:"";position:absolute;left:0;top:0;width:40px;height:40px;pointer-events:none;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 40 40\'><g fill=\'%23a9bccb\'><path d=\'M10 4l1.4 4.6L16 10l-4.6 1.4L10 16l-1.4-4.6L4 10l4.6-1.4z\'/><path d=\'M30 14l1 3.2 3.2 1-3.2 1-1 3.2-1-3.2-3.2-1 3.2-1z\' opacity=\'.8\'/><path d=\'M20 30l.8 2.4 2.4.8-2.4.8-.8 2.4-.8-2.4-2.4-.8 2.4-.8z\' opacity=\'.7\'/></g></svg>") no-repeat;background-size:contain}',
+      '[data-theme=father] .pt-snow i{position:absolute;top:-16px;background:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 12 12\'><path d=\'M6 0l1.6 4.4L12 6 7.6 7.6 6 12 4.4 7.6 0 6l4.4-1.6z\' fill=\'%23a9bccb\'/></svg>") no-repeat center/contain;opacity:.85;animation:ptpetal linear infinite}',
+      '@keyframes ptpetal{0%{transform:translate(0,0) rotate(0)}50%{transform:translate(34px,55vh) rotate(180deg)}100%{transform:translate(-12px,110vh) rotate(360deg)}}'
     ].join('\n')
   }
 };
