@@ -860,8 +860,37 @@ test('萬聖節：設定可強制指定；日曆 10/31 有小南瓜、別天沒�
   assert.ok(h('es').indexOf('¡Feliz Halloween!') > 0 && h('en').indexOf('Happy Halloween!') > 0 && h('tc').indexOf('萬聖節快樂') > 0 && h('sc').indexOf('万圣节快乐') > 0);
   vm.runInContext("ptSetCfg(null)", ctx);
 });
+test('春節：用日期表（2027 是 2/6）；套用範圍 2/3 到 2/8；前後一天都沒有', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-02-02', '2027-02-03', '2027-02-06', '2027-02-08', '2027-02-09'].map(pick)), J([null, 'cny', 'cny', 'cny', null]));
+  assert.strictEqual(C('ptRangeText')('cny', 2027), '02/03–02/08');
+});
+test('春節：每年不同天（2026 2/17、2028 1/26），跨年不會誤套用', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2026-02-16', '2026-02-17', '2028-01-23', '2028-01-28', '2028-01-29', '2027-12-30', '2027-01-01'].map(pick)), J(['cny', 'cny', 'cny', 'cny', null, null, null]));
+});
+test('春節日期表：2027 與 2030 照官方曆（瀏覽器算會差一天），其他年份和瀏覽器的農曆一致；表外的年份用瀏覽器算', () => {
+  const f = C('ptLunarNewYear');
+  assert.strictEqual(J([f(2026), f(2027), f(2030), f(2040)]), J([[2, 17], [2, 6], [2, 3], [2, 12]]));
+  const bad = vm.runInContext("(function(){var f=new Intl.DateTimeFormat('en-u-ca-chinese',{timeZone:'UTC',month:'numeric',day:'numeric'}),bad=[];for(var y=2025;y<=2040;y++){var want=PT_CNY[y],got=null;for(var i=0;i<60&&!got;i++){var t=new Date(Date.UTC(y,0,15+i,12)),m='',d='';f.formatToParts(t).forEach(function(x){if(x.type==='month')m=x.value;if(x.type==='day')d=x.value});if(m==='1'&&d==='1')got=[t.getUTCMonth()+1,t.getUTCDate()]}if(!got||got[0]!==want[0]||got[1]!==want[1])bad.push(y)}return bad})()", ctx);
+  assert.strictEqual(J(Array.from(bad)), J([2027, 2030]));
+  assert.strictEqual(J(Array.from(f(2041))), J([2, 1]));
+});
+test('春節：每個年份的日期都在 1/21 到 2/20 之間（日期表沒有打錯）', () => {
+  const ok = vm.runInContext("Object.keys(PT_CNY).every(function(y){var m=PT_CNY[y][0],d=PT_CNY[y][1];return (m===1&&d>=21)||(m===2&&d<=20)})", ctx);
+  assert.ok(ok);
+});
+test('春節：設定可強制指定；日曆 2/6 有小燈籠、別天沒有；四語祝福；不會和聖誕、萬聖節重疊', () => {
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'cny' })", ctx);
+  assert.ok(C('ptDayMark')('2027-02-06').indexOf('pt-star') > 0 && C('ptDayMark')('2027-02-05') === '' && C('ptDayMark')('2026-12-25') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Año Nuevo Lunar!') > 0 && h('en').indexOf('Happy Lunar New Year!') > 0 && h('tc').indexOf('新年快樂') > 0 && h('sc').indexOf('恭喜发财') > 0 && h('sc').indexOf('恭喜發財') < 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+  const clash = vm.runInContext("(function(){var n=0;for(var y=2025;y<=2040;y++){var c=ptFestDay(ptFestById('cny'),y);['xmas','halloween'].forEach(function(id){for(var yy=y-1;yy<=y+1;yy++){var d=Math.abs(c-ptFestDay(ptFestById(id),yy));if(d<=PT_BEFORE+PT_AFTER)n++}})}return n})()", ctx);
+  assert.strictEqual(clash, 0);
+});
 test('每個節慶都有頁尾小場景、問候卡裝飾、日曆記號、動態效果種類', () => {
-  vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
+  vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats' && a.fx !== 'petals')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
 });
 
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
