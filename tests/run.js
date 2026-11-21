@@ -848,5 +848,21 @@ test('問候語：西文、英文、繁體、簡體各一套', () => {
   vm.runInContext("ptSetCfg(null)", ctx);
 });
 
+test('萬聖節：10/28 到 11/2 才套用，和聖誕節不會互相碰到', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2026-10-27', '2026-10-28', '2026-10-31', '2026-11-02', '2026-11-03', '2026-12-24', '2027-10-30'].map(pick)), J([null, 'halloween', 'halloween', 'halloween', null, 'xmas', 'halloween']));
+  assert.strictEqual(C('ptRangeText')('halloween', 2026), '10/28–11/02');
+});
+test('萬聖節：設定可強制指定；日曆 10/31 有小南瓜、別天沒有；四語祝福', () => {
+  vm.runInContext("ptSetCfg({ mode: 'force', id: 'halloween' })", ctx);
+  assert.ok(C('ptDayMark')('2026-10-31').indexOf('pt-star') > 0 && C('ptDayMark')('2026-10-30') === '' && C('ptDayMark')('2026-12-25') === '');
+  const h = l => C('ptHelloDeco')(l);
+  assert.ok(h('es').indexOf('¡Feliz Halloween!') > 0 && h('en').indexOf('Happy Halloween!') > 0 && h('tc').indexOf('萬聖節快樂') > 0 && h('sc').indexOf('万圣节快乐') > 0);
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
+test('每個節慶都有頁尾小場景、問候卡裝飾、日曆記號、動態效果種類', () => {
+  vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
+});
+
 console.log('\n' + (failed ? '有 ' + failed + ' 項沒通過（通過 ' + passed + ' 項）' : '全部通過（' + passed + ' 項）') + '\n');
 process.exit(failed ? 1 : 0);
