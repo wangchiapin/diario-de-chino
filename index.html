@@ -882,7 +882,7 @@ function renderSoft(){
 }
 const boardTime = ts => { try{ return new Date(ts).toLocaleString(pcLoc(lang), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }catch(e){ return ''; } };
 function boardCardHtml(dots){
-  if(PREVIEW || !(bOk.board || bOk.wall || bOk.dm)) return '';
+  if(!(bOk.board || bOk.wall || bOk.dm)) return '';
   const d = dots.board || dots.wall || dots.dm;
   return `<div class="card"><div class="row"><h2 style="margin:0">${esc(BT('bTitle'))}${dotHtml(d)}</h2><button class="btn" id="boardGo">${esc(BT('bBtn'))}</button></div></div>`;
 }
@@ -897,14 +897,14 @@ function renderBoard(root){
   const dots = dotsNow(); markNew(boardTab); dots[boardTab] = false;
   const tabs = [['board', 'tBoard'], ['wall', 'tWall'], ['dm', 'tDm']];
   let body = '';
-  const compose = (id, ph, val) => `<div class="card compose"><textarea id="${id}" maxlength="${BOARD_MAX}" placeholder="${esc(ph)}">${esc(val)}</textarea><div class="row" style="margin-top:8px"><button class="btn" id="${id}Send" ${boardBusy ? 'disabled' : ''}>${esc(boardBusy ? BT('sending') : BT('send'))}</button><span class="muted small" style="color:#c0392b">${esc(boardMsg)}</span></div></div>`;
+  const compose = (id, ph, val) => PREVIEW ? `<div class="card center muted">${esc(T('hwPreviewRO'))}</div>` : `<div class="card compose"><textarea id="${id}" maxlength="${BOARD_MAX}" placeholder="${esc(ph)}">${esc(val)}</textarea><div class="row" style="margin-top:8px"><button class="btn" id="${id}Send" ${boardBusy ? 'disabled' : ''}>${esc(boardBusy ? BT('sending') : BT('send'))}</button><span class="muted small" style="color:#c0392b">${esc(boardMsg)}</span></div></div>`;
   if(boardTab === 'board'){
     const list = boardSortDesc(boardPosts);
     body = list.length ? `<div class="card">${list.map(p => `<div class="post"><div class="who">${esc(boardTime(p.ts))}</div><div class="tx">${esc(p.text)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(BT('boardEmpty'))}</div>`;
   }else if(boardTab === 'wall'){
     const list = boardSortDesc(wallPosts);
     body = `<div class="muted small" style="margin-bottom:8px">${esc(BT('wallHint'))}</div>` + compose('wallTx', BT('wallPh'), wallDraft) +
-      (list.length ? `<div class="card">${list.map(p => `<div class="post"><div class="who"><b>${esc(p.name || '')}</b><span>${esc(boardTime(p.ts))}</span>${p.sid === studentId ? `<button class="link" data-wdel="${esc(p.id)}">${esc(BT('del'))}</button>` : ''}</div><div class="tx">${esc(p.text)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(BT('wallEmpty'))}</div>`);
+      (list.length ? `<div class="card">${list.map(p => `<div class="post"><div class="who"><b>${esc(p.name || '')}</b><span>${esc(boardTime(p.ts))}</span>${p.sid === studentId && !PREVIEW ? `<button class="link" data-wdel="${esc(p.id)}">${esc(BT('del'))}</button>` : ''}</div><div class="tx">${esc(p.text)}</div></div>`).join('')}</div>` : `<div class="card center muted">${esc(BT('wallEmpty'))}</div>`);
   }else{
     const th = dmThread(dmMsgs, studentId).slice(-50);
     body = `<div class="muted small" style="margin-bottom:8px">${esc(BT('dmHint'))}</div>` +
@@ -1433,7 +1433,7 @@ async function startRoster(){
 function startPreview(user){
   tid = user.uid; studentId = PREVIEW; docError = null; docLoaded = false; tzSetting = null;
   themeLoad();
-  startHw(PREVIEW); startSv(PREVIEW);
+  startHw(PREVIEW); startSv(PREVIEW); startBoard(PREVIEW);
   getDoc(doc(db, 'portal', tid, 'roster', PREVIEW)).then(s => { rosterData = s.exists() ? s.data() : null; }).catch(() => { rosterData = null; }).then(() => { rosterReady = true; if(syncLangZh()) paintLang(); render(); });
   unsubDoc = onSnapshot(doc(db, 'portal', tid, 'students', PREVIEW),
     s => { studentDoc = s.exists() ? s.data() : null; docLoaded = true; docError = null; if(hwOpen) return; render(); },
