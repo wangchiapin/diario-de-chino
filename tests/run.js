@@ -848,9 +848,9 @@ test('問候語：西文、英文、繁體、簡體各一套', () => {
   vm.runInContext("ptSetCfg(null)", ctx);
 });
 
-test('萬聖節：10/28 到 11/2 才套用，和聖誕節不會互相碰到', () => {
+test('萬聖節：10/28 到 10/31 套用（11/1 起由亡靈節接手），和聖誕節不會互相碰到', () => {
   const pick = C('ptPick');
-  assert.strictEqual(J(['2026-10-27', '2026-10-28', '2026-10-31', '2026-11-02', '2026-11-03', '2026-12-24', '2027-10-30'].map(pick)), J([null, 'halloween', 'halloween', 'halloween', null, 'xmas', 'halloween']));
+  assert.strictEqual(J(['2026-10-27', '2026-10-28', '2026-10-31', '2026-11-01', '2026-11-04', '2026-12-24', '2027-10-30'].map(pick)), J([null, 'halloween', 'halloween', 'muertos', null, 'xmas', 'halloween']));
   assert.strictEqual(C('ptRangeText')('halloween', 2026), '10/28–11/02');
 });
 test('萬聖節：設定可強制指定；日曆 10/31 有小南瓜、別天沒有；四語祝福', () => {
@@ -983,9 +983,37 @@ test('清明、端午、中秋：備援函式（表外年份用）算得出 2027
     assert.ok(/@keyframes pt(rain|petal)/.test(css), id + ' 要自帶 @keyframes');
   });
 });
-test('所有節慶兩兩不重疊（2025–2040 每一年，含跨年）：套用範圍都不會碰到別的節慶', () => {
-  const bad = vm.runInContext("(function(){var b=[];for(var y=2025;y<=2040;y++){var days=[];PT_FEST.forEach(function(f){days.push([f.id,ptFestDay(f,y)])});for(var i=0;i<days.length;i++)for(var j=i+1;j<days.length;j++){if(Math.abs(days[i][1]-days[j][1])<=PT_BEFORE+PT_AFTER)b.push(y+' '+days[i][0]+'/'+days[j][0])}}return b})()", ctx);
+test('國慶日（10/10）、教師節（9/28）、感恩節（11 月第四個星期四）、亡靈節（11/1）：日期、範圍、四語祝福', () => {
+  const pick = C('ptPick');
+  assert.strictEqual(J(['2027-10-06', '2027-10-07', '2027-10-10', '2027-10-12', '2027-10-13'].map(pick)), J([null, 'national', 'national', 'national', null]));
+  assert.strictEqual(J(['2027-09-24', '2027-09-25', '2027-09-28', '2027-09-30', '2027-10-01'].map(pick)), J([null, 'teacher', 'teacher', 'teacher', null]));
+  assert.strictEqual(J(['2027-11-21', '2027-11-22', '2027-11-25', '2027-11-27', '2027-11-28'].map(pick)), J([null, 'thanks', 'thanks', 'thanks', null]));
+  assert.strictEqual(J(['2027-10-28', '2027-10-31', '2027-11-01', '2027-11-03', '2027-11-04'].map(pick)), J(['halloween', 'halloween', 'muertos', 'muertos', null]));
+  const R = C('ptRangeText');
+  assert.strictEqual(J([R('national', 2027), R('teacher', 2027), R('thanks', 2027), R('muertos', 2027)]), J(['10/07–10/12', '09/25–09/30', '11/22–11/27', '10/29–11/03']));
+  const bad = vm.runInContext("(function(){var b=[];for(var y=2025;y<=2040;y++){var d=ptFestById('thanks').date(y),dow=new Date(Date.UTC(y,10,d[1])).getUTCDay();if(d[0]!==11||dow!==4||d[1]<22||d[1]>28)b.push(y)}return b})()", ctx);
   assert.strictEqual(J(Array.from(bad)), J([]));
+  assert.strictEqual(J(Array.from(vm.runInContext("ptFestById('thanks').date(2026)", ctx))), J([11, 26]));
+  const G = {
+    national: [['es', '¡Feliz Día Nacional de Taiwán!'], ['en', 'Happy Taiwan National Day!'], ['tc', '國慶日快樂'], ['sc', '国庆日快乐']],
+    teacher: [['es', '¡Feliz Día del Maestro!'], ['en', "Happy Teachers' Day!"], ['tc', '教師節快樂'], ['sc', '教师节快乐']],
+    thanks: [['es', '¡Feliz Día de Acción de Gracias!'], ['en', 'Happy Thanksgiving!'], ['tc', '感恩節快樂'], ['sc', '感恩节快乐']],
+    muertos: [['es', '¡Feliz Día de Muertos!'], ['en', 'Happy Day of the Dead!'], ['tc', '亡靈節快樂'], ['sc', '亡灵节快乐']]
+  };
+  const mark = { national: '2027-10-10', teacher: '2027-09-28', thanks: '2027-11-25', muertos: '2027-11-01' };
+  Object.keys(G).forEach(id => {
+    vm.runInContext("ptSetCfg({ mode: 'force', id: '" + id + "' })", ctx);
+    G[id].forEach(([l, t]) => assert.ok(C('ptHelloDeco')(l).indexOf(t) > 0, id + ' ' + l));
+    assert.ok(C('ptDayMark')(mark[id]).indexOf('pt-star') > 0 && C('ptDayMark')('2027-01-02') === '', id + ' 日曆記號');
+    assert.ok(C('ptHelloDeco')('sc').indexOf(G[id][2][1]) < 0, id + ' 簡體不能出現繁體祝福');
+    assert.ok(/@keyframes ptpetal/.test(vm.runInContext("PT_ASSETS." + id + ".css", ctx)), id + ' 要自帶動畫');
+  });
+  vm.runInContext("ptSetCfg(null)", ctx);
+});
+test('節慶範圍重疊：只允許（萬聖節/亡靈節、中秋/教師節、中秋/國慶日）；重疊的日子一律是離節慶當天近的優先', () => {
+  const res = vm.runInContext("(function(){var okp={'halloween/muertos':1,'midautumn/teacher':1,'midautumn/national':1},bad=[],wrong=[];for(var y=2025;y<=2040;y++){var days=[];PT_FEST.forEach(function(f){days.push([f.id,ptFestDay(f,y)])});for(var i=0;i<days.length;i++)for(var j=i+1;j<days.length;j++){if(Math.abs(days[i][1]-days[j][1])<=PT_BEFORE+PT_AFTER){var a=days[i][0],b=days[j][0];if(!okp[a+'/'+b]&&!okp[b+'/'+a])bad.push(y+' '+a+'/'+b)}}for(var d=ptDayNum(y,1,1);d<=ptDayNum(y,12,31);d++){var cand=[];days.forEach(function(x){var df=d-x[1];if(df>=-PT_BEFORE&&df<=PT_AFTER)cand.push([Math.abs(df),x[0]])});if(cand.length>1){cand.sort(function(p,q){return p[0]-q[0]});var iso=ptIso(d),got=ptPick(iso),best=cand[0][0];if(cand.filter(function(c){return c[0]===best&&c[1]===got}).length!==1)wrong.push(iso+' '+got)}}}return {bad:bad,wrong:wrong}})()", ctx);
+  assert.strictEqual(J(Array.from(res.bad)), J([]));
+  assert.strictEqual(J(Array.from(res.wrong)), J([]));
 });
 test('每個節慶都有頁尾小場景、問候卡裝飾、日曆記號、動態效果種類', () => {
   vm.runInContext("PT_FEST.forEach(function(f){ var a = PT_ASSETS[f.id]; if (!a.foot() || !a.hello(['a','b']) || !a.mark() || !a.side().a || (a.fx !== 'snow' && a.fx !== 'bats' && a.fx !== 'petals' && a.fx !== 'lanterns')) throw new Error(f.id + ' 缺裝飾'); })", ctx);
