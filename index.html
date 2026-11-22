@@ -615,7 +615,7 @@ function renderHome(root){
     <div class="colB">
     <div class="it" style="order:4">${learnCardHtml(HOME_DOTS)}</div>
     <div class="it" style="order:2">${hwCardHtml()}${svCardHtml()}</div>
-    <div class="it" style="order:3">${boardCardHtml(HOME_DOTS)}</div>
+    <div class="it" style="order:3">${boardCardHtml(HOME_DOTS)}${gameCardHtml()}</div>
     </div>
     <div class="colC">
     <div class="it" style="order:6"><div class="card">
@@ -885,6 +885,12 @@ function boardCardHtml(dots){
   if(PREVIEW || !(bOk.board || bOk.wall || bOk.dm)) return '';
   const d = dots.board || dots.wall || dots.dm;
   return `<div class="card"><div class="row"><h2 style="margin:0">${esc(BT('bTitle'))}${dotHtml(d)}</h2><button class="btn" id="boardGo">${esc(BT('bBtn'))}</button></div></div>`;
+}
+const GAMES_URL = 'https://wangchiapin.github.io/cadadiaunosminutos-share-zone/?lang=es#games';   // 華語老師分享區的小遊戲區（網站只有中/西兩種語言，一律開西文版）
+const GAMES_T = { es: ['🎮 Juegos', 'Abrir'], en: ['🎮 Games', 'Open'], tc: ['🎮 小遊戲', '打開'], sc: ['🎮 小游戏', '打开'] };
+function gameCardHtml(){
+  const g = GAMES_T[lang] || GAMES_T.es;
+  return `<div class="card"><div class="row"><h2 style="margin:0">${esc(g[0])}</h2><a class="btn" id="gamesGo" href="${GAMES_URL}" target="_blank" rel="noopener" style="text-decoration:none">${esc(g[1])}</a></div></div>`;
 }
 function bindBoardCard(root){ const b = root.querySelector('#boardGo'); if(b) b.onclick = () => { boardOpen = true; boardTab = 'board'; boardMsg = ''; render(); toTop(); }; }
 function renderBoard(root){
