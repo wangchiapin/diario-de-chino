@@ -74,6 +74,9 @@ ol{margin:6px 0 0 18px;padding:0}
 .gtools .sep{font-size:12px;color:var(--sub);margin-left:4px}
 .gedit{margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:17px;line-height:1.8;min-height:50px;white-space:pre-wrap;outline:none}
 .gedit:focus{border-color:var(--accent)}
+/* Word 批改畫面：編輯框固定高度、框內捲動；工具列黏在上方 */
+.gi.gword .gtools{position:sticky;top:56px;z-index:4;background:var(--card,#faf3e8);padding:6px 0;margin-top:0}
+.gedit.gword{height:calc(100vh - 180px);min-height:240px;overflow-y:auto}
 .gblank{display:inline-block;padding:1px 9px;margin:2px 4px 2px 0;border-radius:8px;border:1px solid var(--line);cursor:pointer;background:#fff}
 .gblank.y{background:#dbe7da;border-color:#8fb293}.gblank.n{background:#f0d9d3;border-color:#d39b8f}
 .gnotebox{width:100%;min-height:70px;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
@@ -1056,8 +1059,8 @@ function gradeWordRender(){
   let h = `<div class="gbar"><button class="quiet" id="gBack">‹ 返回</button><div><b>${esc(s.name || '')}</b> <span class="muted">${esc(d.title || '')}</span></div></div>`;
   h += `<div class="gnote">${d.status === 'graded' ? '這份已經批改過了。改完按「更新批改」。' : (o.restored ? '已接回你上次沒按完成的批改。' : '這位學生是用 Word 交的。下面是他的內容，選取文字就能標記（底線、刪除線、底色、粗體），也可以直接打字修改；最後給一個總分。')}</div>`;
   h += `<div class="card"><h2>學生的 Word：${esc(g.fileName || '')}</h2><div class="row"><button class="tiny quiet" id="gDl">下載原檔</button></div>${g.warn ? `<div class="gmsg err">${esc(g.warn)}</div>` : ''}
-    <div class="gi" data-id="__word"><div class="gtools"><span class="sep">選取文字後按：</span><button data-f="bold"><b>B</b></button><button data-f="underline"><u>U</u></button><button data-f="strikeThrough"><s>S</s></button><button data-f="hl" data-c="#fff0a8" style="background:#fff0a8">黃</button><button data-f="hl" data-c="#cfe6c9" style="background:#cfe6c9">綠</button><button data-f="hl" data-c="#f6cfc6" style="background:#f6cfc6">紅</button><button data-f="removeFormat">清除</button></div>
-    <div class="gedit" contenteditable="true" data-edit="1" spellcheck="false" style="min-height:200px">${r.mark || '<br>'}</div></div></div>`;
+    <div class="gi gword" data-id="__word"><div class="gtools"><span class="sep">選取文字後按：</span><button data-f="bold"><b>B</b></button><button data-f="underline"><u>U</u></button><button data-f="strikeThrough"><s>S</s></button><button data-f="hl" data-c="#fff0a8" style="background:#fff0a8">黃</button><button data-f="hl" data-c="#cfe6c9" style="background:#cfe6c9">綠</button><button data-f="hl" data-c="#f6cfc6" style="background:#f6cfc6">紅</button><button data-f="removeFormat">清除</button></div>
+    <div class="gedit gword" contenteditable="true" data-edit="1" spellcheck="false">${r.mark || '<br>'}</div></div></div>`;
   h += `<div class="card"><h2>總分</h2><div class="row"><input type="number" id="gGot" min="0" max="${g.total}" step="0.5" style="width:100px" value="${g.wordGot == null ? '' : g.wordGot}" placeholder="分數"><span>／ ${g.total}</span></div></div>`;
   h += gradeBottomHtml(d, g);
   root.innerHTML = h; bindGrade(root);
